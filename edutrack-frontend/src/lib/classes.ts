@@ -1,6 +1,8 @@
 import api from "./axios";
-import { ClassFormValues, ClassItem, ClassPayload } from "../types/class";
+import { ClassFormValues } from "../types/class";
 
+import api from "./axios";
+import { ClassItem, ClassPayload } from "../types/class";
 /**
  * Convert form → backend payload
  */
@@ -14,17 +16,13 @@ function buildClassPayload(payload: ClassFormValues): ClassPayload {
 }
 
 /**
- * GET
+ * CREATE (NOW FIXED TYPE)
  */
+
 export async function getClasses(): Promise<ClassItem[]> {
   const res = await api.get("/classes");
   return res.data.data;
 }
-
-/**
- * CREATE (NOW FIXED TYPE)
- */
-import { ClassItem, ClassPayload } from "../types/class";
 
 export async function createClass(
   payload: ClassPayload
@@ -41,9 +39,6 @@ export async function updateClass(
   return res.data.data;
 }
 
-/**
- * DELETE
- */
 export async function deleteClass(id: string) {
   const res = await api.delete(`/classes/${id}`);
   return res.data.data;
