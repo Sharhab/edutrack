@@ -112,17 +112,13 @@ export default function LoginPage() {
       if (!rawUser) throw new Error("User missing");
 
       const user: AuthUser = {
-        id: rawUser.id || rawUser._id,
-        _id: rawUser._id,
-        schoolId: rawUser.schoolId || null,
-        role: rawUser.role,
-        firstName: rawUser.firstName,
-        lastName: rawUser.lastName,
-        name: rawUser.name,
-        email: rawUser.email,
-        phone: rawUser.phone,
-        isActive: rawUser.isActive,
-      };
+  id: rawUser.id || rawUser._id,
+  _id: rawUser._id,
+  schoolId: rawUser.schoolId || null,
+  role: rawUser.role,
+  name: rawUser.name,
+  email: rawUser.email,
+};
 
       /**
        * ✅ SET SESSION (COOKIE + STATE)
