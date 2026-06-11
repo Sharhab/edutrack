@@ -11,7 +11,11 @@ import AttendanceAnalytics from "../../../../components/attendance/AttendanceAna
 import AttendanceTable from "../../../../components/attendance/AttendanceTable";
 import { getAttendanceRecords } from "../../../../lib/attendance";
 import { getClassOptions } from "../../../../lib/options";
-import { AttendanceRecord, AttendanceSummary } from "../../../../types/attendance";
+import {
+  AttendanceRecord,
+  AttendanceSummary,
+  AttendanceFilters,
+} from "../../../../types/attendance";
 import { ClassOption } from "../../../../types/options";
 
 const emptySummary: AttendanceSummary = {
@@ -24,101 +28,150 @@ const emptySummary: AttendanceSummary = {
 
 export default function SchoolAdminAttendancePage() {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [summary, setSummary] = useState<AttendanceSummary>(emptySummary);
+  const [summary, setSummary] =
+    useState<AttendanceSummary>(emptySummary);
+
   const [classes, setClasses] = useState<ClassOption[]>([]);
 
-  const [classId, setClassId] = useState("");
-  const [date, setDate] = useState("");
+  const [filters, setFilters] =
+    useState<AttendanceFilters>({
+      classId: "",
+      studentId: "",
+      date: "",
+    });
 
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [tableLoading, setTableLoading] = useState(false);
-  const [pageError, setPageError] = useState("");
+  const [initialLoading, setInitialLoading] =
+    useState(true);
 
-function normalizeAttendanceResponse(data: any) {
-  const recordsData = Array.isArray(data)
-    ? data
-    : Array.isArray(data?.records)
+  const [tableLoading, setTableLoading] =
+    useState(false);
+
+  const [pageError, setPageError] =
+    useState("");
+
+  function normalizeAttendanceResponse(
+    data: any
+  ) {
+    const recordsData = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.records)
       ? data.records
       : Array.isArray(data?.data)
-        ? data.data
-        : [];
+      ? data.data
+      : [];
 
-  const total = recordsData.length;
+    const total = recordsData.length;
 
-  const present = recordsData.filter(
-    (item: AttendanceRecord) =>
-      item.status === "present"
-  ).length;
+    const present = recordsData.filter(
+      (item: AttendanceRecord) =>
+        item.status === "present"
+    ).length;
 
-  const absent = recordsData.filter(
-    (item: AttendanceRecord) =>
-      item.status === "absent"
-  ).length;
+    const absent = recordsData.filter(
+      (item: AttendanceRecord) =>
+        item.status === "absent"
+    ).length;
 
-  const late = recordsData.filter(
-    (item: AttendanceRecord) =>
-      item.status === "late"
-  ).length;
+    const late = recordsData.filter(
+      (item: AttendanceRecord) =>
+        item.status === "late"
+    ).length;
 
-  return {
-    records: recordsData,
-    summary: data?.summary || {
-      total,
-      present,
-      absent,
-      late,
-      attendanceRate: total
-        ? Math.round((present / total) * 100)
-        : 0,
-    },
-  };
-}
+    return {
+      records: recordsData,
+      summary: data?.summary || {
+        total,
+        present,
+        absent,
+        late,
+        attendanceRate: total
+          ? Math.round((present / total) * 100)
+          : 0,
+      },
+    };
+  }
+
   async function loadClasses() {
     try {
       const data = await getClassOptions();
-      console.log("ATTENDANCE CLASSES:", data);
-      setClasses(Array.isArray(data) ? data : []);
+
+      console.log(
+        "ATTENDANCE CLASSES:",
+        data
+      );
+
+      setClasses(
+        Array.isArray(data) ? data : []
+      );
     } catch (error) {
-      console.error("FAILED TO LOAD CLASSES:", error);
+      console.error(
+        "FAILED TO LOAD CLASSES:",
+        error
+      );
+
       setClasses([]);
     }
   }
 
-  async function loadAttendance(nextFilters?: {
-    classId?: string;
-    date?: string;
-  }) {
+  async function loadAttendance(
+    nextFilters?: AttendanceFilters
+  ) {
     try {
       setTableLoading(true);
       setPageError("");
 
-      const filters = {
-        classId: nextFilters?.classId ?? classId,
-        date: nextFilters?.date ?? date,
+      const activeFilters = {
+        classId:
+          nextFilters?.classId ??
+          filters.classId,
+        studentId:
+          nextFilters?.studentId ??
+          filters.studentId,
+        date:
+          nextFilters?.date ??
+          filters.date,
       };
 
-      
-      console.log("LOADING ATTENDANCE WITH FILTERS:", filters);
+      console.log(
+        "LOADING ATTENDANCE WITH FILTERS:",
+        activeFilters
+      );
 
-      const data = await getAttendanceRecords(filters);
-      console.log("ATTENDANCE API RESULT:", data);
+      const data =
+        await getAttendanceRecords(
+          activeFilters
+        );
 
-      const normalized = normalizeAttendanceResponse(data);
+      console.log(
+        "ATTENDANCE API RESULT:",
+        data
+      );
+
+      const normalized =
+        normalizeAttendanceResponse(
+          data
+        );
 
       setRecords(normalized.records);
       setSummary(normalized.summary);
     } catch (err: unknown) {
-      console.error("FAILED TO LOAD ATTENDANCE:", err);
+      console.error(
+        "FAILED TO LOAD ATTENDANCE:",
+        err
+      );
 
       if (axios.isAxiosError(err)) {
         setPageError(
           err.response?.data?.message ||
             `Failed to load attendance records. Status: ${
-              err.response?.status || "network error"
+              err.response?.status ||
+              "network error"
             }`
         );
       } else {
-        setPageError("Failed to load attendance records.");
+        setPageError(
+          "Failed to load attendance records."
+        );
       }
 
       setRecords([]);
@@ -132,9 +185,14 @@ function normalizeAttendanceResponse(data: any) {
     async function start() {
       try {
         setInitialLoading(true);
+
         await Promise.allSettled([
           loadClasses(),
-          loadAttendance({ classId: "", date: "" }),
+          loadAttendance({
+            classId: "",
+            studentId: "",
+            date: "",
+          }),
         ]);
       } finally {
         setInitialLoading(false);
@@ -144,17 +202,9 @@ function normalizeAttendanceResponse(data: any) {
     start();
   }, []);
 
-  function handleApplyFilters() {
-    loadAttendance({ classId, date });
+  if (initialLoading) {
+    return <PageLoader />;
   }
-
-  function handleResetFilters() {
-    setClassId("");
-    setDate("");
-    loadAttendance({ classId: "", date: "" });
-  }
-
-  if (initialLoading) return <PageLoader />;
 
   if (pageError) {
     return (
@@ -172,30 +222,57 @@ function normalizeAttendanceResponse(data: any) {
         subtitle="Review daily attendance records, filters, and performance summary"
       >
         <AttendanceFiltersBar
-  classes={classes}
-  students={students}
-  onFilterChange={(filters) => {
-    setClassId(filters.classId);
-    setDate(filters.date);
-    setStudentId(filters.studentId);
-  }}
-/>
+          classes={classes}
+          onFilterChange={(
+            nextFilters
+          ) => {
+            const updatedFilters = {
+              classId:
+                nextFilters.classId ||
+                "",
+              studentId:
+                nextFilters.studentId ||
+                "",
+              date:
+                nextFilters.date || "",
+            };
+
+            setFilters(
+              updatedFilters
+            );
+
+            loadAttendance(
+              updatedFilters
+            );
+          }}
+        />
       </SectionCard>
 
-      <AttendanceStats summary={summary} />
+      <AttendanceStats
+        summary={summary}
+      />
 
       <AttendanceAnalytics
         total={summary.total}
         present={summary.present}
         absent={summary.absent}
-        attendanceRate={summary.attendanceRate}
+        late={summary.late}
+        attendanceRate={
+          summary.attendanceRate
+        }
       />
 
       <SectionCard
         title="Attendance Records"
         subtitle="Filtered attendance log across classes and dates"
       >
-        {tableLoading ? <PageLoader /> : <AttendanceTable data={records} />}
+        {tableLoading ? (
+          <PageLoader />
+        ) : (
+          <AttendanceTable
+            data={records}
+          />
+        )}
       </SectionCard>
     </div>
   );
