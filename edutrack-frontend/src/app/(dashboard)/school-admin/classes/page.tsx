@@ -16,9 +16,7 @@ import {
   updateClass,
 } from "../../../../lib/classes";
 import {
-  ClassItem,
-  ClassFormValues,
-  ClassPayload,
+  ClassItem, ClassPayload 
 } from "../../../../types/class";
 import Link from "next/link";
 
@@ -114,16 +112,15 @@ export default function ClassesPage() {
     return "";
   }
 
-  function toPayload(form: ClassFormValues): ClassPayload {
-    return {
-      name: form.name.trim(),
-      level: form.level.trim() || undefined,
-      arm: form.arm.trim() || undefined,
-      capacity: form.capacity ? Number(form.capacity) : undefined,
-      isActive: form.isActive === "true",
-    };
-  }
-
+ function toPayload(form: ClassFormValues): ClassPayload {
+  return {
+    name: form.name.trim(),
+    level: form.level?.trim() || undefined,
+    arm: undefined, // removed from backend
+    capacity: form.capacity ? Number(form.capacity) : undefined,
+    isActive: form.isActive === "true",
+  };
+}
   async function handleSave() {
     const error = validateForm();
     if (error) {
