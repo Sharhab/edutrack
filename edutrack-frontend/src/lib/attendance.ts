@@ -1,6 +1,5 @@
 
 // src/lib/attendance.ts
-
 import api from "./axios";
 
 import {
@@ -8,6 +7,7 @@ import {
   AttendanceFormValues,
   AttendanceRecord,
   AttendanceListResponse,
+  AttendanceFilters,
 } from "../types/attendance";
 
 const ATTENDANCE_ENDPOINTS = {
@@ -44,30 +44,26 @@ export async function getAttendance(): Promise<
 /* =========================
    GET CLASS ATTENDANCE
 ========================= */
+/* =========================
+   GET ATTENDANCE RECORDS
+========================= */
 
-export async function getAttendanceRecords({
-  classId,
-  date,
-}: {
-  classId: string;
-  date: string;
-}): Promise<
-  AttendanceRecord[]
-> {
-  const { data } =
-    await api.get(
-      ATTENDANCE_ENDPOINTS.list,
-      {
-        params: {
-          classId,
-          date,
-        },
-      }
-    );
-
-  return (
-    data?.data?.records || []
+export async function getAttendanceRecords(
+  filters: AttendanceFilters = {}
+): Promise<any> {
+  const { data } = await api.get(
+    ATTENDANCE_ENDPOINTS.list,
+    {
+      params: {
+        classId: filters.classId || undefined,
+        studentId:
+          filters.studentId || undefined,
+        date: filters.date || undefined,
+      },
+    }
   );
+
+  return data;
 }
 
 /* =========================
