@@ -97,6 +97,7 @@ function normalizeAttendanceResponse(data: any) {
         date: nextFilters?.date ?? date,
       };
 
+      
       console.log("LOADING ATTENDANCE WITH FILTERS:", filters);
 
       const data = await getAttendanceRecords(filters);
@@ -171,14 +172,14 @@ function normalizeAttendanceResponse(data: any) {
         subtitle="Review daily attendance records, filters, and performance summary"
       >
         <AttendanceFiltersBar
-          classId={classId}
-          date={date}
-          classes={classes}
-          onChangeClass={setClassId}
-          onChangeDate={setDate}
-          onApply={handleApplyFilters}
-          onReset={handleResetFilters}
-        />
+  classes={classes}
+  students={students}
+  onFilterChange={(filters) => {
+    setClassId(filters.classId);
+    setDate(filters.date);
+    setStudentId(filters.studentId);
+  }}
+/>
       </SectionCard>
 
       <AttendanceStats summary={summary} />
