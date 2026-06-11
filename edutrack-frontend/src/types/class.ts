@@ -41,3 +41,11 @@ export interface ClassFormValues {
   capacity: string;
   isActive: string;
 }
+
+export interface ClassPayload {
+  name: string;
+  level?: string;
+  arm?: string;
+  capacity?: number;
+  isActive: boolean;
+}
