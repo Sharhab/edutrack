@@ -1,6 +1,6 @@
 
 import mongoose from "mongoose";
-import { ApiError } from "../../../utils/ApiError.js";
+import { ApiError } from "../src/utils/ApiError.js";
 import {
   generateClassReportSheet,
   generateStudentReportCard,
