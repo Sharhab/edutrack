@@ -20,6 +20,14 @@ import {
 } from "../../../../types/class";
 import Link from "next/link";
 
+type ClassFormValues = {
+  name: string;
+  level: string;
+  arm: string;
+  capacity: string;
+  isActive: string;
+};
+
 const initialForm: ClassFormValues = {
   name: "",
   level: "",
