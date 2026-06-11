@@ -1,13 +1,14 @@
 import api from "./axios";
-import { ClassFormValues, ClassItem } from "../types/class";
+import { ClassFormValues, ClassItem, ClassPayload } from "../types/class";
 
 /**
- * REMOVE arm (not in backend schema)
+ * Convert UI form → backend payload
  */
-function buildClassPayload(payload: ClassFormValues) {
+function buildClassPayload(payload: ClassFormValues): ClassPayload {
   return {
-    name: payload.name,
-    level: payload.level || undefined,
+    name: payload.name.trim(),
+    level: payload.level?.trim() || undefined,
+    arm: undefined, // removed from backend schema
     capacity: payload.capacity ? Number(payload.capacity) : undefined,
     isActive: payload.isActive === "true",
   };
@@ -15,7 +16,6 @@ function buildClassPayload(payload: ClassFormValues) {
 
 /**
  * GET CLASSES
- * backend always returns: { success, message, data: [] }
  */
 export async function getClasses(): Promise<ClassItem[]> {
   const res = await api.get("/classes");
