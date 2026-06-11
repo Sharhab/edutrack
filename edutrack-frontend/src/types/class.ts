@@ -33,3 +33,13 @@ export interface ClassItem {
 
   createdAt?: string;
 }
+
+export interface ClassFormValues {
+  name: string;
+  level: string;
+  sessionId: string;
+  termId: string;
+  classTeacherId: string;
+  capacity: number;
+  isActive: boolean;
+}
