@@ -24,7 +24,6 @@ export async function getClasses(): Promise<ClassItem[]> {
 /**
  * CREATE (NOW FIXED TYPE)
  */
-import api from "./axios";
 import { ClassItem, ClassPayload } from "../types/class";
 
 export async function createClass(
