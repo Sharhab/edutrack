@@ -6,6 +6,7 @@ export type UserRole =
 
 export interface AuthUser {
   id: string;
+  _id?: string;   // ✅ ADD THIS (safe, non-breaking)
   name?: string;
   email?: string;
   role: "super_admin" | "school_admin" | "teacher" | "parent";
