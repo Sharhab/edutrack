@@ -37,9 +37,7 @@ export interface ClassItem {
 export interface ClassFormValues {
   name: string;
   level: string;
-  sessionId: string;
-  termId: string;
-  classTeacherId: string;
-  capacity: number;
-  isActive: boolean;
+  arm: string;
+  capacity: string;
+  isActive: string;
 }
