@@ -24,27 +24,21 @@ export async function getClasses(): Promise<ClassItem[]> {
 /**
  * CREATE (NOW FIXED TYPE)
  */
+import api from "./axios";
+import { ClassItem, ClassPayload } from "../types/class";
+
 export async function createClass(
-  payload: ClassFormValues
+  payload: ClassPayload
 ): Promise<ClassItem> {
-  const res = await api.post(
-    "/classes",
-    buildClassPayload(payload)
-  );
+  const res = await api.post("/classes", payload);
   return res.data.data;
 }
 
-/**
- * UPDATE (🔥 THIS IS THE CRITICAL FIX)
- */
 export async function updateClass(
   id: string,
-  payload: ClassFormValues
+  payload: ClassPayload
 ): Promise<ClassItem> {
-  const res = await api.put(
-    `/classes/${id}`,
-    buildClassPayload(payload)
-  );
+  const res = await api.put(`/classes/${id}`, payload);
   return res.data.data;
 }
 
