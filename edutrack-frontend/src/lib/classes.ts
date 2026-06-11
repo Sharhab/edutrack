@@ -2,20 +2,19 @@ import api from "./axios";
 import { ClassFormValues, ClassItem, ClassPayload } from "../types/class";
 
 /**
- * Convert UI form → backend payload
+ * Convert form → backend payload
  */
 function buildClassPayload(payload: ClassFormValues): ClassPayload {
   return {
     name: payload.name.trim(),
     level: payload.level?.trim() || undefined,
-    arm: undefined, // removed from backend schema
     capacity: payload.capacity ? Number(payload.capacity) : undefined,
     isActive: payload.isActive === "true",
   };
 }
 
 /**
- * GET CLASSES
+ * GET
  */
 export async function getClasses(): Promise<ClassItem[]> {
   const res = await api.get("/classes");
@@ -23,7 +22,7 @@ export async function getClasses(): Promise<ClassItem[]> {
 }
 
 /**
- * CREATE CLASS
+ * CREATE (NOW FIXED TYPE)
  */
 export async function createClass(
   payload: ClassFormValues
@@ -36,7 +35,7 @@ export async function createClass(
 }
 
 /**
- * UPDATE CLASS
+ * UPDATE (🔥 THIS IS THE CRITICAL FIX)
  */
 export async function updateClass(
   id: string,
@@ -50,7 +49,7 @@ export async function updateClass(
 }
 
 /**
- * DELETE CLASS
+ * DELETE
  */
 export async function deleteClass(id: string) {
   const res = await api.delete(`/classes/${id}`);
