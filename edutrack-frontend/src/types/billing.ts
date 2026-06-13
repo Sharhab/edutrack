@@ -1,4 +1,4 @@
-export type BillingPlan = "starter" | "standard" | "premium";
+export type BillingPlan = "starter" | "growth" | "premium";
 export type BillingStatus = "active" | "expired" | "pending" | "cancelled";
 export type PaymentStatus = "paid" | "pending" | "failed";
 
