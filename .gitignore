@@ -1,82 +1,35 @@
-# =========================
-# Dependencies
-# =========================
+# dependencies
 node_modules/
 
-# =========================
-# Next.js
-# =========================
-.next/
-out/
-.vercel/
-
-# =========================
-# Build
-# =========================
-dist/
-build/
-
-# =========================
-# Logs
-# =========================
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# =========================
-# Environment Files
-# =========================
+# env files
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.production
 
-# =========================
-# Uploads
-# =========================
+# logs
+logs
+*.log
+npm-debug.log*
+
+# build
+dist/
+build/
+.next/
+out/
+
+# uploads
 uploads/
-public/uploads/
 
-# =========================
-# OS Files
-# =========================
+# OS
 .DS_Store
 Thumbs.db
 
-# =========================
 # IDE
-# =========================
 .vscode/
 .idea/
 
-# =========================
-# Coverage
-# =========================
+# coverage
 coverage/
 
-# =========================
-# Cache
-# =========================
+# cache
 .cache/
-.turbo/
-
-# =========================
-# MongoDB
-# =========================
-*.mongodb
-
-# =========================
-# Temporary
-# =========================
-tmp/
-temp/
-
-# =========================
-# Certificates
-# =========================
-*.pem
-*.key
-*.crt
