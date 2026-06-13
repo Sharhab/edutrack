@@ -28,10 +28,32 @@ export interface ResolvedTenant {
   subscriptionStatus?: TenantSubscriptionStatus;
   expiryDate?: string;
 
+  billing?: {
+    status:
+      | "trial"
+      | "active"
+      | "expired"
+      | "blocked"
+      | "unknown";
+
+    isTrial?: boolean;
+    daysLeft?: number | null;
+  };
+
   // optional extras
   createdAt?: string;
   updatedAt?: string;
 }
+
+
+export type ResolvedTenant = {
+  _id: string;
+  schoolName: string;
+  slug: string;
+  logoUrl?: string;
+  themeColor?: string;
+ 
+};
 
 export interface ResolveTenantResponse {
   tenant: ResolvedTenant | null;

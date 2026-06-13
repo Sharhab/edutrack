@@ -41,16 +41,16 @@ export default function SchoolAdminDashboardPage() {
   const { tenant } = useTenant();
 
   const router = useRouter();
-
   const {
-    stats = {},
-    loading,
-    recentAnnouncements = [],
-    recentResults = [],
-  } = useSchoolAdminDashboard();
-  const { showBanner, daysLeft } = useBilling();
+  daysLeft,
+} = useBilling();
 
-
+const {
+  stats = {} as any,
+  loading,
+  recentAnnouncements,
+  recentResults,
+} = useSchoolAdminDashboard();
   /* =========================================
      SAFE FINANCE ALIGNMENT
      (Aligned with StudentFee invoice system)
@@ -105,9 +105,9 @@ export default function SchoolAdminDashboardPage() {
       ========================================= */}
       <TenantDashboardHero />
 
-       {showBanner && (
+       
   <SubscriptionBanner daysLeft={daysLeft} />
-)}
+
       {/* =========================================
           CORE STATS
       ========================================= */}
