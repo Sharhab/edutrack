@@ -1,57 +1,42 @@
 import api from "./axios";
-import { ClassFormValues, ClassItem } from "../types/class";
-
+import { ClassFormValues } from "../types/class";
+import { ClassItem, ClassPayload } from "../types/class";
 /**
- * REMOVE arm (not in backend schema)
+ * Convert form → backend payload
  */
-function buildClassPayload(payload: ClassFormValues) {
+function buildClassPayload(payload: ClassFormValues): ClassPayload {
   return {
-    name: payload.name,
-    level: payload.level || undefined,
+    name: payload.name.trim(),
+    level: payload.level?.trim() || undefined,
     capacity: payload.capacity ? Number(payload.capacity) : undefined,
     isActive: payload.isActive === "true",
   };
 }
 
 /**
- * GET CLASSES
- * backend always returns: { success, message, data: [] }
+ * CREATE (NOW FIXED TYPE)
  */
+
 export async function getClasses(): Promise<ClassItem[]> {
   const res = await api.get("/classes");
   return res.data.data;
 }
 
-/**
- * CREATE CLASS
- */
 export async function createClass(
-  payload: ClassFormValues
+  payload: ClassPayload
 ): Promise<ClassItem> {
-  const res = await api.post(
-    "/classes",
-    buildClassPayload(payload)
-  );
+  const res = await api.post("/classes", payload);
   return res.data.data;
 }
 
-/**
- * UPDATE CLASS
- */
 export async function updateClass(
   id: string,
-  payload: ClassFormValues
+  payload: ClassPayload
 ): Promise<ClassItem> {
-  const res = await api.put(
-    `/classes/${id}`,
-    buildClassPayload(payload)
-  );
+  const res = await api.put(`/classes/${id}`, payload);
   return res.data.data;
 }
 
-/**
- * DELETE CLASS
- */
 export async function deleteClass(id: string) {
   const res = await api.delete(`/classes/${id}`);
   return res.data.data;

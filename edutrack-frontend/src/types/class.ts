@@ -35,4 +35,16 @@ export interface ClassFormValues {
   arm: string;
   capacity: string;
   isActive: string;
+<<<<<<< HEAD
 }
+=======
+}
+
+export interface ClassPayload {
+  name: string;
+  level?: string;
+  arm?: string;
+  capacity?: number;
+  isActive: boolean;
+}
+>>>>>>> 4f4e32d9cbd651cfaa4b0237175531a09bd77bd3
