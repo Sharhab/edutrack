@@ -123,10 +123,6 @@ export type RankingStudent = {
   subjects: ReportCardSubject[];
 };
 
-/* =========================================
-   CLASS REPORT
-   (FIXED: supports BOTH backend formats)
-========================================= */
 
 export type ClassReport = {
   class: {
@@ -140,25 +136,14 @@ export type ClassReport = {
   sessionId: string;
   termId: string;
 
-  /**
-   * FORMAT 1: NEW CLASS RANKING STYLE
-   */
-  students?: RankingStudent[];
+  students: RankingStudent[];
 
-  /**
-   * FORMAT 2: OLD / CURRENT API STYLE
-   * wrapper around reportCard
-   */
   reports?: Array<{
     reportCard: StudentReportCard;
   }>;
 
-  /**
-   * OPTIONAL: backend metadata
-   */
   generatedAt?: string;
 };
-
 /* =========================================
    CLASS RESPONSE WRAPPER (FIXED)
 ========================================= */
