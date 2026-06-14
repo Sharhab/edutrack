@@ -6,7 +6,7 @@ export interface Invoice {
   schoolName?: string;
   invoiceNumber: string;
   reference?: string;
-  plan: "starter" | "standard" | "premium";
+  plan: "starter" | "growth" | "premium";
   amount: number;
   status: InvoiceStatus;
   billingCycle: "monthly" | "yearly";
