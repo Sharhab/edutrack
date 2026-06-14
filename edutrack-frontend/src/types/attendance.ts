@@ -57,19 +57,17 @@ LIST RESPONSE
 ========================= */
 
 export interface AttendanceListResponse {
-  summary?: AttendanceSummary;
+  summary: AttendanceSummary;
   records: AttendanceRecord[];
 }
 /* =========================
 FILTERS
 ========================= */
-export interface AttendanceFilters {
-  classId?: string;
-  studentId?: string;
-
-  date?: string;
-}
-
+export type AttendanceFilters = {
+  classId: string;
+  studentId: string;
+  date: string;
+};
 /* =========================
 SUMMARY
 ========================= */
