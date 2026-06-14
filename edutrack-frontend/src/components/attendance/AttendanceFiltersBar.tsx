@@ -56,35 +56,37 @@ export default function AttendanceFiltersBar({
   return (
     <div className="flex flex-col md:flex-row gap-3 mb-4">
       {/* CLASS */}
-      <SelectField
-        label="Class"
-        value={filters.classId}
-        onChange={(value) => updateFilter("classId", value)}
-        options={[
-          { label: "All Classes", value: "" },
-          ...classes.map((c) => ({
-            label: c.name,
-            value: c._id,
-          })),
-        ]}
-      />
+       {/* CLASS */}
+<SelectField
+  name="classId"
+  label="Class"
+  value={filters.classId}
+  onChange={(value) => updateFilter("classId", value)}
+  options={[
+    { label: "All Classes", value: "" },
+    ...classes.map((c) => ({
+      label: c.name,
+      value: c._id,
+    })),
+  ]}
+/>
 
-      {/* STUDENT */}
-      <SelectField
-        label="Student"
-        value={filters.studentId}
-        onChange={(value) =>
-          updateFilter("studentId", value)
-        }
-        options={[
-          { label: "All Students", value: "" },
-          ...students.map((s) => ({
-            label: s.name,
-            value: s._id,
-          })),
-        ]}
-      />
-
+{/* STUDENT */}
+<SelectField
+  name="studentId"
+  label="Student"
+  value={filters.studentId}
+  onChange={(value) =>
+    updateFilter("studentId", value)
+  }
+  options={[
+    { label: "All Students", value: "" },
+    ...students.map((s) => ({
+      label: s.name,
+      value: s._id,
+    })),
+  ]}
+/>
       {/* DATE */}
       <div className="flex flex-col">
         <label className="text-xs text-slate-400 mb-1">
