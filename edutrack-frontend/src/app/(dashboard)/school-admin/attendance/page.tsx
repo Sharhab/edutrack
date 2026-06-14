@@ -33,13 +33,11 @@ export default function SchoolAdminAttendancePage() {
 
   const [classes, setClasses] = useState<ClassOption[]>([]);
 
-  const [filters, setFilters] =
-    useState<AttendanceFilters>({
-      classId: "",
-      studentId: "",
-      date: "",
-    });
-
+  const [filters, setFilters] = useState<AttendanceFilters>({
+  classId: "",
+  studentId: "",
+  date: "",
+});
   const [initialLoading, setInitialLoading] =
     useState(true);
 
