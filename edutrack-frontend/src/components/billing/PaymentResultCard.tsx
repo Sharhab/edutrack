@@ -9,9 +9,8 @@ export default function PaymentResultCard({
   data,
 }: PaymentResultCardProps) {
   const payment = data.payment;
-  const subscription = data.subscription;
-  const tenant = data.tenant;
-
+const subscription = data.subscription;
+const school = data.school;
   return (
     <div className="card max-w-3xl p-6">
       <div className="mb-6">
@@ -29,7 +28,7 @@ export default function PaymentResultCard({
             School
           </p>
           <p className="mt-2 text-sm font-semibold text-white">
-            {tenant?.schoolName || "-"}
+            {school?.schoolName || "-"}
           </p>
         </div>
 
@@ -38,7 +37,7 @@ export default function PaymentResultCard({
             Tenant Status
           </p>
           <p className="mt-2 text-sm font-semibold capitalize text-white">
-            {tenant?.status || "-"}
+            {school?.status || "-"}
           </p>
         </div>
 
