@@ -57,10 +57,10 @@ export default function AttendanceFiltersBar({
     <div className="flex flex-col md:flex-row gap-3 mb-4">
       {/* CLASS */}
        {/* CLASS */}
-<SelectField
+       <SelectField
   name="classId"
   label="Class"
-  value={filters.classId}
+  value={filters.classId ?? ""}
   onChange={(value) => updateFilter("classId", value)}
   options={[
     { label: "All Classes", value: "" },
@@ -71,14 +71,11 @@ export default function AttendanceFiltersBar({
   ]}
 />
 
-{/* STUDENT */}
 <SelectField
   name="studentId"
   label="Student"
-  value={filters.studentId}
-  onChange={(value) =>
-    updateFilter("studentId", value)
-  }
+  value={filters.studentId ?? ""}
+  onChange={(value) => updateFilter("studentId", value)}
   options={[
     { label: "All Students", value: "" },
     ...students.map((s) => ({
