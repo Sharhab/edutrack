@@ -1,5 +1,7 @@
 export type TenantStatus = "active" | "inactive";
+
 export type TenantPlan = "starter" | "growth" | "premium";
+
 export type TenantSubscriptionStatus =
   | "active"
   | "expired"
@@ -14,9 +16,13 @@ export interface Tenant {
   adminEmail: string;
   phone?: string;
   address?: string;
+
   plan: TenantPlan;
+
   status: TenantStatus;
+
   subscriptionStatus?: TenantSubscriptionStatus;
+
   expiryDate?: string;
   createdAt?: string;
 }
@@ -31,19 +37,21 @@ export interface TenantFormValues {
   email: string;
   phone: string;
   address: string;
-  plan: "starter" | "standard" | "premium";
-  status: "active" | "inactive";
+
+  plan: TenantPlan; // ✅ FIXED
+
+  status: TenantStatus;
+
   expiryDate: string;
 
-  // ✅ ADMIN FIELDS
   adminFirstName: string;
   adminLastName: string;
   adminEmail: string;
   adminPassword: string;
 
-  // optional
   slug?: string;
 }
+
 export interface TenantSummary {
   total: number;
   active: number;

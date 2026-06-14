@@ -29,7 +29,7 @@ const initialForm: TenantFormValues = {
   email: "",
   phone: "",
   address: "",
-  plan: "starter",
+  plan: "starter", // ✅ OK
   status: "active",
   expiryDate: "",
   adminFirstName: "",
