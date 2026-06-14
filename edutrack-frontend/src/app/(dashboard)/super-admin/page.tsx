@@ -271,13 +271,12 @@ export default function SuperAdminBillingPage() {
       setActionError("");
 
       const response = await initializePaystackPayment({
-        tenantId: form.tenantId,
-        plan: form.plan,
-        amount: Number(form.amount),
-        email: selectedTenant.adminEmail,
-        billingCycle: form.billingCycle,
-      });
-
+  schoolId: form.tenantId,
+  plan: form.plan,
+  amount: Number(form.amount),
+  email: selectedTenant.adminEmail,
+  billingCycle: form.billingCycle,
+});
       if (response.authorizationUrl) {
         window.location.href = response.authorizationUrl;
         return;
