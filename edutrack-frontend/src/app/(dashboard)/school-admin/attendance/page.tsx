@@ -220,30 +220,18 @@ export default function SchoolAdminAttendancePage() {
         subtitle="Review daily attendance records, filters, and performance summary"
       >
         <AttendanceFiltersBar
-          classes={classes}
-          onFilterChange={(
-            nextFilters
-          ) => {
-            const updatedFilters = {
-              classId:
-                nextFilters.classId ||
-                "",
-              studentId:
-                nextFilters.studentId ||
-                "",
-              date:
-                nextFilters.date || "",
-            };
+  classes={classes}
+  onFilterChange={(nextFilters) => {
+    const updatedFilters: AttendanceFilters = {
+      classId: nextFilters.classId || "",
+      studentId: nextFilters.studentId || "",
+      date: nextFilters.date || "",
+    };
 
-            setFilters(
-              updatedFilters
-            );
-
-            loadAttendance(
-              updatedFilters
-            );
-          }}
-        />
+    setFilters(updatedFilters);
+    loadAttendance(updatedFilters);
+  }}
+/>
       </SectionCard>
 
       <AttendanceStats
