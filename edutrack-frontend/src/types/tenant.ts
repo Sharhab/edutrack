@@ -1,5 +1,5 @@
 export type TenantStatus = "active" | "inactive";
-export type TenantPlan = "starter" | "standard" | "premium";
+export type TenantPlan = "starter" | "growth" | "premium";
 export type TenantSubscriptionStatus =
   | "active"
   | "expired"
