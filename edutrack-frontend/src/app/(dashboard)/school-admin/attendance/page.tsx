@@ -222,7 +222,7 @@ export default function SchoolAdminAttendancePage() {
         <AttendanceFiltersBar
   classes={classes}
   onFilterChange={(nextFilters) => {
-    const updatedFilters: AttendanceFilters = {
+    const updatedFilters = {
       classId: nextFilters.classId || "",
       studentId: nextFilters.studentId || "",
       date: nextFilters.date || "",
