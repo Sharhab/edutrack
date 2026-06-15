@@ -172,13 +172,18 @@ export default function TeacherForm({
         </select>
 
         <select
-          value={values.isActive}
-          onChange={(e) => onChange("isActive", e.target.value)}
-          className="input"
-        >
-          <option value="true">Active</option>
-          <option value="false">Inactive</option>
-        </select>
+  value={values.isActive ? "true" : "false"}
+  onChange={(e) =>
+    onChange(
+      "isActive",
+      e.target.value === "true"
+    )
+  }
+  className="input"
+>
+  <option value="true">Active</option>
+  <option value="false">Inactive</option>
+</select>
       </div>
 
       {/* ================= PASSWORD ================= */}

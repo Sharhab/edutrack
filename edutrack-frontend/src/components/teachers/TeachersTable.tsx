@@ -35,8 +35,13 @@ function displayName(value: unknown): string {
       arm?: string;
     };
 
-    const fullName = [obj.firstName, obj.lastName].filter(Boolean).join(" ");
-    const className = [obj.name, obj.level, obj.arm].filter(Boolean).join(" ");
+    const fullName = [obj.firstName, obj.lastName]
+      .filter(Boolean)
+      .join(" ");
+
+    const className = [obj.name, obj.level, obj.arm]
+      .filter(Boolean)
+      .join(" ");
 
     return className || obj.title || fullName || obj.email || obj._id || "-";
   }
@@ -47,9 +52,7 @@ function displayName(value: unknown): string {
 function getTeacherName(row: Teacher): string {
   const firstName = row.userId?.firstName || row.firstName || "";
   const lastName = row.userId?.lastName || row.lastName || "";
-  const name = `${firstName} ${lastName}`.trim();
-
-  return name || "-";
+  return `${firstName} ${lastName}`.trim() || "-";
 }
 
 function getTeacherEmail(row: Teacher): string {
@@ -61,9 +64,11 @@ function getTeacherPhone(row: Teacher): string {
 }
 
 function getTeacherSubject(row: Teacher): string {
-  if (row.subject) return row.subject;
-
-  if (row.subjectIds && Array.isArray(row.subjectIds) && row.subjectIds.length) {
+  if (
+    row.subjectIds &&
+    Array.isArray(row.subjectIds) &&
+    row.subjectIds.length
+  ) {
     return displayName(row.subjectIds);
   }
 
@@ -75,7 +80,11 @@ function getTeacherClasses(row: Teacher): string {
     return row.classNames.join(", ");
   }
 
-  if (row.classIds && Array.isArray(row.classIds) && row.classIds.length) {
+  if (
+    row.classIds &&
+    Array.isArray(row.classIds) &&
+    row.classIds.length
+  ) {
     return displayName(row.classIds);
   }
 
