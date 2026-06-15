@@ -52,19 +52,12 @@ export async function generateStudentPdf({
   pdf.setProperties({
     title:
       pdfDocumentMeta.title,
-
     subject:
       pdfDocumentMeta.subject,
-
     author:
       pdfDocumentMeta.author,
-
     creator:
       pdfDocumentMeta.creator,
-
-    producer:
-      pdfDocumentMeta.producer,
-
     keywords:
       pdfDocumentMeta.keywords,
   });

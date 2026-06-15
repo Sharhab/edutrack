@@ -51,19 +51,12 @@ export async function generateClassPdf({
   pdf.setProperties({
     title:
       "Class Report Sheet",
-
     subject:
       pdfDocumentMeta.subject,
-
     author:
       pdfDocumentMeta.author,
-
     creator:
       pdfDocumentMeta.creator,
-
-    producer:
-      pdfDocumentMeta.producer,
-
     keywords:
       pdfDocumentMeta.keywords,
   });
