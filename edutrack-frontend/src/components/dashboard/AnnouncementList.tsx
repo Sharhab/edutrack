@@ -6,13 +6,17 @@ import { Announcement } from "../../types/announcement";
 
 type Props = {
   announcements?: Announcement[];
+  items?: Announcement[];
   loading?: boolean;
 };
 
 export default function AnnouncementList({
-  announcements = [],
+  announcements,
+  items,
   loading = false,
 }: Props) {
+  const data = announcements || items || [];
+
   if (loading) {
     return (
       <div className="rounded-xl border bg-white p-6">
@@ -21,7 +25,7 @@ export default function AnnouncementList({
     );
   }
 
-  if (!announcements.length) {
+  if (!data.length) {
     return (
       <div className="rounded-xl border bg-white p-6 text-center text-sm text-gray-500">
         No announcements available
@@ -31,7 +35,7 @@ export default function AnnouncementList({
 
   return (
     <div className="space-y-4">
-      {announcements.map((announcement) => (
+      {data.map((announcement) => (
         <div
           key={announcement._id}
           className="rounded-xl border bg-white p-4 shadow-sm"
@@ -41,9 +45,11 @@ export default function AnnouncementList({
               {announcement.title}
             </h3>
 
-            <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-              {announcement.target}
-            </span>
+            {announcement.target && (
+              <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                {announcement.target}
+              </span>
+            )}
           </div>
 
           <p className="mt-2 text-sm text-gray-600">
@@ -58,9 +64,7 @@ export default function AnnouncementList({
 
           {announcement.createdAt && (
             <div className="mt-2 text-xs text-gray-400">
-              {new Date(
-                announcement.createdAt
-              ).toLocaleDateString()}
+              {new Date(announcement.createdAt).toLocaleDateString()}
             </div>
           )}
         </div>
