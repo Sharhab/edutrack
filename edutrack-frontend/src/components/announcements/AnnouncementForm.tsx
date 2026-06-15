@@ -59,19 +59,19 @@ export default function AnnouncementForm({
 
       {/* Conditional Class */}
       {values.target === "students" && (
-        <SelectField
-          label="Class"
-          name="classId"
-          value={values.classId}
-          onChange={(v) => onChange("classId", v)}
-          options={[
-            { label: "Select Class", value: "" },
-            ...(classes || []).map((c) => ({
-              label: c.name,
-              value: c._id,
-            })),
-          ]}
-        />
+       <SelectField
+  label="Class"
+  name="classId"
+  value={values.classId || ""}   // ✅ FIX
+  onChange={(v) => onChange("classId", v)}
+  options={[
+    { label: "Select Class", value: "" },
+    ...(classes || []).map((c) => ({
+      label: c.name,
+      value: c._id,
+    })),
+  ]}
+/>
       )}
 
       {/* Submit */}
