@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import DataTable from "@/components/ui/DataTable";
-import EmptyState from "@/components/ui/EmptyState";
-import InvoiceStatusBadge from "@/components/invoices/InvoiceStatusBadge";
-import { Invoice } from "@/types/invoice";
-import { formatDate } from "@/lib/utils";
+import DataTable from "../../components/ui/DataTable";
+import EmptyState from "../../components/ui/EmptyState";
+import InvoiceStatusBadge from "../../components/invoices/InvoiceStatusBadge";
+import { Invoice } from "../../types/invoice";
+import { formatDate } from "../../lib/utils";
 
 type InvoicesTableProps = {
   data: Invoice[];

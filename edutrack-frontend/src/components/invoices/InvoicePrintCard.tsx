@@ -1,8 +1,8 @@
 "use client";
 
-import { Invoice } from "@/types/invoice";
-import InvoiceStatusBadge from "@/components/invoices/InvoiceStatusBadge";
-import { formatDate } from "@/lib/utils";
+import { Invoice } from "../../types/invoice";
+import InvoiceStatusBadge from "../../components/invoices/InvoiceStatusBadge";
+import { formatDate } from "../../lib/utils";
 
 type InvoicePrintCardProps = {
   invoice: Invoice;
