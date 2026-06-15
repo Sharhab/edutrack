@@ -29,9 +29,7 @@ type TeacherSubject = {
 
 export default function TeacherDashboardPage() {
   const [data, setData] =
-    useState<TeacherDashboardData | null>(
-      null
-    );
+    useState<TeacherDashboardData | null>(null);
 
   const [loading, setLoading] =
     useState(true);
@@ -60,20 +58,12 @@ export default function TeacherDashboardPage() {
 
         setData(result);
 
-        setClasses(
-          result?.myClasses || []
-        );
-
-        setSubjects(
-          result?.mySubjects || []
-        );
+        setClasses(result?.myClasses || []);
+        setSubjects(result?.mySubjects || []);
       } catch (err: unknown) {
-        if (
-          axios.isAxiosError(err)
-        ) {
+        if (axios.isAxiosError(err)) {
           setError(
-            err.response?.data
-              ?.message ||
+            err.response?.data?.message ||
               "Failed to load teacher dashboard."
           );
         } else {
@@ -95,17 +85,7 @@ export default function TeacherDashboardPage() {
     };
   }, []);
 
-  /* ========================================
-     LOADING
-  ======================================== */
-
-  if (loading) {
-    return <PageLoader />;
-  }
-
-  /* ========================================
-     ERROR
-  ======================================== */
+  if (loading) return <PageLoader />;
 
   if (error) {
     return (
@@ -115,10 +95,6 @@ export default function TeacherDashboardPage() {
       />
     );
   }
-
-  /* ========================================
-     EMPTY
-  ======================================== */
 
   if (!data) {
     return (
@@ -132,62 +108,33 @@ export default function TeacherDashboardPage() {
   return (
     <div className="space-y-6">
 
-      {/* ========================================
-         STATS
-      ======================================== */}
-
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
 
         <StatCard
           title="My Classes"
-          value={
-            data?.stats
-              ?.myClasses || 0
-          }
+          value={data?.stats?.myClasses || 0}
         />
 
         <StatCard
           title="Students"
-          value={
-            data?.stats
-              ?.students || 0
-          }
+          value={data?.stats?.students || 0}
         />
 
         <StatCard
           title="Attendance Pending"
-          value={
-            data?.stats
-              ?.attendancePending ||
-            0
-          }
+          value={data?.stats?.attendancePending || 0}
         />
 
         <StatCard
           title="Results Drafted"
-          value={
-            data?.stats
-              ?.resultsDrafted || 0
-          }
+          value={data?.stats?.resultsDrafted || 0}
         />
 
       </div>
 
-      {/* ========================================
-         MAIN GRID
-      ======================================== */}
-
       <div className="grid gap-6 xl:grid-cols-3">
 
-        {/* ========================================
-           LEFT SIDE
-        ======================================== */}
-
         <div className="space-y-6 xl:col-span-2">
-
-          {/* ========================================
-             MY CLASSES
-          ======================================== */}
 
           <SectionCard
             title="My Classes"
@@ -195,63 +142,45 @@ export default function TeacherDashboardPage() {
           >
             <div className="space-y-4">
 
-              {classes.length ===
-              0 ? (
+              {classes.length === 0 ? (
                 <EmptyState
                   title="No classes assigned"
                   description="Your assigned classes will appear here."
                 />
               ) : (
-                classes.map(
-                  (
-                    item
-                  ) => (
-                    <div
-                      key={
-                        item._id
-                      }
-                      className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                    >
+                classes.map((item) => (
+                  <div
+                    key={item._id}
+                    className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                  >
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">
+                        {item.name}
+                      </h3>
 
-                      <div>
-                        <h3 className="text-lg font-semibold text-white">
-                          {
-                            item.name
-                          }
-                        </h3>
+                      <p className="text-sm text-slate-400">
+                        {item.level || "Class"}
+                      </p>
+                    </div>
 
-                        <p className="text-sm text-slate-400">
-                          {
-                            item.level ||
-                            "Class"
-                          }
-                        </p>
-                      </div>
+                    <div className="text-right">
 
-                      <div className="text-right">
+                      <h4 className="text-xl font-bold text-cyan-300">
+                        {item.studentCount || 0}
+                      </h4>
 
-                        <h4 className="text-xl font-bold text-cyan-300">
-                          {item.studentCount ||
-                            0}
-                        </h4>
-
-                        <p className="text-xs text-slate-400">
-                          Students
-                        </p>
-
-                      </div>
+                      <p className="text-xs text-slate-400">
+                        Students
+                      </p>
 
                     </div>
-                  )
-                )
+
+                  </div>
+                ))
               )}
 
             </div>
           </SectionCard>
-
-          {/* ========================================
-             MY SUBJECTS
-          ======================================== */}
 
           <SectionCard
             title="My Subjects"
@@ -259,70 +188,51 @@ export default function TeacherDashboardPage() {
           >
             <div className="grid gap-4 md:grid-cols-2">
 
-              {subjects.length ===
-              0 ? (
+              {subjects.length === 0 ? (
                 <EmptyState
                   title="No subjects assigned"
                   description="Your assigned subjects will appear here."
                 />
               ) : (
-                subjects.map(
-                  (
-                    subject
-                  ) => (
-                    <div
-                      key={
-                        subject._id
-                      }
-                      className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
-                    >
+                subjects.map((subject) => (
+                  <div
+                    key={subject._id}
+                    className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+                  >
+                    <h3 className="text-lg font-semibold text-white">
+                      {subject.name}
+                    </h3>
 
-                      <h3 className="text-lg font-semibold text-white">
-                        {
-                          subject.name
-                        }
-                      </h3>
+                    <p className="mt-2 text-sm text-cyan-300">
+                      {subject.code || "No Code"}
+                    </p>
 
-                      <p className="mt-2 text-sm text-cyan-300">
-                        {subject.code ||
-                          "No Code"}
-                      </p>
-
-                    </div>
-                  )
-                )
+                  </div>
+                ))
               )}
 
             </div>
           </SectionCard>
 
-          {/* ========================================
-             ANNOUNCEMENTS
-          ======================================== */}
-
           <SectionCard
             title="Recent Announcements"
             subtitle="Updates from school management"
           >
-            <AnnouncementList
-              items={
-                data?.recentAnnouncements ||
-                []
-              }
-            />
+           <AnnouncementList
+  items={
+    (data?.recentAnnouncements || []).map((item) => ({
+      _id: item._id,
+      title: item.title || "",
+      message: item.message ?? "",   // 🔥 FIX HERE
+      createdAt: item.createdAt,
+    }))
+  }
+/>
           </SectionCard>
 
         </div>
 
-        {/* ========================================
-           RIGHT SIDE
-        ======================================== */}
-
         <div className="space-y-6 xl:col-span-1">
-
-          {/* ========================================
-             QUICK ACTIONS
-          ======================================== */}
 
           <SectionCard
             title="Quick Actions"
@@ -361,10 +271,6 @@ export default function TeacherDashboardPage() {
             </div>
           </SectionCard>
 
-          {/* ========================================
-             WORK SUMMARY
-          ======================================== */}
-
           <SectionCard
             title="Work Summary"
             subtitle="Current academic workload"
@@ -397,9 +303,7 @@ export default function TeacherDashboardPage() {
                 </p>
 
                 <h3 className="mt-2 text-2xl font-bold text-yellow-300">
-                  {data?.stats
-                    ?.attendancePending ||
-                    0}
+                  {data?.stats?.attendancePending || 0}
                 </h3>
               </div>
 
