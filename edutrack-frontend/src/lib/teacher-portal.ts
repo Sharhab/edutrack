@@ -51,19 +51,17 @@ export async function getTeacherResultContext() {
 /* =========================================
    CLASS STUDENTS
 ========================================= */
-export async function getTeacherClassStudents(
+ export async function getTeacherClassStudents(
   classId: string
 ): Promise<TeacherPortalStudent[]> {
   const res = await api.get<TeacherClassStudentsResponse>(
     ENDPOINTS.classStudents(classId)
   );
 
-  const payload = res.data?.data; // 👈 FIXED
+  const payload = res.data?.data;
 
-  // backend might return array directly OR wrapped
-  return payload?.students || payload || [];
+  return payload || [];
 }
-
 /* =========================================
    ATTENDANCE
 ========================================= */

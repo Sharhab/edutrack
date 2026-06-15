@@ -1,7 +1,10 @@
 import api from "./axios";
 import { Teacher, TeacherFormValues } from "../types/teacher";
 
-function buildTeacherPayload(payload: TeacherFormValues, isUpdate = false) {
+function buildTeacherPayload(
+  payload: TeacherFormValues,
+  isUpdate = false
+) {
   return {
     firstName: payload.firstName,
     lastName: payload.lastName,
@@ -15,14 +18,13 @@ function buildTeacherPayload(payload: TeacherFormValues, isUpdate = false) {
     gender: payload.gender,
     address: payload.address,
 
-    isActive: payload.isActive === "true",
+    isActive: payload.isActive,
 
     ...(payload.password && (!isUpdate || payload.password)
       ? { password: payload.password }
       : {}),
   };
 }
-
 export async function getTeachers(p0: { search: string; }): Promise<Teacher[]> {
   const { data } = await api.get("/teachers");
   return data?.data || [];
