@@ -305,11 +305,15 @@ export default function TeacherDashboardPage() {
             subtitle="Updates from school management"
           >
             <AnnouncementList
-              items={
-                data?.recentAnnouncements ||
-                []
-              }
-            />
+  items={
+    (data?.recentAnnouncements || []).map((item) => ({
+      _id: item._id,
+      title: item.title || "",
+      message: item.message ?? "",   // 🔥 FIX HERE
+      createdAt: item.createdAt,
+    }))
+  }
+/>
           </SectionCard>
 
         </div>
