@@ -16,6 +16,7 @@ import AnnouncementList from "../../../components/dashboard/AnnouncementList";
 /* =========================================
    TYPES
 ========================================= */
+
 type TeacherClass = {
   _id: string;
   name: string;
@@ -29,6 +30,14 @@ type TeacherSubject = {
   code?: string;
 };
 
+/* FIX: aligned with backend response */
+type DashboardAnnouncementItem = {
+  _id: string;
+  title: string;
+  message: string;
+  createdAt?: string;
+};
+
 export default function TeacherDashboardPage() {
   const [data, setData] = useState<TeacherDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,9 +46,6 @@ export default function TeacherDashboardPage() {
   const [classes, setClasses] = useState<TeacherClass[]>([]);
   const [subjects, setSubjects] = useState<TeacherSubject[]>([]);
 
-  /* =========================================
-     LOAD DASHBOARD
-  ========================================= */
   useEffect(() => {
     let mounted = true;
 
@@ -48,11 +54,6 @@ export default function TeacherDashboardPage() {
         setLoading(true);
         setError("");
 
-        /**
-         * =========================================
-         * FIX: getTeacherDashboard already returns DATA
-         * =========================================
-         */
         const result = await getTeacherDashboard();
 
         if (!mounted) return;
@@ -112,8 +113,16 @@ export default function TeacherDashboardPage() {
   }
 
   /* =========================================
-     UI
+     NORMALIZE ANNOUNCEMENTS (IMPORTANT FIX)
   ========================================= */
+  const announcements: DashboardAnnouncementItem[] =
+    (data.recentAnnouncements ?? []).map((a) => ({
+      _id: a._id,
+      title: a.title,
+      message: a.message ?? "",
+      createdAt: a.createdAt,
+    }));
+
   return (
     <div className="space-y-6">
 
@@ -153,7 +162,7 @@ export default function TeacherDashboardPage() {
       ========================================= */}
       <div className="grid gap-6 xl:grid-cols-3">
 
-        {/* LEFT */}
+        {/* LEFT SIDE */}
         <div className="space-y-6 xl:col-span-2">
 
           {/* CLASSES */}
@@ -162,7 +171,6 @@ export default function TeacherDashboardPage() {
             subtitle="Classes assigned to you"
           >
             <div className="space-y-4">
-
               {classes.length === 0 ? (
                 <EmptyState
                   title="No classes assigned"
@@ -188,7 +196,6 @@ export default function TeacherDashboardPage() {
                       <h4 className="text-xl font-bold text-cyan-300">
                         {item.studentCount ?? 0}
                       </h4>
-
                       <p className="text-xs text-slate-400">
                         Students
                       </p>
@@ -205,7 +212,6 @@ export default function TeacherDashboardPage() {
             subtitle="Subjects you teach"
           >
             <div className="grid gap-4 md:grid-cols-2">
-
               {subjects.length === 0 ? (
                 <EmptyState
                   title="No subjects assigned"
@@ -230,22 +236,19 @@ export default function TeacherDashboardPage() {
             </div>
           </SectionCard>
 
-          {/* ANNOUNCEMENTS */}
+          {/* ANNOUNCEMENTS (FIXED) */}
           <SectionCard
             title="Recent Announcements"
             subtitle="Updates from school management"
           >
-            <AnnouncementList
-              items={data.recentAnnouncements ?? []}
-            />
+            <AnnouncementList items={announcements} />
           </SectionCard>
 
         </div>
 
-        {/* RIGHT */}
+        {/* RIGHT SIDE */}
         <div className="space-y-6 xl:col-span-1">
 
-          {/* QUICK ACTIONS */}
           <SectionCard
             title="Quick Actions"
             subtitle="Teacher shortcuts"
@@ -276,7 +279,6 @@ export default function TeacherDashboardPage() {
             </div>
           </SectionCard>
 
-          {/* WORK SUMMARY */}
           <SectionCard
             title="Work Summary"
             subtitle="Current academic workload"
