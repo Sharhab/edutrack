@@ -47,24 +47,24 @@ export default function AttendanceFiltersBar({
 
   return (
     <div className="flex flex-col md:flex-row gap-3 mb-4">
-      <SelectField
-        name="classId"
-        label="Class"
-        value={filters.classId}
-        onChange={(v) => updateFilter("classId", v)}
-        options={[
-          { label: "All Classes", value: "" },
-          ...classes.map((c) => ({
-            label: c.name,
-            value: c._id,
-          })),
-        ]}
-      />
+       <SelectField
+  name="classId"
+  label="Class"
+  value={filters.classId ?? ""}
+  onChange={(v) => updateFilter("classId", v)}
+  options={[
+    { label: "All Classes", value: "" },
+    ...classes.map((c) => ({
+      label: c.name,
+      value: c._id,
+    })),
+  ]}
+/>
 
       <SelectField
         name="studentId"
         label="Student"
-        value={filters.studentId}
+        value={filters.studentId ?? ""}
         onChange={(v) => updateFilter("studentId", v)}
         options={[
           { label: "All Students", value: "" },

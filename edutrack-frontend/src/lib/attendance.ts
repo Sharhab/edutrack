@@ -50,20 +50,16 @@ export async function getAttendance(): Promise<
 
 export async function getAttendanceRecords(
   filters: AttendanceFilters = {}
-): Promise<any> {
-  const { data } = await api.get(
-    ATTENDANCE_ENDPOINTS.list,
-    {
-      params: {
-        classId: filters.classId || undefined,
-        studentId:
-          filters.studentId || undefined,
-        date: filters.date || undefined,
-      },
-    }
-  );
+): Promise<AttendanceListResponse> {
+  const res = await api.get(ATTENDANCE_ENDPOINTS.list, {
+    params: {
+      classId: filters.classId || undefined,
+      studentId: filters.studentId || undefined,
+      date: filters.date || undefined,
+    },
+  });
 
-  return data;
+  return res.data.data; // ✅ IMPORTANT FIX
 }
 
 /* =========================

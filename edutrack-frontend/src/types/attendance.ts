@@ -64,9 +64,9 @@ export interface AttendanceListResponse {
 FILTERS
 ========================= */
 export type AttendanceFilters = {
-  classId: string;
-  studentId: string;
-  date: string;
+  classId?: string;
+  studentId?: string;
+  date?: string;
 };
 /* =========================
 SUMMARY

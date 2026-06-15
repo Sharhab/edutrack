@@ -44,17 +44,6 @@ export interface ResolvedTenant {
   createdAt?: string;
   updatedAt?: string;
 }
-
-
-export type ResolvedTenant = {
-  _id: string;
-  schoolName: string;
-  slug: string;
-  logoUrl?: string;
-  themeColor?: string;
- 
-};
-
 export interface ResolveTenantResponse {
   tenant: ResolvedTenant | null;
 }
