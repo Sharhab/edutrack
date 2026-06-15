@@ -1,9 +1,9 @@
-import api from "@/lib/axios";
+import api from "./axios";
 import {
   Invoice,
   InvoiceDetailsResponse,
   InvoiceListResponse,
-} from "@/types/invoice";
+} from "../types/invoice";
 
 const INVOICE_ENDPOINTS = {
   list: "/super-admin/billing/invoices",
