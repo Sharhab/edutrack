@@ -8,6 +8,20 @@ export interface ResultStudent {
   admissionNumber?: string;
 }
 
+export interface ResultFormValues {
+  studentId: string;
+  classId: string;
+  subjectId: string;
+  sessionId: string;
+  termId: string;
+
+  ca1: string;
+  ca2: string;
+  assignment: string;
+  exam: string;
+
+  remark?: string;
+}
 /* =========================================
    BULK ENTRY PAYLOAD (v2 - TEACHER ENTRY ENGINE)
 ========================================= */

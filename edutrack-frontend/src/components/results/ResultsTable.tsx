@@ -3,7 +3,7 @@
 import DataTable from "../../components/ui/DataTable";
 import EmptyState from "../../components/ui/EmptyState";
 import Badge from "../../components/ui/Badge";
-import { Result } from "../../types/result";
+import { ResultRecord as Result } from "../../types/result";
 import { formatDate } from "../../lib/utils";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -36,61 +36,101 @@ export default function ResultsTable({
           title: "Student",
           render: (row) => (
             <div>
-              <p className="font-semibold text-white">{row.studentName || "-"}</p>
-              <p className="text-xs text-slate-400">{row.className || row.classId || "-"}</p>
+              <p className="font-semibold text-white">
+                {row.studentId
+                  ? `${row.studentId.firstName} ${row.studentId.lastName}`
+                  : "-"}
+              </p>
+              <p className="text-xs text-slate-400">
+                {row.classId?.name || "-"}
+              </p>
             </div>
           ),
         },
+
         {
           key: "subject",
           title: "Subject",
-          render: (row) => row.subjectName || row.subjectId || "-",
+          render: (row) =>
+            row.subjectId?.name ||
+            row.subjectId?.code ||
+            "-",
         },
+
         {
           key: "session",
           title: "Session",
-          render: (row) => row.session || "-",
+          render: (row) =>
+            row.sessionId?.name || "-",
         },
+
         {
           key: "term",
           title: "Term",
-          render: (row) => row.term || "-",
+          render: (row) =>
+            row.termId?.name || "-",
         },
+
         {
           key: "scores",
           title: "Scores",
           render: (row) => (
-            <div>
-              <p className="text-sm text-white">CA: {row.caScore}</p>
-              <p className="text-xs text-slate-400">Exam: {row.examScore}</p>
+            <div className="space-y-1">
+              <p className="text-sm text-white">
+                CA1: {row.ca1}
+              </p>
+              <p className="text-sm text-white">
+                CA2: {row.ca2}
+              </p>
+              <p className="text-sm text-white">
+                Assignment: {row.assignment}
+              </p>
+              <p className="text-xs text-slate-400">
+                Exam: {row.exam}
+              </p>
             </div>
           ),
         },
+
         {
           key: "total",
           title: "Total",
-          render: (row) => row.totalScore,
+          render: (row) => (
+            <span className="font-semibold text-white">
+              {row.total}
+            </span>
+          ),
         },
+
         {
           key: "grade",
           title: "Grade",
           render: (row) => (
             <Badge
               label={row.grade || "-"}
-              variant={row.grade === "A" || row.grade === "B" ? "success" : "neutral"}
+              variant={
+                row.grade === "A" ||
+                row.grade === "B"
+                  ? "success"
+                  : "neutral"
+              }
             />
           ),
         },
+
         {
           key: "remark",
           title: "Remark",
           render: (row) => row.remark || "-",
         },
+
         {
           key: "createdAt",
           title: "Created",
-          render: (row) => formatDate(row.createdAt),
+          render: (row) =>
+            formatDate(row.createdAt),
         },
+
         {
           key: "actions",
           title: "Actions",
