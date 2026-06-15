@@ -1,11 +1,17 @@
 import axios from "axios";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://edutrack-1-mzyg.onrender.com/api";
+
 const api = axios.create({
-  baseURL: "http://localhost:4000/api", // 🔥 HARD FIX (no env risk)
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
-// Request log (VERY IMPORTANT)
+// ========================
+// REQUEST INTERCEPTOR
+// ========================
 api.interceptors.request.use((config) => {
   console.log("🚀 API REQUEST:", {
     url: config.url,
@@ -26,7 +32,9 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response log (VERY IMPORTANT)
+// ========================
+// RESPONSE INTERCEPTOR
+// ========================
 api.interceptors.response.use(
   (res) => {
     console.log("✅ API RESPONSE:", res.data);
@@ -38,24 +46,9 @@ api.interceptors.response.use(
       response: err.response?.data,
       status: err.response?.status,
     });
+
     return Promise.reject(err);
   }
 );
-
-api.interceptors.request.use((config) => {
-  console.log("INTERCEPTOR RUNNING");
-
-  const token =
-    localStorage.getItem("token");
-
-  console.log("TOKEN:", token);
-
-  if (token) {
-    config.headers.Authorization =
-      `Bearer ${token}`;
-  }
-
-  return config;
-});
 
 export default api;
