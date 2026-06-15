@@ -1,14 +1,18 @@
 "use client";
 
+import { Tenant } from "../../types/tenant";
+
 type TenantNameProps = {
-  name?: string;
+  tenant?: Tenant | null;
   className?: string;
 };
 
 export default function TenantName({
-  name,
+  tenant,
   className = "",
 }: TenantNameProps) {
+  const name = tenant?.schoolName;
+
   if (!name) {
     return (
       <span className={`text-slate-400 ${className}`}>
