@@ -1,6 +1,9 @@
 export interface TeacherAssignedClass {
   _id: string;
   name: string;
+
+  subjectName?: string;
+  studentsCount?: number;
 }
 
 export interface TeacherPortalStudent {

@@ -39,9 +39,12 @@ export default function TeacherClassCards({
                 : "hover:bg-white/[0.07]"
             }`}
           >
-            <p className="text-lg font-semibold text-white">{item.name}</p>
+            <p className="text-lg font-semibold text-white">
+              {item.name}
+            </p>
+
             <p className="mt-1 text-sm text-slate-400">
-              {item.subjectName || "No subject assigned"}
+              {item.subjectName ?? "No subject assigned"}
             </p>
 
             <div className="mt-4">
