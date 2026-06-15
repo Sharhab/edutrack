@@ -1,4 +1,4 @@
-import { ResolvedTenant } from "@/types/tenant-resolver";
+import { ResolvedTenant } from "../../types/tenant-resolver";
 
 type TenantBrandCardProps = {
   tenant: ResolvedTenant | null;
