@@ -21,6 +21,7 @@ function getSubdomain(host) {
 export async function subdomainMiddleware(req, res, next) {
   try {
     const host = req.headers.host;
+      console.log("HOST:", req.headers.host);
     const slug = getSubdomain(host);
 
     if (!slug) {

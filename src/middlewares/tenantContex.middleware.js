@@ -1,10 +1,13 @@
 import { runWithTenantContext } from "../utils/tenantContext.js";
-
-export function tenantContextMiddleware(req, res, next) {
+export function tenantContextMiddleware(
+  req,
+  res,
+  next
+) {
   const schoolId =
+    req.user?.schoolId ||
     req.schoolId ||
-    req.school?._id ||
-    req.user?.schoolId;
+    req.school?._id;
 
   if (!schoolId) {
     return res.status(403).json({
@@ -13,12 +16,9 @@ export function tenantContextMiddleware(req, res, next) {
     });
   }
 
-  const tenant = {
+  req.tenant = {
     schoolId: String(schoolId),
-    school: req.school || null,
   };
 
-  req.tenant = tenant;
-
-  return runWithTenantContext(tenant, () => next());
+  next();
 }

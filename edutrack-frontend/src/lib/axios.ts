@@ -2,7 +2,7 @@ import axios from "axios";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  "https://edutrack-1-mzyg.onrender.com/api";
+  "https://edutrack-dpui.onrender.com/api";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -13,13 +13,16 @@ const api = axios.create({
 // REQUEST INTERCEPTOR
 // ========================
 api.interceptors.request.use((config) => {
-  console.log("🚀 API REQUEST:", {
-    url: config.url,
-    baseURL: config.baseURL,
-    full: `${config.baseURL}${config.url}`,
-    data: config.data,
-  });
+   const host = window.location.host;
+  const hostname = window.location.hostname;
 
+  console.log("HOST:", host);
+  console.log("HOSTNAME:", hostname);
+
+  const parts = hostname.split(".");
+  const subdomain = parts.length > 2 ? parts[0] : null;
+
+  console.log("SUBDOMAIN:", subdomain);
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem("token")

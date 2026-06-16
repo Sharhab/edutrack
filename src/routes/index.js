@@ -151,6 +151,13 @@ router.use(
  * TENANT RESOLUTION
  * =====================================
  */
+
+router.use((req, res, next) => {
+  console.log("REQUEST HIT:", req.method, req.originalUrl);
+  next();
+});
+
+router.use(subdomainMiddleware);
 router.use(subdomainMiddleware);
 router.use(tenantContextMiddleware);
 router.use(billingGuard); 
@@ -174,6 +181,33 @@ router.use("/students", studentRoutes);
 router.use("/attendance", attendanceRoutes);
 router.use("/results", resultRoutes);
 router.use("/announcements", announcementRoutes);
+
+router.use((req, res, next) => {
+  console.log("REQUEST:", req.originalUrl);
+  next();
+});
+
+router.use(subdomainMiddleware);
+
+router.use((req, res, next) => {
+  console.log("PASSED SUBDOMAIN");
+  next();
+});
+
+router.use(tenantContextMiddleware);
+
+router.use((req, res, next) => {
+  console.log("PASSED TENANT");
+  next();
+});
+
+router.use(billingGuard);
+
+router.use((req, res, next) => {
+  console.log("PASSED BILLING");
+  next();
+});
+
 router.use("/dashboard", dashboardRoutes);
 
 /**
