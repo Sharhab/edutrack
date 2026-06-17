@@ -102,6 +102,7 @@ export default function LoginPageClient() {
       const res = await api.post("/auth/login", {
         email: form.email,
         password: form.password,
+        tenantSlug: tenant?.slug || null, // 🔥 SAAS FIX
       });
 
       const token = res.data?.data?.token;
@@ -119,10 +120,30 @@ export default function LoginPageClient() {
         email: rawUser.email,
       };
 
-      setSession(token, user);
+      /**
+       * 🔥 SAAS-READY SESSION (tenant + user binding)
+       */
+      const sessionPayload = {
+        ...user,
+        tenant: tenant
+          ? {
+              _id: tenant._id,
+              slug: tenant.slug,
+              schoolName: tenant.schoolName,
+              domain: tenant.domain,
+              status: tenant.status,
+              subscriptionStatus: tenant.subscriptionStatus,
+            }
+          : null,
+      };
 
-      document.cookie = `token=${token}; path=/; max-age=86400`;
-      document.cookie = `role=${user.role}; path=/; max-age=86400`;
+      setSession(token, sessionPayload);
+
+      /**
+       * cookies (kept minimal & safe)
+       */
+      document.cookie = `token=${token}; path=/; max-age=86400; Secure; SameSite=Lax`;
+      document.cookie = `role=${user.role}; path=/; max-age=86400; SameSite=Lax`;
 
       router.replace(getDashboardRoute(user.role));
     } catch (err: unknown) {
@@ -167,6 +188,9 @@ export default function LoginPageClient() {
     );
   }
 
+  /**
+   * MAIN LOGIN UI
+   */
   return (
     <div className="relative min-h-screen overflow-hidden px-4 py-10">
       <TenantFaviconAndTitle pageTitle="Login" tenant={tenant} />
@@ -182,6 +206,12 @@ export default function LoginPageClient() {
               ? `Login to ${tenant.schoolName}`
               : "Login to EduTrack"}
           </h2>
+
+          {tenant && (
+            <p className="mt-1 text-sm text-cyan-300">
+              {tenant.slug}.edutrack.com.ng
+            </p>
+          )}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>

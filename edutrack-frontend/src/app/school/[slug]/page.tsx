@@ -22,29 +22,33 @@ type PageProps = {
 };
 
 /**
- * SAFE NORMALIZER (fixes TS + runtime issues)
+ * SAFE TENANT NORMALIZER (SaaS SAFE)
  */
 function normalizeTenant(raw: any): ResolvedTenant {
-  if (!raw) {
-    return {
-      _id: "",
-      schoolName: "Unknown School",
-      slug: "",
-    } as ResolvedTenant;
-  }
-
   return {
-    ...raw,
+    _id: raw?._id || "",
+    schoolName: raw?.schoolName || "Unknown School",
+    slug: raw?.slug || "",
 
-    subscriptionStatus: raw.subscriptionStatus ?? "pending",
-    status: raw.status ?? "inactive",
+    logoUrl: raw?.logoUrl,
+    themeColor: raw?.themeColor,
+    domain: raw?.domain,
 
-    billing: raw.billing ?? {
+    address: raw?.address,
+    phone: raw?.phone,
+    email: raw?.email,
+
+    status: raw?.status ?? "inactive",
+    subscriptionStatus: raw?.subscriptionStatus ?? "pending",
+
+    billing: raw?.billing ?? {
       status: "unknown",
       isTrial: false,
       daysLeft: null,
     },
-  };
+
+    expiryDate: raw?.expiryDate ?? null,
+  } as ResolvedTenant;
 }
 
 export default function PublicSchoolLandingPage({
@@ -52,26 +56,24 @@ export default function PublicSchoolLandingPage({
 }: PageProps) {
   const [slug, setSlug] = useState("");
   const [data, setData] = useState<PublicTenantPageData | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
 
   /**
-   * Resolve slug safely
+   * RESOLVE SLUG
    */
   useEffect(() => {
     async function run() {
       const resolved = await params;
-
-      console.log("PUBLIC SCHOOL PAGE:", resolved.slug);
-
-      setSlug(resolved.slug || "");
+      setSlug(resolved?.slug || "");
     }
 
     run();
   }, [params]);
 
   /**
-   * Load tenant page
+   * LOAD PAGE
    */
   useEffect(() => {
     async function loadPage() {
@@ -82,7 +84,6 @@ export default function PublicSchoolLandingPage({
         setPageError("");
 
         const result = await getPublicTenantPage(slug);
-
         setData(result);
       } catch (err: unknown) {
         if (axios.isAxiosError(err)) {
@@ -101,7 +102,7 @@ export default function PublicSchoolLandingPage({
   }, [slug]);
 
   /**
-   * LOADING
+   * LOADING STATE
    */
   if (loading) return <PageLoader />;
 
@@ -114,7 +115,7 @@ export default function PublicSchoolLandingPage({
         <div className="mx-auto max-w-5xl">
           <EmptyState
             title="Unable to load school page"
-            description={pageError || "School page not found"}
+            description={pageError || "School not found"}
           />
 
           <div className="mt-6 flex justify-center">
@@ -133,10 +134,12 @@ export default function PublicSchoolLandingPage({
   const tenant = normalizeTenant(data.tenant);
 
   /**
-   * LOGIN ROUTE BUILDER (UNIQUE & CLEAN)
+   * SAFE LOGIN ROUTE BUILDER (SAAS CORE)
    */
   const loginUrl = (role: string) =>
     `/login?tenant=${tenant.slug}&role=${role}`;
+
+  const announcements = data.announcements ?? [];
 
   return (
     <>
@@ -189,7 +192,7 @@ export default function PublicSchoolLandingPage({
           {/* HERO */}
           <PublicTenantHero data={data} />
 
-          {/* SCHOOL DOMAIN */}
+          {/* DOMAIN */}
           <div className="mt-10 rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-6">
             <div className="text-center">
 
@@ -209,7 +212,7 @@ export default function PublicSchoolLandingPage({
             </div>
           </div>
 
-          {/* LOGIN OPTIONS (IMPROVED UNIQUENESS + UX) */}
+          {/* LOGIN OPTIONS (CLEAN SAAS ALIGNMENT) */}
           <section className="mt-12">
 
             <h2 className="mb-6 text-center text-3xl font-bold">
@@ -218,39 +221,35 @@ export default function PublicSchoolLandingPage({
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
 
-              {/* ADMIN */}
               <Link href={loginUrl("school_admin")} className="card hover:border-cyan-500">
                 <div className="text-4xl">👨‍💼</div>
                 <h3 className="mt-4 text-xl font-bold">School Admin</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Manage school, staff, students & settings
+                  Full system control & management
                 </p>
               </Link>
 
-              {/* TEACHER */}
               <Link href={loginUrl("teacher")} className="card hover:border-cyan-500">
                 <div className="text-4xl">👨‍🏫</div>
                 <h3 className="mt-4 text-xl font-bold">Teacher Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Classes, attendance, results & grading
+                  Classes, grading & attendance
                 </p>
               </Link>
 
-              {/* PARENT */}
               <Link href={loginUrl("parent")} className="card hover:border-cyan-500">
                 <div className="text-4xl">👨‍👩‍👧</div>
                 <h3 className="mt-4 text-xl font-bold">Parent Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Monitor child performance & updates
+                  Track child performance & updates
                 </p>
               </Link>
 
-              {/* STUDENT */}
               <Link href={loginUrl("student")} className="card hover:border-cyan-500">
                 <div className="text-4xl">🎓</div>
                 <h3 className="mt-4 text-xl font-bold">Student Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Access results, assignments & profile
+                  Results, assignments & profile
                 </p>
               </Link>
 
@@ -262,9 +261,9 @@ export default function PublicSchoolLandingPage({
             <PublicTenantFeatures />
           </div>
 
-          {/* ANNOUNCEMENTS */}
+          {/* ANNOUNCEMENTS (SAFE) */}
           <div className="mt-16">
-            <PublicTenantAnnouncements items={data.announcements || []} />
+            <PublicTenantAnnouncements items={announcements} />
           </div>
 
           {/* CTA */}
