@@ -19,8 +19,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "http://localhost:3001",
-      "https://edutrack-1-mzyg.onrender.com",
+      "https://edutrack.cloud",
     ],
     credentials: true,
   })
