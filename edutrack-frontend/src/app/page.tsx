@@ -18,7 +18,7 @@ export default function Home() {
           <span className="text-lg font-bold tracking-wide">EduTrack</span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <Link href="/login" className="btn-secondary">
             Login
           </Link>

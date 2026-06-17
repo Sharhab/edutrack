@@ -21,7 +21,7 @@ const config: Record<
   },
   "/school-admin": {
     role: "school_admin",
-    title: "School Admin Dashboard",
+    title: "Admin",
     subtitle: "Manage your school, staff, students, and academic activities.",
   },
   "/teacher": {
