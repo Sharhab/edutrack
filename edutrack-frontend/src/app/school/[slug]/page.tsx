@@ -43,7 +43,11 @@ export default function PublicSchoolLandingPage({
     async function run() {
       const resolvedParams =
         await params;
-
+        
+        console.log(
+      "PUBLIC SCHOOL PAGE:",
+      resolvedParams.slug
+    );
       setSlug(
         resolvedParams.slug
       );
@@ -51,6 +55,8 @@ export default function PublicSchoolLandingPage({
 
     run();
   }, [params]);
+
+  
 
   useEffect(() => {
     async function loadPage() {
