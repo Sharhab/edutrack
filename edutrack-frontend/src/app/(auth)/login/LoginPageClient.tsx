@@ -53,39 +53,36 @@ export default function LoginPageClient() {
   const [error, setError] = useState("");
 
   /**
-   * 🔥 READ ROLE + TENANT FROM URL (CRITICAL FIX)
+   * 🔥 SAFE ROLE SYNC (FIX)
    */
   useEffect(() => {
-    const r = searchParams.get("role");
-    setRole(r);
+    setRole(searchParams.get("role"));
   }, [searchParams]);
 
   /**
-   * LOAD TENANT
+   * 🔥 SINGLE TENANT RESOLUTION FLOW (FIXED)
    */
   useEffect(() => {
-    async function loadTenant() {
+    async function initTenant() {
       try {
         setTenantLoading(true);
 
-        const slug = getTenantSlugFromUrl(searchParams);
-
-        if (slug) {
-          const resolved = await resolveTenantBySlug(slug);
-          setTenant(resolved);
-          return;
-        }
-
+        const slugFromUrl = getTenantSlugFromUrl(searchParams);
         const host = getHostFromWindow();
         const subdomain = getSubdomain(host);
 
-        if (subdomain) {
-          const resolved = await resolveTenantByDomain(host);
-          setTenant(resolved);
+        const slug = slugFromUrl || subdomain;
+
+        if (!slug) {
+          setTenant(null);
           return;
         }
 
-        setTenant(null);
+        const resolved = slugFromUrl
+          ? await resolveTenantBySlug(slug)
+          : await resolveTenantByDomain(host);
+
+        setTenant(resolved);
       } catch (err) {
         console.error(err);
         setTenant(null);
@@ -94,7 +91,7 @@ export default function LoginPageClient() {
       }
     }
 
-    loadTenant();
+    initTenant();
   }, [searchParams, setTenant]);
 
   /**
@@ -113,7 +110,7 @@ export default function LoginPageClient() {
         email: form.email,
         password: form.password,
         tenantSlug: tenant?.slug || null,
-        role, // 🔥 IMPORTANT FIX
+        role, // 🔥 IMPORTANT
       });
 
       const token = res.data?.data?.token;
@@ -130,7 +127,6 @@ export default function LoginPageClient() {
         name: rawUser.name,
         email: rawUser.email,
 
-        // optional SaaS context
         tenant: tenant
           ? {
               _id: tenant._id,
@@ -165,11 +161,11 @@ export default function LoginPageClient() {
   }
 
   /**
-   * LOADING
+   * 🔥 LOADING (FIX: NEVER BLOCK LOGIN FORM INDEFINITELY)
    */
   if (!hydrated || tenantLoading) {
     return (
-      <div className="relative min-h-screen px-4 py-10">
+      <div className="relative min-h-screen flex items-center justify-center px-4">
         <TenantFaviconAndTitle pageTitle="Login" tenant={tenant} />
         <TenantResolverLoader />
       </div>
@@ -177,7 +173,7 @@ export default function LoginPageClient() {
   }
 
   /**
-   * BLOCKED
+   * BLOCKED TENANT
    */
   if (tenant && isTenantBlocked(tenant)) {
     return (
@@ -192,7 +188,7 @@ export default function LoginPageClient() {
   }
 
   /**
-   * UI
+   * MAIN UI (ALWAYS RENDERS LOGIN FORM)
    */
   return (
     <div className="relative min-h-screen px-4 py-10">
@@ -201,18 +197,26 @@ export default function LoginPageClient() {
       <div className="relative mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
         <TenantBrandCard tenant={tenant} />
 
+        {/* LOGIN FORM */}
         <div className="card p-6 sm:p-8">
           <h2 className="text-2xl font-bold">
-            Login to {tenant?.schoolName || "EduTrack"}
+            Login {tenant?.schoolName ? `to ${tenant.schoolName}` : "Portal"}
           </h2>
 
-          {role && (
+          {tenant?.slug && (
             <p className="mt-1 text-sm text-cyan-300">
-              Role: {role.toUpperCase()}
+              {tenant.slug}.edutrack.cloud
+            </p>
+          )}
+
+          {role && (
+            <p className="mt-2 text-xs text-slate-400">
+              Role: <span className="text-cyan-300">{role}</span>
             </p>
           )}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            {/* EMAIL */}
             <div>
               <label className="text-sm">Email</label>
               <div className="relative">
@@ -229,6 +233,7 @@ export default function LoginPageClient() {
               </div>
             </div>
 
+            {/* PASSWORD */}
             <div>
               <label className="text-sm">Password</label>
               <div className="relative">
@@ -245,12 +250,14 @@ export default function LoginPageClient() {
               </div>
             </div>
 
+            {/* ERROR */}
             {error && (
               <div className="rounded-lg bg-red-500/10 p-3 text-sm text-red-400">
                 {error}
               </div>
             )}
 
+            {/* BUTTON */}
             <button
               type="submit"
               disabled={loading}
