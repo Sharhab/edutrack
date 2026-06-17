@@ -14,7 +14,7 @@ function formatDate(date?: string) {
 }
 
 export default function PublicTenantAnnouncements({
-  items,
+  items = [],
 }: PublicTenantAnnouncementsProps) {
   return (
     <section className="space-y-6">
@@ -22,15 +22,17 @@ export default function PublicTenantAnnouncements({
         <p className="text-sm uppercase tracking-[0.25em] text-cyan-300">
           Public Updates
         </p>
+
         <h2 className="mt-3 text-3xl font-bold text-white">
           Latest School Announcements
         </h2>
+
         <p className="mt-2 max-w-2xl text-slate-400">
           Important public updates and notices from the school.
         </p>
       </div>
 
-      {items.length ? (
+      {(items?.length ?? 0) > 0 ? (
         <div className="grid gap-4">
           {items.map((item) => (
             <div
@@ -39,7 +41,10 @@ export default function PublicTenantAnnouncements({
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-white">{item.title}</h3>
+                  <h3 className="text-lg font-semibold text-white">
+                    {item.title}
+                  </h3>
+
                   <p className="mt-2 text-sm leading-7 text-slate-400">
                     {item.message}
                   </p>
@@ -57,6 +62,7 @@ export default function PublicTenantAnnouncements({
           <h4 className="text-base font-semibold text-white">
             No public announcements yet
           </h4>
+
           <p className="mx-auto mt-2 max-w-md text-sm text-slate-400">
             Public school notices will appear here when published.
           </p>
