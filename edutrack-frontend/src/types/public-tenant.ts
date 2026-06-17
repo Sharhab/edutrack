@@ -17,6 +17,16 @@ export interface PublicTenantPageData {
     email?: string;
     domain?: string;
     status?: "active" | "inactive";
+    subscriptionStatus?: string;
+    expiryDate?: string | null;
   };
+
+  page: {
+    schoolName: string;
+    logoUrl?: string;
+    themeColor?: string;
+  };
+
   announcements: PublicTenantAnnouncement[];
 }
+

@@ -13,6 +13,9 @@ import PublicTenantFeatures from "../../../components/public/PublicTenantFeature
 
 import TenantFaviconAndTitle from "../../../components/tenant/TenantFaviconAndTitle";
 
+import { ResolvedTenant } from "../../../types/tenant-resolver";
+import { TenantSubscriptionStatus } from "../../../types/tenant";
+
 import { getPublicTenantPage } from "../../../lib/public-tenant";
 import { PublicTenantPageData } from "../../../types/public-tenant";
 
@@ -21,6 +24,17 @@ type PageProps = {
     slug: string;
   }>;
 };
+
+function normalizeTenant(raw: any): ResolvedTenant {
+  return {
+    ...raw,
+
+    // force safe enum casting
+    subscriptionStatus: raw.subscriptionStatus as TenantSubscriptionStatus,
+
+    status: raw.status,
+  };
+}
 
 export default function PublicSchoolLandingPage({
   params,
@@ -43,7 +57,7 @@ export default function PublicSchoolLandingPage({
     async function run() {
       const resolvedParams =
         await params;
-        
+
         console.log(
       "PUBLIC SCHOOL PAGE:",
       resolvedParams.slug
@@ -126,11 +140,9 @@ export default function PublicSchoolLandingPage({
   return (
     <>
       <TenantFaviconAndTitle
-        pageTitle={
-          data.tenant.schoolName
-        }
-        tenant={data.tenant}
-      />
+  pageTitle={data.tenant.schoolName}
+  tenant={normalizeTenant(data.tenant)}
+/>
 
       <div className="min-h-screen bg-slate-950 text-white">
 

@@ -4,7 +4,8 @@ export type TenantSubscriptionStatus =
   | "active"
   | "expired"
   | "pending"
-  | "cancelled";
+  | "cancelled"
+  | "trial"; // ✅ ADD THIS
 
 export interface ResolvedTenant {
   _id: string;
