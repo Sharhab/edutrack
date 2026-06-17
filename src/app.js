@@ -20,6 +20,7 @@ app.use(
     origin: [
       "http://localhost:3000",
       "https://edutrack.cloud",
+      "https://*.edutrack.cloud",
     ],
     credentials: true,
   })

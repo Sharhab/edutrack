@@ -3,7 +3,7 @@ import { School } from "../modules/schools/school.model.js";
 /**
  * Extract tenant slug from hostname
  *
- * saldefi.edutrack.cloud -> saldefi
+ * demo-academic.edutrack.cloud -> demo-academic
  * edutrack.cloud -> null
  * www.edutrack.cloud -> null
  * localhost -> null
@@ -12,21 +12,15 @@ import { School } from "../modules/schools/school.model.js";
 function getSubdomain(host) {
   if (!host) return null;
 
-  const hostname = host
-    .split(":")[0]
-    .toLowerCase();
+  const hostname = host.split(":")[0].toLowerCase();
 
-  // Ignore localhost
-  if (hostname.includes("localhost")) {
-    return null;
-  }
+  // Local dev
+  if (hostname.includes("localhost")) return null;
 
-  // Ignore Render domains
-  if (hostname.endsWith(".onrender.com")) {
-    return null;
-  }
+  // Render
+  if (hostname.endsWith(".onrender.com")) return null;
 
-  // Ignore root domains
+  // Root domains
   if (
     hostname === "edutrack.cloud" ||
     hostname === "www.edutrack.cloud"
@@ -36,18 +30,13 @@ function getSubdomain(host) {
 
   const parts = hostname.split(".");
 
-  if (parts.length < 3) {
-    return null;
-  }
+  // MUST be at least: subdomain.domain.tld
+  if (parts.length < 3) return null;
 
   return parts[0];
 }
 
-export async function subdomainMiddleware(
-  req,
-  res,
-  next
-) {
+export async function subdomainMiddleware(req, res, next) {
   try {
     const host = req.headers.host;
 
@@ -57,44 +46,43 @@ export async function subdomainMiddleware(
 
     console.log("SLUG:", slug);
 
-    // Initialize tenant context
+    // Default tenant context
     req.school = null;
     req.schoolId = null;
     req.tenantSlug = slug;
 
-    // Root domain access
+    /**
+     * =========================================
+     * ROOT DOMAIN HANDLING (IMPORTANT FIX)
+     * =========================================
+     * DO NOT block request.
+     * JWT will handle tenant resolution.
+     */
     if (!slug) {
-      console.log(
-        "ROOT DOMAIN REQUEST - SKIPPING TENANT LOOKUP"
-      );
-
+      console.log("ROOT DOMAIN REQUEST - USING JWT TENANT");
       return next();
     }
 
+    /**
+     * =========================================
+     * SUBDOMAIN MODE (MULTI-TENANT)
+     * =========================================
+     */
     const school = await School.findOne({
       $or: [
         { slug },
-        {
-          domain: `${slug}.edutrack.cloud`,
-        },
+        { domain: `${slug}.edutrack.cloud` },
       ],
     });
 
-    console.log(
-      "FOUND SCHOOL:",
-      school?.name || null
-    );
+    console.log("FOUND SCHOOL:", school?.name || null);
 
     if (!school) {
-      console.log(
-        "SCHOOL NOT FOUND FOR SLUG:",
-        slug
-      );
+      console.log("SCHOOL NOT FOUND FOR SLUG:", slug);
 
       return res.status(404).json({
         success: false,
-        message:
-          "School not found for subdomain",
+        message: "School not found for subdomain",
       });
     }
 
@@ -102,26 +90,18 @@ export async function subdomainMiddleware(
     if (!school.isActive) {
       return res.status(403).json({
         success: false,
-        message:
-          "School workspace is inactive",
+        message: "School workspace is inactive",
       });
     }
 
     req.school = school;
     req.schoolId = school._id;
 
-    console.log(
-      "TENANT RESOLVED:",
-      school.name
-    );
+    console.log("TENANT RESOLVED:", school.name);
 
     next();
   } catch (err) {
-    console.error(
-      "SUBDOMAIN MIDDLEWARE ERROR:",
-      err
-    );
-
+    console.error("SUBDOMAIN MIDDLEWARE ERROR:", err);
     next(err);
   }
 }
