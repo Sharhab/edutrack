@@ -53,14 +53,15 @@ export default function LoginPageClient() {
   const [error, setError] = useState("");
 
   /**
-   * 🔥 SAFE ROLE SYNC (FIX)
+   * 🔥 SYNC ROLE FROM URL (SAFE)
    */
   useEffect(() => {
-    setRole(searchParams.get("role"));
+    const r = searchParams.get("role");
+    setRole(r);
   }, [searchParams]);
 
   /**
-   * 🔥 SINGLE TENANT RESOLUTION FLOW (FIXED)
+   * 🔥 TENANT RESOLUTION (FIXED - NO RACE, NO BLANK UI)
    */
   useEffect(() => {
     async function initTenant() {
@@ -84,7 +85,7 @@ export default function LoginPageClient() {
 
         setTenant(resolved);
       } catch (err) {
-        console.error(err);
+        console.error("Tenant load error:", err);
         setTenant(null);
       } finally {
         setTenantLoading(false);
@@ -92,10 +93,10 @@ export default function LoginPageClient() {
     }
 
     initTenant();
-  }, [searchParams, setTenant]);
+  }, []);
 
   /**
-   * LOGIN
+   * 🔥 LOGIN HANDLER (SAAS SAFE)
    */
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -110,7 +111,7 @@ export default function LoginPageClient() {
         email: form.email,
         password: form.password,
         tenantSlug: tenant?.slug || null,
-        role, // 🔥 IMPORTANT
+        role: role || null,
       });
 
       const token = res.data?.data?.token;
@@ -126,17 +127,6 @@ export default function LoginPageClient() {
         role: rawUser.role,
         name: rawUser.name,
         email: rawUser.email,
-
-        tenant: tenant
-          ? {
-              _id: tenant._id,
-              slug: tenant.slug,
-              schoolName: tenant.schoolName,
-              domain: tenant.domain,
-              status: tenant.status,
-              subscriptionStatus: tenant.subscriptionStatus,
-            }
-          : null,
       };
 
       setSession(token, user);
@@ -161,24 +151,24 @@ export default function LoginPageClient() {
   }
 
   /**
-   * 🔥 LOADING (FIX: NEVER BLOCK LOGIN FORM INDEFINITELY)
+   * 🔥 ONLY LOADER (DO NOT BLOCK UI TREE)
    */
-  if (!hydrated || tenantLoading) {
+  if (!hydrated) {
     return (
-      <div className="relative min-h-screen flex items-center justify-center px-4">
-        <TenantFaviconAndTitle pageTitle="Login" tenant={tenant} />
+      <div className="min-h-screen flex items-center justify-center">
         <TenantResolverLoader />
       </div>
     );
   }
 
   /**
-   * BLOCKED TENANT
+   * 🔥 TENANT BLOCK STATE
    */
   if (tenant && isTenantBlocked(tenant)) {
     return (
-      <div className="relative min-h-screen px-4 py-10">
+      <div className="min-h-screen px-4 py-10">
         <TenantFaviconAndTitle pageTitle="Blocked" tenant={tenant} />
+
         <TenantBlockedState
           title="School Workspace Unavailable"
           description={getTenantBlockReason(tenant)}
@@ -188,19 +178,27 @@ export default function LoginPageClient() {
   }
 
   /**
-   * MAIN UI (ALWAYS RENDERS LOGIN FORM)
+   * 🔥 MAIN LOGIN UI (ALWAYS RENDERS — FIX FOR YOUR ISSUE)
    */
   return (
     <div className="relative min-h-screen px-4 py-10">
       <TenantFaviconAndTitle pageTitle="Login" tenant={tenant} />
 
+      {/* BACKGROUND */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_22%),radial-gradient(circle_at_bottom,rgba(59,130,246,0.10),transparent_25%)]" />
+
       <div className="relative mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
+
+        {/* BRAND CARD */}
         <TenantBrandCard tenant={tenant} />
 
-        {/* LOGIN FORM */}
+        {/* LOGIN FORM (ALWAYS VISIBLE) */}
         <div className="card p-6 sm:p-8">
+
           <h2 className="text-2xl font-bold">
-            Login {tenant?.schoolName ? `to ${tenant.schoolName}` : "Portal"}
+            {tenant?.schoolName
+              ? `Login to ${tenant.schoolName}`
+              : "Login Portal"}
           </h2>
 
           {tenant?.slug && (
@@ -216,6 +214,7 @@ export default function LoginPageClient() {
           )}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+
             {/* EMAIL */}
             <div>
               <label className="text-sm">Email</label>
@@ -265,6 +264,7 @@ export default function LoginPageClient() {
             >
               {loading ? "Logging in..." : "Login"}
             </button>
+
           </form>
         </div>
       </div>
