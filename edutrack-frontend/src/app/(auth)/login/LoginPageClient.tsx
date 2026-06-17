@@ -46,9 +46,19 @@ export default function LoginPageClient() {
     password: "",
   });
 
+  const [role, setRole] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [tenantLoading, setTenantLoading] = useState(true);
   const [error, setError] = useState("");
+
+  /**
+   * 🔥 READ ROLE + TENANT FROM URL (CRITICAL FIX)
+   */
+  useEffect(() => {
+    const r = searchParams.get("role");
+    setRole(r);
+  }, [searchParams]);
 
   /**
    * LOAD TENANT
@@ -102,7 +112,8 @@ export default function LoginPageClient() {
       const res = await api.post("/auth/login", {
         email: form.email,
         password: form.password,
-        tenantSlug: tenant?.slug || null, // 🔥 SAAS FIX
+        tenantSlug: tenant?.slug || null,
+        role, // 🔥 IMPORTANT FIX
       });
 
       const token = res.data?.data?.token;
@@ -118,13 +129,8 @@ export default function LoginPageClient() {
         role: rawUser.role,
         name: rawUser.name,
         email: rawUser.email,
-      };
 
-      /**
-       * 🔥 SAAS-READY SESSION (tenant + user binding)
-       */
-      const sessionPayload = {
-        ...user,
+        // optional SaaS context
         tenant: tenant
           ? {
               _id: tenant._id,
@@ -137,12 +143,9 @@ export default function LoginPageClient() {
           : null,
       };
 
-      setSession(token, sessionPayload);
+      setSession(token, user);
 
-      /**
-       * cookies (kept minimal & safe)
-       */
-      document.cookie = `token=${token}; path=/; max-age=86400; Secure; SameSite=Lax`;
+      document.cookie = `token=${token}; path=/; max-age=86400; SameSite=Lax`;
       document.cookie = `role=${user.role}; path=/; max-age=86400; SameSite=Lax`;
 
       router.replace(getDashboardRoute(user.role));
@@ -162,11 +165,11 @@ export default function LoginPageClient() {
   }
 
   /**
-   * LOADING STATE
+   * LOADING
    */
   if (!hydrated || tenantLoading) {
     return (
-      <div className="relative min-h-screen overflow-hidden px-4 py-10">
+      <div className="relative min-h-screen px-4 py-10">
         <TenantFaviconAndTitle pageTitle="Login" tenant={tenant} />
         <TenantResolverLoader />
       </div>
@@ -174,11 +177,11 @@ export default function LoginPageClient() {
   }
 
   /**
-   * BLOCKED TENANT
+   * BLOCKED
    */
   if (tenant && isTenantBlocked(tenant)) {
     return (
-      <div className="relative min-h-screen overflow-hidden px-4 py-10">
+      <div className="relative min-h-screen px-4 py-10">
         <TenantFaviconAndTitle pageTitle="Blocked" tenant={tenant} />
         <TenantBlockedState
           title="School Workspace Unavailable"
@@ -189,27 +192,23 @@ export default function LoginPageClient() {
   }
 
   /**
-   * MAIN LOGIN UI
+   * UI
    */
   return (
-    <div className="relative min-h-screen overflow-hidden px-4 py-10">
+    <div className="relative min-h-screen px-4 py-10">
       <TenantFaviconAndTitle pageTitle="Login" tenant={tenant} />
-
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_22%),radial-gradient(circle_at_bottom,rgba(59,130,246,0.10),transparent_25%)]" />
 
       <div className="relative mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
         <TenantBrandCard tenant={tenant} />
 
         <div className="card p-6 sm:p-8">
           <h2 className="text-2xl font-bold">
-            {tenant?.schoolName
-              ? `Login to ${tenant.schoolName}`
-              : "Login to EduTrack"}
+            Login to {tenant?.schoolName || "EduTrack"}
           </h2>
 
-          {tenant && (
+          {role && (
             <p className="mt-1 text-sm text-cyan-300">
-              {tenant.slug}.edutrack.com.ng
+              Role: {role.toUpperCase()}
             </p>
           )}
 

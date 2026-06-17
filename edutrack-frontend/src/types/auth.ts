@@ -6,14 +6,20 @@ export type UserRole =
 
 export interface AuthUser {
   id: string;
-  _id?: string;   // ✅ ADD THIS (safe, non-breaking)
+  _id?: string;
   name?: string;
   email?: string;
+
   role: "super_admin" | "school_admin" | "teacher" | "parent";
   schoolId?: string | null;
-}
 
-export interface LoginResponse {
-  token: string;
-  user: AuthUser;
+  // ✅ ADD THIS (SaaS context, optional)
+  tenant?: {
+    _id: string;
+    slug: string;
+    schoolName: string;
+    domain?: string;
+    status?: string;
+    subscriptionStatus?: string;
+  } | null;
 }
