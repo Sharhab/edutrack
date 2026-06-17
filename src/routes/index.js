@@ -158,7 +158,6 @@ router.use((req, res, next) => {
 });
 
 router.use(subdomainMiddleware);
-router.use(subdomainMiddleware);
 router.use(tenantContextMiddleware);
 router.use(billingGuard); 
 

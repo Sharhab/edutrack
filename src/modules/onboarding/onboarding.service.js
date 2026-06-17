@@ -226,51 +226,54 @@ export async function completeOnboarding(payload) {
       school._id
     );
 
-    return {
-      school: {
-        _id: school._id,
-        name: school.name,
-        slug: school.slug,
-        domain: school.domain,
+   const tenantBaseUrl = `https://${school.slug}.edutrack.cloud`;
 
-        onboardingStatus:
-          school.onboardingStatus,
+return {
+  school: {
+    _id: school._id,
+    name: school.name,
+    slug: school.slug,
+    domain: school.domain,
+    onboardingStatus:
+      school.onboardingStatus,
+    billingStatus:
+      school.billingStatus,
+  },
 
-        billingStatus:
-          school.billingStatus,
-      },
+  adminUser: {
+    _id: adminUser._id,
+    email: adminUser.email,
+    role: adminUser.role,
+  },
 
-      adminUser: {
-        _id: adminUser._id,
-        email: adminUser.email,
-        role: adminUser.role,
-      },
+  subscription: {
+    _id: subscription._id,
+    plan: subscription.plan,
+    status: subscription.status,
+    isTrial:
+      subscription.isTrial,
+    trialEndsAt:
+      subscription.trialEndsAt,
+  },
 
-      subscription: {
-        _id: subscription._id,
-        plan: subscription.plan,
-        status: subscription.status,
-        isTrial:
-          subscription.isTrial,
-        trialEndsAt:
-          subscription.trialEndsAt,
-      },
+  tenantBaseUrl,
 
-      // Public school landing page
-      landingPage: `/school/${school.slug}`,
+  landingPage: tenantBaseUrl,
 
-      // Tenant login page
-      loginUrl: `/school/${school.slug}/login`,
+  loginUrl: `${tenantBaseUrl}/login`,
 
-      // Future role portals
-      adminPortal: `/school/${school.slug}/login?role=school_admin`,
+  adminPortal:
+    `${tenantBaseUrl}/login?role=school_admin`,
 
-      teacherPortal: `/school/${school.slug}/login?role=teacher`,
+  teacherPortal:
+    `${tenantBaseUrl}/login?role=teacher`,
 
-      parentPortal: `/school/${school.slug}/login?role=parent`,
+  parentPortal:
+    `${tenantBaseUrl}/login?role=parent`,
 
-      studentPortal: `/school/${school.slug}/login?role=student`,
-    };
+  studentPortal:
+    `${tenantBaseUrl}/login?role=student`,
+};
   } catch (error) {
     console.error(
       "❌ COMPLETE ONBOARDING ERROR:",
