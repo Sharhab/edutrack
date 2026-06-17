@@ -13,65 +13,66 @@ import PublicTenantFeatures from "../../../components/public/PublicTenantFeature
 
 import TenantFaviconAndTitle from "../../../components/tenant/TenantFaviconAndTitle";
 
-import { ResolvedTenant } from "../../../types/tenant-resolver";
-import { TenantSubscriptionStatus } from "../../../types/tenant";
-
 import { getPublicTenantPage } from "../../../lib/public-tenant";
 import { PublicTenantPageData } from "../../../types/public-tenant";
+import { ResolvedTenant } from "../../../types/tenant-resolver";
 
 type PageProps = {
-  params: Promise<{
-    slug: string;
-  }>;
+  params: Promise<{ slug: string }>;
 };
 
+/**
+ * SAFE NORMALIZER (fixes TS + runtime issues)
+ */
 function normalizeTenant(raw: any): ResolvedTenant {
+  if (!raw) {
+    return {
+      _id: "",
+      schoolName: "Unknown School",
+      slug: "",
+    } as ResolvedTenant;
+  }
+
   return {
     ...raw,
 
-    // force safe enum casting
-    subscriptionStatus: raw.subscriptionStatus as TenantSubscriptionStatus,
+    subscriptionStatus: raw.subscriptionStatus ?? "pending",
+    status: raw.status ?? "inactive",
 
-    status: raw.status,
+    billing: raw.billing ?? {
+      status: "unknown",
+      isTrial: false,
+      daysLeft: null,
+    },
   };
 }
 
 export default function PublicSchoolLandingPage({
   params,
 }: PageProps) {
-  const [slug, setSlug] =
-    useState("");
+  const [slug, setSlug] = useState("");
+  const [data, setData] = useState<PublicTenantPageData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
 
-  const [data, setData] =
-    useState<PublicTenantPageData | null>(
-      null
-    );
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [pageError, setPageError] =
-    useState("");
-
+  /**
+   * Resolve slug safely
+   */
   useEffect(() => {
     async function run() {
-      const resolvedParams =
-        await params;
+      const resolved = await params;
 
-        console.log(
-      "PUBLIC SCHOOL PAGE:",
-      resolvedParams.slug
-    );
-      setSlug(
-        resolvedParams.slug
-      );
+      console.log("PUBLIC SCHOOL PAGE:", resolved.slug);
+
+      setSlug(resolved.slug || "");
     }
 
     run();
   }, [params]);
 
-  
-
+  /**
+   * Load tenant page
+   */
   useEffect(() => {
     async function loadPage() {
       if (!slug) return;
@@ -80,25 +81,16 @@ export default function PublicSchoolLandingPage({
         setLoading(true);
         setPageError("");
 
-        const result =
-          await getPublicTenantPage(
-            slug
-          );
+        const result = await getPublicTenantPage(slug);
 
         setData(result);
       } catch (err: unknown) {
-        if (
-          axios.isAxiosError(err)
-        ) {
+        if (axios.isAxiosError(err)) {
           setPageError(
-            err.response?.data
-              ?.message ||
-              "Failed to load school page."
+            err.response?.data?.message || "Failed to load school page."
           );
         } else {
-          setPageError(
-            "Failed to load school page."
-          );
+          setPageError("Failed to load school page.");
         }
       } finally {
         setLoading(false);
@@ -108,20 +100,21 @@ export default function PublicSchoolLandingPage({
     loadPage();
   }, [slug]);
 
-  if (loading) {
-    return <PageLoader />;
-  }
+  /**
+   * LOADING
+   */
+  if (loading) return <PageLoader />;
 
+  /**
+   * ERROR STATE
+   */
   if (pageError || !data) {
     return (
       <div className="min-h-screen bg-slate-950 px-4 py-10 text-white">
         <div className="mx-auto max-w-5xl">
           <EmptyState
             title="Unable to load school page"
-            description={
-              pageError ||
-              "School page not found."
-            }
+            description={pageError || "School page not found"}
           />
 
           <div className="mt-6 flex justify-center">
@@ -137,12 +130,17 @@ export default function PublicSchoolLandingPage({
     );
   }
 
+  const tenant = normalizeTenant(data.tenant);
+
+  /**
+   * LOGIN ROUTE BUILDER (UNIQUE & CLEAN)
+   */
+  const loginUrl = (role: string) =>
+    `/login?tenant=${tenant.slug}&role=${role}`;
+
   return (
     <>
-      <TenantFaviconAndTitle
-  pageTitle={data.tenant.schoolName}
-  tenant={normalizeTenant(data.tenant)}
-/>
+      <TenantFaviconAndTitle pageTitle={tenant.schoolName} tenant={tenant} />
 
       <div className="min-h-screen bg-slate-950 text-white">
 
@@ -158,14 +156,10 @@ export default function PublicSchoolLandingPage({
 
             <div className="flex items-center gap-4">
 
-              {data.tenant.logoUrl ? (
+              {tenant.logoUrl ? (
                 <img
-                  src={
-                    data.tenant.logoUrl
-                  }
-                  alt={
-                    data.tenant.schoolName
-                  }
+                  src={tenant.logoUrl}
+                  alt={tenant.schoolName}
                   className="h-16 w-16 rounded-2xl object-cover"
                 />
               ) : (
@@ -176,12 +170,8 @@ export default function PublicSchoolLandingPage({
 
               <div>
                 <h1 className="text-2xl font-bold">
-                  {
-                    data.tenant
-                      .schoolName
-                  }
+                  {tenant.schoolName}
                 </h1>
-
                 <p className="text-sm text-slate-400">
                   Official School Portal
                 </p>
@@ -197,111 +187,74 @@ export default function PublicSchoolLandingPage({
           </div>
 
           {/* HERO */}
-          <PublicTenantHero
-            data={data}
-          />
+          <PublicTenantHero data={data} />
 
           {/* SCHOOL DOMAIN */}
           <div className="mt-10 rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-6">
-
             <div className="text-center">
 
               <p className="text-sm text-cyan-300">
                 School Portal URL
               </p>
 
-            <a
-  href={`https://${data.tenant.domain}`}
-  target="_blank"
-  rel="noopener noreferrer"
-  className="mt-2 block text-2xl font-bold text-cyan-300 hover:underline"
->
-  {data.tenant.domain ||
-    `${data.tenant.slug}.edutrack.com.ng`}
-</a>
+              <a
+                href={`https://${tenant.domain || `${tenant.slug}.edutrack.cloud`}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 block text-2xl font-bold text-cyan-300 hover:underline"
+              >
+                {tenant.domain || `${tenant.slug}.edutrack.cloud`}
+              </a>
 
             </div>
           </div>
 
-          {/* LOGIN OPTIONS */}
+          {/* LOGIN OPTIONS (IMPROVED UNIQUENESS + UX) */}
           <section className="mt-12">
 
             <h2 className="mb-6 text-center text-3xl font-bold">
-              Login Portal
+              Secure Login Portal
             </h2>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
 
-              <Link
-                href={`/login?tenant=${data.tenant.slug}&role=school_admin`}
-                className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 transition hover:border-cyan-500"
-              >
-                <div className="text-4xl">
-                  👨‍💼
-                </div>
-
-                <h3 className="mt-4 text-xl font-bold">
-                  Admin Login
-                </h3>
-
+              {/* ADMIN */}
+              <Link href={loginUrl("school_admin")} className="card hover:border-cyan-500">
+                <div className="text-4xl">👨‍💼</div>
+                <h3 className="mt-4 text-xl font-bold">School Admin</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  School administrators
+                  Manage school, staff, students & settings
                 </p>
               </Link>
 
-              <Link
-                href={`/login?tenant=${data.tenant.slug}&role=teacher`}
-                className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 transition hover:border-cyan-500"
-              >
-                <div className="text-4xl">
-                  👨‍🏫
-                </div>
-
-                <h3 className="mt-4 text-xl font-bold">
-                  Teacher Login
-                </h3>
-
+              {/* TEACHER */}
+              <Link href={loginUrl("teacher")} className="card hover:border-cyan-500">
+                <div className="text-4xl">👨‍🏫</div>
+                <h3 className="mt-4 text-xl font-bold">Teacher Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Teachers & staff
+                  Classes, attendance, results & grading
                 </p>
               </Link>
 
-              <Link
-                href={`/login?tenant=${data.tenant.slug}&role=parent`}
-                className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 transition hover:border-cyan-500"
-              >
-                <div className="text-4xl">
-                  👨‍👩‍👧
-                </div>
-
-                <h3 className="mt-4 text-xl font-bold">
-                  Parent Login
-                </h3>
-
+              {/* PARENT */}
+              <Link href={loginUrl("parent")} className="card hover:border-cyan-500">
+                <div className="text-4xl">👨‍👩‍👧</div>
+                <h3 className="mt-4 text-xl font-bold">Parent Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Parents portal
+                  Monitor child performance & updates
                 </p>
               </Link>
 
-              <Link
-                href={`/login?tenant=${data.tenant.slug}&role=student`}
-                className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 transition hover:border-cyan-500"
-              >
-                <div className="text-4xl">
-                  🎓
-                </div>
-
-                <h3 className="mt-4 text-xl font-bold">
-                  Student Login
-                </h3>
-
+              {/* STUDENT */}
+              <Link href={loginUrl("student")} className="card hover:border-cyan-500">
+                <div className="text-4xl">🎓</div>
+                <h3 className="mt-4 text-xl font-bold">Student Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Student portal
+                  Access results, assignments & profile
                 </p>
               </Link>
 
             </div>
-
           </section>
 
           {/* FEATURES */}
@@ -311,47 +264,31 @@ export default function PublicSchoolLandingPage({
 
           {/* ANNOUNCEMENTS */}
           <div className="mt-16">
-            <PublicTenantAnnouncements
-              items={
-                data.announcements
-              }
-            />
+            <PublicTenantAnnouncements items={data.announcements || []} />
           </div>
 
           {/* CTA */}
           <section className="mt-16">
-
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center">
 
               <h2 className="text-3xl font-bold">
-                Welcome to{" "}
-                {
-                  data.tenant
-                    .schoolName
-                }
+                Welcome to {tenant.schoolName}
               </h2>
 
               <p className="mt-4 text-slate-400">
-                Access your academic
-                records, attendance,
-                assignments, results and
-                communication tools
-                through EduTrack.
+                Access your academic records, attendance, assignments, results and communication tools.
               </p>
 
-              <div className="mt-8 flex flex-wrap justify-center gap-4">
-
+              <div className="mt-8 flex justify-center">
                 <Link
-                  href={`/login?tenant=${data.tenant.slug}`}
+                  href={loginUrl("school_admin")}
                   className="rounded-2xl bg-cyan-500 px-8 py-4 font-semibold text-black"
                 >
                   Access Portal
                 </Link>
-
               </div>
 
             </div>
-
           </section>
 
         </div>
