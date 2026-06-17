@@ -22,7 +22,7 @@ type PageProps = {
 };
 
 /**
- * SAFE TENANT NORMALIZER (SaaS SAFE)
+ * SAFE TENANT NORMALIZER (PRODUCTION SAFE)
  */
 function normalizeTenant(raw: any): ResolvedTenant {
   return {
@@ -30,13 +30,13 @@ function normalizeTenant(raw: any): ResolvedTenant {
     schoolName: raw?.schoolName || "Unknown School",
     slug: raw?.slug || "",
 
-    logoUrl: raw?.logoUrl,
-    themeColor: raw?.themeColor,
-    domain: raw?.domain,
+    logoUrl: raw?.logoUrl || null,
+    themeColor: raw?.themeColor || null,
+    domain: raw?.domain || null,
 
-    address: raw?.address,
-    phone: raw?.phone,
-    email: raw?.email,
+    address: raw?.address || null,
+    phone: raw?.phone || null,
+    email: raw?.email || null,
 
     status: raw?.status ?? "inactive",
     subscriptionStatus: raw?.subscriptionStatus ?? "pending",
@@ -51,9 +51,7 @@ function normalizeTenant(raw: any): ResolvedTenant {
   } as ResolvedTenant;
 }
 
-export default function PublicSchoolLandingPage({
-  params,
-}: PageProps) {
+export default function PublicSchoolLandingPage({ params }: PageProps) {
   const [slug, setSlug] = useState("");
   const [data, setData] = useState<PublicTenantPageData | null>(null);
 
@@ -61,19 +59,18 @@ export default function PublicSchoolLandingPage({
   const [pageError, setPageError] = useState("");
 
   /**
-   * RESOLVE SLUG
+   * RESOLVE SLUG SAFELY
    */
   useEffect(() => {
     async function run() {
       const resolved = await params;
       setSlug(resolved?.slug || "");
     }
-
     run();
   }, [params]);
 
   /**
-   * LOAD PAGE
+   * LOAD PAGE DATA
    */
   useEffect(() => {
     async function loadPage() {
@@ -87,9 +84,7 @@ export default function PublicSchoolLandingPage({
         setData(result);
       } catch (err: unknown) {
         if (axios.isAxiosError(err)) {
-          setPageError(
-            err.response?.data?.message || "Failed to load school page."
-          );
+          setPageError(err.response?.data?.message || "Failed to load school page.");
         } else {
           setPageError("Failed to load school page.");
         }
@@ -107,7 +102,7 @@ export default function PublicSchoolLandingPage({
   if (loading) return <PageLoader />;
 
   /**
-   * ERROR STATE
+   * ERROR STATE (SAFE FALLBACK)
    */
   if (pageError || !data) {
     return (
@@ -134,12 +129,14 @@ export default function PublicSchoolLandingPage({
   const tenant = normalizeTenant(data.tenant);
 
   /**
-   * SAFE LOGIN ROUTE BUILDER (SAAS CORE)
+   * SAFE LOGIN ROUTE BUILDER
    */
-  const loginUrl = (role: string) =>
+  const loginUrl = (role: "school_admin" | "teacher" | "parent" | "student") =>
     `/login?tenant=${tenant.slug}&role=${role}`;
 
-  const announcements = data.announcements ?? [];
+  const announcements = Array.isArray(data.announcements)
+    ? data.announcements
+    : [];
 
   return (
     <>
@@ -212,7 +209,7 @@ export default function PublicSchoolLandingPage({
             </div>
           </div>
 
-          {/* LOGIN OPTIONS (CLEAN SAAS ALIGNMENT) */}
+          {/* LOGIN OPTIONS (FULLY ALIGNED SAAS UX) */}
           <section className="mt-12">
 
             <h2 className="mb-6 text-center text-3xl font-bold">
@@ -221,31 +218,31 @@ export default function PublicSchoolLandingPage({
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
 
-              <Link href={loginUrl("school_admin")} className="card hover:border-cyan-500">
+              <Link href={loginUrl("school_admin")} className="card hover:border-cyan-500 transition">
                 <div className="text-4xl">👨‍💼</div>
-                <h3 className="mt-4 text-xl font-bold">School Admin</h3>
+                <h3 className="mt-4 text-xl font-bold">Admin Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Full system control & management
+                  Full control: school, staff, settings
                 </p>
               </Link>
 
-              <Link href={loginUrl("teacher")} className="card hover:border-cyan-500">
+              <Link href={loginUrl("teacher")} className="card hover:border-cyan-500 transition">
                 <div className="text-4xl">👨‍🏫</div>
                 <h3 className="mt-4 text-xl font-bold">Teacher Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Classes, grading & attendance
+                  Classes, grading, attendance & reports
                 </p>
               </Link>
 
-              <Link href={loginUrl("parent")} className="card hover:border-cyan-500">
+              <Link href={loginUrl("parent")} className="card hover:border-cyan-500 transition">
                 <div className="text-4xl">👨‍👩‍👧</div>
                 <h3 className="mt-4 text-xl font-bold">Parent Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Track child performance & updates
+                  Track child progress & school updates
                 </p>
               </Link>
 
-              <Link href={loginUrl("student")} className="card hover:border-cyan-500">
+              <Link href={loginUrl("student")} className="card hover:border-cyan-500 transition">
                 <div className="text-4xl">🎓</div>
                 <h3 className="mt-4 text-xl font-bold">Student Portal</h3>
                 <p className="mt-2 text-sm text-slate-400">
@@ -261,7 +258,7 @@ export default function PublicSchoolLandingPage({
             <PublicTenantFeatures />
           </div>
 
-          {/* ANNOUNCEMENTS (SAFE) */}
+          {/* ANNOUNCEMENTS */}
           <div className="mt-16">
             <PublicTenantAnnouncements items={announcements} />
           </div>
@@ -275,13 +272,13 @@ export default function PublicSchoolLandingPage({
               </h2>
 
               <p className="mt-4 text-slate-400">
-                Access your academic records, attendance, assignments, results and communication tools.
+                Access academic records, attendance, assignments, results and communication tools.
               </p>
 
               <div className="mt-8 flex justify-center">
                 <Link
                   href={loginUrl("school_admin")}
-                  className="rounded-2xl bg-cyan-500 px-8 py-4 font-semibold text-black"
+                  className="rounded-2xl bg-cyan-500 px-8 py-4 font-semibold text-black hover:bg-cyan-400 transition"
                 >
                   Access Portal
                 </Link>
