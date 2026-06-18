@@ -25,7 +25,7 @@ import TenantBadge from "../../components/tenant/TenantBadge";
 
 type SidebarProps = {
   role: UserRole;
-  onNavigate?: () => void; // ✅ ADDED FOR MOBILE CLOSE
+  onNavigate?: () => void;
 };
 
 const navByRole: Record<
@@ -47,29 +47,10 @@ const navByRole: Record<
     { label: "Attendance", href: "/school-admin/attendance", icon: CalendarCheck },
     { label: "Classes", href: "/school-admin/classes", icon: Building2 },
     { label: "Results", href: "/school-admin/results", icon: BookOpen },
-
-    {
-      label: "Import Students",
-      href: "/school-admin/students/import",
-      icon: Upload,
-    },
-    {
-      label: "Students Bulk Entry",
-      href: "/school-admin/students/bulk",
-      icon: Users,
-    },
-
-    {
-      label: "Report Cards",
-      href: "/school-admin/results/report-cards",
-      icon: FileText,
-    },
-    {
-      label: "Class Reports",
-      href: "/school-admin/results/class-reports",
-      icon: GraduationCap,
-    },
-
+    { label: "Import Students", href: "/school-admin/students/import", icon: Upload },
+    { label: "Students Bulk Entry", href: "/school-admin/students/bulk", icon: Users },
+    { label: "Report Cards", href: "/school-admin/results/report-cards", icon: FileText },
+    { label: "Class Reports", href: "/school-admin/results/class-reports", icon: GraduationCap },
     { label: "Parents", href: "/school-admin/parents", icon: Users },
     { label: "Announcements", href: "/school-admin/announcements", icon: Bell },
     { label: "Settings", href: "/school-admin/settings", icon: Settings },
@@ -103,9 +84,10 @@ export default function Sidebar({ role, onNavigate }: SidebarProps) {
   const items = navByRole[role];
 
   return (
-    <aside className="hidden w-72 shrink-0 lg:block print:hidden">
-      <div className="card sticky top-6 flex h-[calc(100vh-3rem)] flex-col overflow-hidden p-5">
+    <aside className="fixed left-0 top-0 z-50 h-full w-72 lg:static lg:z-auto print:hidden">
+      <div className="card flex h-full flex-col overflow-hidden p-5">
 
+        {/* Background theme layer */}
         <TenantThemeSurface tenant={tenant} />
 
         {/* HEADER */}
@@ -136,7 +118,7 @@ export default function Sidebar({ role, onNavigate }: SidebarProps) {
         </div>
 
         {/* NAV */}
-        <nav className="relative flex-1 space-y-2 overflow-y-auto pr-2">
+        <nav className="flex-1 space-y-2 overflow-y-auto pr-2">
           {items.map((item) => {
             const Icon = item.icon;
 
@@ -148,7 +130,7 @@ export default function Sidebar({ role, onNavigate }: SidebarProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={onNavigate} // ✅ CLOSE SIDEBAR ON MOBILE
+                onClick={onNavigate}
                 className={clsx(
                   "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition",
                   active
