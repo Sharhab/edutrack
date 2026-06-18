@@ -52,10 +52,24 @@ console.log("PATH:", pathname);
 
     // Optional:
     // demo-academic.edutrack.cloud/login
-    if (pathname === "/login") {
-      url.pathname = `/school/${subdomain}`;
-      return NextResponse.rewrite(url);
-    }
+   if (subdomain) {
+  const url = req.nextUrl.clone();
+
+  const publicRoutes = [
+    "/login",
+    "/forgot-password",
+    "/reset-password",
+  ];
+
+  if (pathname === "/") {
+    url.pathname = `/school/${subdomain}`;
+    return NextResponse.rewrite(url);
+  }
+
+  if (publicRoutes.includes(pathname)) {
+    return NextResponse.next();
+  }
+}
   }
 
   const isLogin = pathname === "/login";

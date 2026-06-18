@@ -96,6 +96,13 @@ const navByRole: Record<
     { label: "Results", href: "/parent/results", icon: BookOpen },
     { label: "Announcements", href: "/parent/announcements", icon: Bell },
   ],
+
+   student: [
+    { label: "Dashboard", href: "/student", icon: LayoutDashboard },
+    { label: "My Children", href: "/parent/children", icon: GraduationCap },
+    { label: "Results", href: "/parent/results", icon: BookOpen },
+    { label: "Announcements", href: "/parent/announcements", icon: Bell },
+  ],
 };
 
 export default function Sidebar({ role }: SidebarProps) {

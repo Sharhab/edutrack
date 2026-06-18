@@ -2,24 +2,33 @@ export type UserRole =
   | "super_admin"
   | "school_admin"
   | "teacher"
-  | "parent";
+  | "parent"
+  | "student";
+
+export interface AuthTenant {
+  _id: string;
+  slug: string;
+  schoolName: string;
+  domain?: string;
+  status?: string;
+  subscriptionStatus?: string;
+}
 
 export interface AuthUser {
   id: string;
   _id?: string;
+
   name?: string;
   email?: string;
 
-  role: "super_admin" | "school_admin" | "teacher" | "parent";
+  role: UserRole;
+
   schoolId?: string | null;
 
-  // ✅ ADD THIS (SaaS context, optional)
-  tenant?: {
-    _id: string;
-    slug: string;
-    schoolName: string;
-    domain?: string;
-    status?: string;
-    subscriptionStatus?: string;
-  } | null;
+  tenant?: AuthTenant | null;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: AuthUser;
 }

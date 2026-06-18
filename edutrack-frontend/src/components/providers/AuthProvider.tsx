@@ -56,7 +56,7 @@ export default function AuthProvider({
         savedToken &&
         savedUser
       ) {
-        const parsedUser =
+        const parsedUser: AuthUser =
           JSON.parse(savedUser);
 
         setToken(savedToken);
@@ -80,32 +80,82 @@ export default function AuthProvider({
     }
   }, []);
 
-function setSession(nextToken: string, nextUser: AuthUser) {
-  localStorage.setItem("token", nextToken);
-  localStorage.setItem("user", JSON.stringify(nextUser));
+  /**
+   * CREATE SESSION
+   */
+  function setSession(
+    nextToken: string,
+    nextUser: AuthUser
+  ) {
+    try {
+      localStorage.setItem(
+        "token",
+        nextToken
+      );
 
-  // IMPORTANT: make cookie readable by middleware
-  document.cookie = `token=${nextToken}; path=/; max-age=86400`;
+      localStorage.setItem(
+        "user",
+        JSON.stringify(nextUser)
+      );
 
-  setToken(nextToken);
-  setUser(nextUser);
-}
-  
+      /**
+       * Middleware readable cookie
+       */
+      document.cookie =
+        `token=${nextToken}; path=/; max-age=86400; SameSite=Lax`;
+
+      document.cookie =
+        `role=${nextUser.role}; path=/; max-age=86400; SameSite=Lax`;
+
+      if (
+        nextUser.schoolId
+      ) {
+        document.cookie =
+          `schoolId=${nextUser.schoolId}; path=/; max-age=86400; SameSite=Lax`;
+      }
+
+      /**
+       * Persist immediately
+       */
+      setToken(nextToken);
+      setUser(nextUser);
+
+      console.log(
+        "SESSION CREATED",
+        nextUser
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save session",
+        error
+      );
+    }
+  }
 
   /**
    * LOGOUT
    */
   function logout() {
-    localStorage.removeItem(
-      "token"
-    );
+    try {
+      localStorage.removeItem(
+        "token"
+      );
 
-    localStorage.removeItem(
-      "user"
-    );
+      localStorage.removeItem(
+        "user"
+      );
 
-    document.cookie =
-      "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      document.cookie =
+        "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+      document.cookie =
+        "role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+      document.cookie =
+        "schoolId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    } catch (error) {
+      console.error(error);
+    }
 
     setToken(null);
     setUser(null);

@@ -1,13 +1,4 @@
-import { AuthUser } from "../types/auth";
-
-/**
- * ✅ Define role locally to avoid import issues
- */
-export type UserRole =
-  | "super_admin"
-  | "school_admin"
-  | "teacher"
-  | "parent";
+import { AuthUser, UserRole } from "../types/auth";
 
 /**
  * DASHBOARD ROUTES
@@ -16,12 +7,19 @@ export function getDashboardRoute(role: UserRole) {
   switch (role) {
     case "super_admin":
       return "/super-admin";
+
     case "school_admin":
       return "/school-admin";
+
     case "teacher":
       return "/teacher";
+
     case "parent":
       return "/parent";
+
+    case "student":
+      return "/student";
+
     default:
       return "/login";
   }
@@ -34,17 +32,25 @@ export function isAllowedPath(
   role: UserRole | string,
   pathname: string
 ) {
-  if (pathname.startsWith("/super-admin"))
+  if (pathname.startsWith("/super-admin")) {
     return role === "super_admin";
+  }
 
-  if (pathname.startsWith("/school-admin"))
+  if (pathname.startsWith("/school-admin")) {
     return role === "school_admin";
+  }
 
-  if (pathname.startsWith("/teacher"))
+  if (pathname.startsWith("/teacher")) {
     return role === "teacher";
+  }
 
-  if (pathname.startsWith("/parent"))
+  if (pathname.startsWith("/parent")) {
     return role === "parent";
+  }
+
+  if (pathname.startsWith("/student")) {
+    return role === "student";
+  }
 
   return true;
 }
