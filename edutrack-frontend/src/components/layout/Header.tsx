@@ -22,6 +22,7 @@ export default function Header({
 
   return (
     <header className="card mb-6 flex items-center justify-between gap-4 px-5 py-4 print:hidden">
+      {/* LEFT SIDE */}
       <div className="flex items-center gap-4">
         <button
           onClick={onMenuToggle}
@@ -30,20 +31,34 @@ export default function Header({
           <Menu size={18} />
         </button>
 
-        <TenantLogo tenant={tenant} size={42} roundedClassName="rounded-2xl" />
+        {/* LOGO */}
+        <TenantLogo
+          tenant={tenant}
+          size={44}
+          roundedClassName="rounded-2xl"
+        />
 
-        <div>
-          <h1 className="text-xl font-bold text-white md:text-2xl">
-            {title}
-          </h1>
-          <p className="text-sm text-slate-400">{subtitle}</p>
+        {/* SCHOOL INFO */}
+        <div className="leading-tight">
+          <p className="text-xs text-slate-400">School</p>
 
-          <div className="mt-2">
+          <h2 className="text-sm font-semibold text-white">
+            {tenant?.schoolName || "EduTrack School"}
+          </h2>
+
+          <div className="mt-1">
             <TenantBadge tenant={tenant} />
           </div>
         </div>
+
+        {/* PAGE TITLE */}
+        <div className="ml-4 hidden border-l border-white/10 pl-4 md:block">
+          <h1 className="text-lg font-bold text-white">{title}</h1>
+          <p className="text-xs text-slate-400">{subtitle}</p>
+        </div>
       </div>
 
+      {/* RIGHT SIDE */}
       <div className="flex items-center gap-3">
         <div className="hidden text-right sm:block">
           <p className="text-sm font-semibold text-white">
