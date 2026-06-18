@@ -25,6 +25,7 @@ import TenantBadge from "../../components/tenant/TenantBadge";
 
 type SidebarProps = {
   role: UserRole;
+  onNavigate?: () => void; // ✅ ADDED FOR MOBILE CLOSE
 };
 
 const navByRole: Record<
@@ -40,29 +41,23 @@ const navByRole: Record<
 
   school_admin: [
     { label: "Dashboard", href: "/school-admin", icon: LayoutDashboard },
-    {
-  label: "Billing",
-  href: "/school-admin/billing",
-  icon: CreditCard,
-},
+    { label: "Billing", href: "/school-admin/billing", icon: CreditCard },
     { label: "Students", href: "/school-admin/students", icon: GraduationCap },
     { label: "Teachers", href: "/school-admin/teachers", icon: Users },
     { label: "Attendance", href: "/school-admin/attendance", icon: CalendarCheck },
     { label: "Classes", href: "/school-admin/classes", icon: Building2 },
     { label: "Results", href: "/school-admin/results", icon: BookOpen },
-     
-     {
-    label: "Import Students",
-    href: "/school-admin/students/import",
-    icon: Upload,
-  },
 
-  {
-  label: "Students Bulk Entry",
-  href: "/school-admin/students/bulk",
-  icon: Users,
-},
-    /* ================= REPORT CARD SYSTEM (NEW FEATURES) ================= */
+    {
+      label: "Import Students",
+      href: "/school-admin/students/import",
+      icon: Upload,
+    },
+    {
+      label: "Students Bulk Entry",
+      href: "/school-admin/students/bulk",
+      icon: Users,
+    },
 
     {
       label: "Report Cards",
@@ -74,9 +69,6 @@ const navByRole: Record<
       href: "/school-admin/results/class-reports",
       icon: GraduationCap,
     },
-
-
-    /* ================================================================ */
 
     { label: "Parents", href: "/school-admin/parents", icon: Users },
     { label: "Announcements", href: "/school-admin/announcements", icon: Bell },
@@ -97,7 +89,7 @@ const navByRole: Record<
     { label: "Announcements", href: "/parent/announcements", icon: Bell },
   ],
 
-   student: [
+  student: [
     { label: "Dashboard", href: "/student", icon: LayoutDashboard },
     { label: "My Children", href: "/parent/children", icon: GraduationCap },
     { label: "Results", href: "/parent/results", icon: BookOpen },
@@ -105,14 +97,14 @@ const navByRole: Record<
   ],
 };
 
-export default function Sidebar({ role }: SidebarProps) {
+export default function Sidebar({ role, onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const { tenant } = useTenant();
   const items = navByRole[role];
 
   return (
     <aside className="hidden w-72 shrink-0 lg:block print:hidden">
-      <div className="card sticky top-6 h-[calc(100vh-3rem)] overflow-hidden p-5 flex flex-col">
+      <div className="card sticky top-6 flex h-[calc(100vh-3rem)] flex-col overflow-hidden p-5">
 
         <TenantThemeSurface tenant={tenant} />
 
@@ -144,16 +136,19 @@ export default function Sidebar({ role }: SidebarProps) {
         </div>
 
         {/* NAV */}
-        <nav className="relative space-y-2 flex-1 overflow-y-auto pr-2">
+        <nav className="relative flex-1 space-y-2 overflow-y-auto pr-2">
           {items.map((item) => {
             const Icon = item.icon;
+
             const active =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
+              pathname === item.href ||
+              pathname.startsWith(`${item.href}/`);
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={onNavigate} // ✅ CLOSE SIDEBAR ON MOBILE
                 className={clsx(
                   "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition",
                   active
@@ -176,7 +171,6 @@ export default function Sidebar({ role }: SidebarProps) {
             );
           })}
         </nav>
-
       </div>
     </aside>
   );

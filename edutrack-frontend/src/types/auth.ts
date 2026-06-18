@@ -17,14 +17,10 @@ export interface AuthTenant {
 export interface AuthUser {
   id: string;
   _id?: string;
-
   name?: string;
   email?: string;
-
   role: UserRole;
-
   schoolId?: string | null;
-
   tenant?: AuthTenant | null;
 }
 

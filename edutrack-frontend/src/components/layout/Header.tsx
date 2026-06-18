@@ -9,24 +9,35 @@ import TenantBadge from "../../components/tenant/TenantBadge";
 type HeaderProps = {
   title: string;
   subtitle: string;
+  onMenuToggle?: () => void;
 };
 
-export default function Header({ title, subtitle }: HeaderProps) {
+export default function Header({
+  title,
+  subtitle,
+  onMenuToggle,
+}: HeaderProps) {
   const { user, logout } = useAuth();
   const { tenant } = useTenant();
 
   return (
     <header className="card mb-6 flex items-center justify-between gap-4 px-5 py-4 print:hidden">
       <div className="flex items-center gap-4">
-        <button className="rounded-2xl border border-white/10 bg-white/5 p-2 text-slate-300 lg:hidden">
+        <button
+          onClick={onMenuToggle}
+          className="rounded-2xl border border-white/10 bg-white/5 p-2 text-slate-300 lg:hidden"
+        >
           <Menu size={18} />
         </button>
 
         <TenantLogo tenant={tenant} size={42} roundedClassName="rounded-2xl" />
 
         <div>
-          <h1 className="text-xl font-bold text-white md:text-2xl">{title}</h1>
+          <h1 className="text-xl font-bold text-white md:text-2xl">
+            {title}
+          </h1>
           <p className="text-sm text-slate-400">{subtitle}</p>
+
           <div className="mt-2">
             <TenantBadge tenant={tenant} />
           </div>
@@ -35,7 +46,9 @@ export default function Header({ title, subtitle }: HeaderProps) {
 
       <div className="flex items-center gap-3">
         <div className="hidden text-right sm:block">
-          <p className="text-sm font-semibold text-white">{user?.name ?? "User"}</p>
+          <p className="text-sm font-semibold text-white">
+            {user?.name ?? "User"}
+          </p>
           <p className="text-xs uppercase tracking-wide text-slate-400">
             {user?.role?.replace("_", " ")}
           </p>
