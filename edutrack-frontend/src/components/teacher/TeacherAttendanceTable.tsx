@@ -5,6 +5,7 @@ import { TeacherPortalStudent } from "../../types/teacher-portal";
 
 type TeacherAttendanceTableProps = {
   students: TeacherPortalStudent[];
+  disabled?: boolean;
   onToggleStatus: (
     studentId: string,
     status: "present" | "absent"
@@ -13,6 +14,7 @@ type TeacherAttendanceTableProps = {
 
 export default function TeacherAttendanceTable({
   students,
+  disabled = false,
   onToggleStatus,
 }: TeacherAttendanceTableProps) {
   if (!students.length) {
@@ -57,26 +59,32 @@ export default function TeacherAttendanceTable({
                   <td className="px-5 py-4">
                     <div className="flex flex-wrap gap-2">
                       <button
-                        type="button"
-                        onClick={() => onToggleStatus(student._id, "present")}
-                        className={`rounded-xl px-3 py-2 text-xs font-medium transition ${
-                          status === "present"
-                            ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
-                            : "border border-white/10 bg-white/5 text-slate-300"
-                        }`}
-                      >
+  type="button"
+  disabled={disabled}
+  onClick={() => onToggleStatus(student._id, "present")}
+  className={`rounded-xl px-3 py-2 text-xs font-medium transition ${
+    disabled ? "opacity-50 cursor-not-allowed" : ""
+  } ${
+    status === "present"
+      ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
+      : "border border-white/10 bg-white/5 text-slate-300"
+  }`}
+>
                         Present
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => onToggleStatus(student._id, "absent")}
-                        className={`rounded-xl px-3 py-2 text-xs font-medium transition ${
-                          status === "absent"
-                            ? "bg-red-500/20 text-red-300 ring-1 ring-red-400/30"
-                            : "border border-white/10 bg-white/5 text-slate-300"
-                        }`}
-                      >
+                       <button
+  type="button"
+  disabled={disabled}
+  onClick={() => onToggleStatus(student._id, "absent")}
+  className={`rounded-xl px-3 py-2 text-xs font-medium transition ${
+    disabled ? "opacity-50 cursor-not-allowed" : ""
+  } ${
+    status === "absent"
+      ? "bg-red-500/20 text-red-300 ring-1 ring-red-400/30"
+      : "border border-white/10 bg-white/5 text-slate-300"
+  }`}
+>
                         Absent
                       </button>
                     </div>

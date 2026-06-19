@@ -1,7 +1,6 @@
 import api from "../lib/axios";
 import {
   TeacherAssignedClass,
-  TeacherClassStudentsResponse,
   TeacherPortalAnnouncement,
   TeacherPortalOverviewResponse,
   TeacherPortalStudent,
@@ -26,7 +25,7 @@ export async function getTeacherPortalOverview(): Promise<{
     ENDPOINTS.overview
   );
 
-  const payload = res.data?.data; // 👈 FIXED
+  const payload = res.data?.data;
 
   return {
     teacher: payload?.teacher || null,
@@ -36,32 +35,31 @@ export async function getTeacherPortalOverview(): Promise<{
 }
 
 /* =========================================
-   TEACHER RESULT CONTEXT (v2 FIX)
-   - replaces manual class/subject IDs
+   TEACHER RESULT CONTEXT
 ========================================= */
 export async function getTeacherResultContext() {
   const { data } = await api.get("/teacher/results/context");
-
   return data.data;
 }
 
 /* =========================================
-   TEACHER CLASS STUDENTS (keep existing)
+   TEACHER CLASS STUDENTS
 ========================================= */
-/* =========================================
-   CLASS STUDENTS
-========================================= */
- export async function getTeacherClassStudents(
+export async function getTeacherClassStudents(
   classId: string
 ): Promise<TeacherPortalStudent[]> {
-  const res = await api.get<TeacherClassStudentsResponse>(
+  const res = await api.get(
     ENDPOINTS.classStudents(classId)
   );
 
-  const payload = res.data?.data;
+  console.log(
+    "✅ CLASS STUDENTS RESPONSE:",
+    res.data
+  );
 
-  return payload || [];
+  return res.data?.data?.students || [];
 }
+
 /* =========================================
    ATTENDANCE
 ========================================= */
@@ -72,6 +70,10 @@ export async function submitTeacherAttendance(payload: {
     status: "present" | "absent";
   }[];
 }) {
-  const res = await api.post(ENDPOINTS.submitAttendance, payload);
+  const res = await api.post(
+    ENDPOINTS.submitAttendance,
+    payload
+  );
+
   return res.data;
 }

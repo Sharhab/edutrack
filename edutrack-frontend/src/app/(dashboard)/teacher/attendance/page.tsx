@@ -2,17 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+
 import SectionCard from "../../../../components/ui/SectionCard";
 import PageLoader from "../../../../components/ui/PageLoader";
 import EmptyState from "../../../../components/ui/EmptyState";
+
 import TeacherClassCards from "../../../../components/teacher/TeacherClassCards";
 import TeacherAttendanceTable from "../../../../components/teacher/TeacherAttendanceTable";
 import TeacherAnnouncementsList from "../../../../components/teacher/TeacherAnnouncementsList";
+
 import {
   getTeacherClassStudents,
   getTeacherPortalOverview,
   submitTeacherAttendance,
 } from "../../../../lib/teacher-portal";
+
 import {
   TeacherAssignedClass,
   TeacherPortalAnnouncement,
@@ -21,7 +25,10 @@ import {
 
 export default function TeacherStudentsPage() {
   const [classes, setClasses] = useState<TeacherAssignedClass[]>([]);
-  const [announcements, setAnnouncements] = useState<TeacherPortalAnnouncement[]>([]);
+  const [announcements, setAnnouncements] = useState<
+    TeacherPortalAnnouncement[]
+  >([]);
+
   const [students, setStudents] = useState<TeacherPortalStudent[]>([]);
   const [selectedClassId, setSelectedClassId] = useState("");
 
@@ -31,7 +38,9 @@ export default function TeacherStudentsPage() {
 
   const [pageError, setPageError] = useState("");
   const [studentsError, setStudentsError] = useState("");
+
   const [actionMessage, setActionMessage] = useState("");
+  const [actionSuccess, setActionSuccess] = useState(false);
 
   async function loadOverview() {
     try {
@@ -39,10 +48,11 @@ export default function TeacherStudentsPage() {
       setPageError("");
 
       const data = await getTeacherPortalOverview();
-      setClasses(data.classes);
-      setAnnouncements(data.announcements);
 
-      if (data.classes.length > 0) {
+      setClasses(data.classes || []);
+      setAnnouncements(data.announcements || []);
+
+      if (data.classes?.length > 0) {
         setSelectedClassId(data.classes[0]._id);
       }
     } catch (err: unknown) {
@@ -52,7 +62,9 @@ export default function TeacherStudentsPage() {
             "Failed to load teacher portal information."
         );
       } else {
-        setPageError("Failed to load teacher portal information.");
+        setPageError(
+          "Failed to load teacher portal information."
+        );
       }
     } finally {
       setLoading(false);
@@ -66,20 +78,35 @@ export default function TeacherStudentsPage() {
       setActionMessage("");
 
       const data = await getTeacherClassStudents(classId);
-      setStudents(
-        data.map((item) => ({
-          ...item,
-          attendanceStatus: item.attendanceStatus || "present",
-        }))
+
+      console.log("📚 STUDENTS RECEIVED:", data);
+
+      const normalizedStudents = (data || []).map((item) => ({
+        ...item,
+        attendanceStatus:
+          item.attendanceStatus || "present",
+      }));
+
+      console.log(
+        "📚 NORMALIZED STUDENTS:",
+        normalizedStudents
       );
+
+      setStudents(normalizedStudents);
     } catch (err: unknown) {
+      console.error("❌ LOAD STUDENTS ERROR", err);
+
       if (axios.isAxiosError(err)) {
         setStudentsError(
-          err.response?.data?.message || "Failed to load class students."
+          err.response?.data?.message ||
+            "Failed to load class students."
         );
       } else {
-        setStudentsError("Failed to load class students.");
+        setStudentsError(
+          "Failed to load class students."
+        );
       }
+
       setStudents([]);
     } finally {
       setStudentsLoading(false);
@@ -101,41 +128,66 @@ export default function TeacherStudentsPage() {
     status: "present" | "absent"
   ) {
     setStudents((prev) =>
-      prev.map((item) =>
-        item._id === studentId ? { ...item, attendanceStatus: status } : item
+      prev.map((student) =>
+        student._id === studentId
+          ? {
+              ...student,
+              attendanceStatus: status,
+            }
+          : student
       )
     );
   }
 
   async function handleSubmitAttendance() {
+    if (!selectedClassId || students.length === 0) {
+      return;
+    }
+
     try {
       setSubmittingAttendance(true);
       setActionMessage("");
+      setActionSuccess(false);
 
       await submitTeacherAttendance({
         classId: selectedClassId,
-        attendance: students.map((item) => ({
-          studentId: item._id,
-          status: item.attendanceStatus || "present",
+        attendance: students.map((student) => ({
+          studentId: student._id,
+          status:
+            student.attendanceStatus || "present",
         })),
       });
 
-      setActionMessage("Attendance submitted successfully.");
+      setActionSuccess(true);
+      setActionMessage(
+        "✅ Attendance submitted successfully."
+      );
+
+      await loadStudents(selectedClassId);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setActionMessage(
-          err.response?.data?.message || "Failed to submit attendance."
+          err.response?.data?.message ||
+            "Failed to submit attendance."
         );
       } else {
-        setActionMessage("Failed to submit attendance.");
+        setActionMessage(
+          "Failed to submit attendance."
+        );
       }
+
+      setActionSuccess(false);
     } finally {
       setSubmittingAttendance(false);
     }
   }
 
   const selectedClass = useMemo(() => {
-    return classes.find((item) => item._id === selectedClassId) || null;
+    return (
+      classes.find(
+        (item) => item._id === selectedClassId
+      ) || null
+    );
   }, [classes, selectedClassId]);
 
   if (loading) {
@@ -167,24 +219,40 @@ export default function TeacherStudentsPage() {
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <SectionCard
-            title={selectedClass ? `${selectedClass.name} Attendance` : "Attendance"}
+            title={
+              selectedClass
+                ? `${selectedClass.name} Attendance`
+                : "Attendance"
+            }
             subtitle="Mark attendance for students in the selected class"
             rightAction={
               <button
                 type="button"
                 onClick={handleSubmitAttendance}
-                disabled={submittingAttendance || !students.length}
+                disabled={
+                  submittingAttendance ||
+                  studentsLoading ||
+                  students.length === 0
+                }
                 className="btn-primary"
               >
-                {submittingAttendance ? "Submitting..." : "Submit Attendance"}
+                {submittingAttendance
+                  ? "Submitting..."
+                  : "Submit Attendance"}
               </button>
             }
           >
-            {actionMessage ? (
-              <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+            {actionMessage && (
+              <div
+                className={`mb-4 rounded-2xl px-4 py-3 text-sm ${
+                  actionSuccess
+                    ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    : "border border-red-500/30 bg-red-500/10 text-red-300"
+                }`}
+              >
                 {actionMessage}
               </div>
-            ) : null}
+            )}
 
             {studentsLoading ? (
               <PageLoader />
@@ -192,6 +260,11 @@ export default function TeacherStudentsPage() {
               <EmptyState
                 title="Unable to load students"
                 description={studentsError}
+              />
+            ) : students.length === 0 ? (
+              <EmptyState
+                title="No students found"
+                description="There are currently no students assigned to this class."
               />
             ) : (
               <TeacherAttendanceTable
@@ -207,7 +280,9 @@ export default function TeacherStudentsPage() {
             title="Announcements"
             subtitle="Latest updates from school admin"
           >
-            <TeacherAnnouncementsList items={announcements} />
+            <TeacherAnnouncementsList
+              items={announcements}
+            />
           </SectionCard>
         </div>
       </div>

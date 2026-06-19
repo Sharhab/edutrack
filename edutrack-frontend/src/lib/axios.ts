@@ -13,16 +13,7 @@ const api = axios.create({
 // REQUEST INTERCEPTOR
 // ========================
 api.interceptors.request.use((config) => {
-   const host = window.location.host;
-  const hostname = window.location.hostname;
 
-  console.log("HOST:", host);
-  console.log("HOSTNAME:", hostname);
-
-  const parts = hostname.split(".");
-  const subdomain = parts.length > 2 ? parts[0] : null;
-
-  console.log("SUBDOMAIN:", subdomain);
   const token =
     typeof window !== "undefined"
       ? localStorage.getItem("token")

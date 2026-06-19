@@ -45,5 +45,8 @@ export interface TeacherPortalOverviewResponse {
 ========================================= */
 export interface TeacherClassStudentsResponse {
   success: boolean;
-  data: TeacherPortalStudent[];
+  data: {
+    students: TeacherPortalStudent[];
+    attendanceTakenToday?: boolean;
+  };
 }
