@@ -30,6 +30,24 @@ import { useBilling } from "../../../hooks/useBillingStatus";
 
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+type SubscriptionData = {
+  plan: string;
+  billingCycle?: string;
+  subscriptionStatus: string;
+  onboardingStatus?: string;
+  isActive: boolean;
+
+  daysLeft?: number | null;
+
+  trialStartAt?: string | null;
+  trialEndsAt?: string | null;
+
+  subscriptionStartedAt?: string | null;
+  subscriptionExpiresAt?: string | null;
+};
+
 
 function formatCurrency(amount?: number) {
   return `₦${Number(
@@ -41,9 +59,7 @@ export default function SchoolAdminDashboardPage() {
   const { tenant } = useTenant();
 
   const router = useRouter();
-  const {
-  daysLeft,
-} = useBilling();
+  const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
 
 const {
   stats = {} as any,
@@ -106,7 +122,9 @@ const {
       <TenantDashboardHero />
 
        
-  <SubscriptionBanner daysLeft={daysLeft} />
+      <SubscriptionBanner
+        daysLeft={subscription?.daysLeft}
+      />
 
       {/* =========================================
           CORE STATS
