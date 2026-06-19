@@ -84,17 +84,19 @@ export default function Sidebar({ role, onNavigate }: SidebarProps) {
   const items = navByRole[role];
 
   return (
-    <aside className="fixed left-0 top-0 z-50 h-full w-72 lg:static lg:z-auto print:hidden">
-      <div className="card flex h-full flex-col overflow-hidden p-5">
+    <aside className="h-full w-72 overflow-hidden border-r border-white/10 bg-slate-950 text-white shadow-2xl">
+      <div className="flex h-full flex-col p-5">
 
-        {/* Background theme layer */}
-        <TenantThemeSurface tenant={tenant} />
+        {/* subtle theme layer (NOT transparent anymore) */}
+        <div className="pointer-events-none absolute inset-0 opacity-20">
+          <TenantThemeSurface tenant={tenant} />
+        </div>
 
         {/* HEADER */}
         <div className="relative mb-8 flex items-center gap-3">
           <TenantLogo tenant={tenant} size={48} roundedClassName="rounded-2xl" />
           <div>
-            <p className="gradient-text text-lg font-bold">
+            <p className="text-lg font-bold text-white">
               {tenant?.schoolName || "EduTrack"}
             </p>
             <p className="text-xs text-slate-400">
@@ -103,12 +105,12 @@ export default function Sidebar({ role, onNavigate }: SidebarProps) {
           </div>
         </div>
 
-        {/* ROLE CARD */}
-        <div className="relative mb-6 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+        {/* ROLE */}
+        <div className="relative mb-6 rounded-2xl border border-white/10 bg-slate-900 p-4">
+          <p className="text-xs uppercase tracking-widest text-slate-400">
             Active Role
           </p>
-          <p className="mt-2 text-sm font-semibold capitalize text-white">
+          <p className="mt-1 text-sm font-semibold capitalize text-white">
             {role.replace("_", " ")}
           </p>
 
@@ -132,22 +134,13 @@ export default function Sidebar({ role, onNavigate }: SidebarProps) {
                 href={item.href}
                 onClick={onNavigate}
                 className={clsx(
-                  "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition",
+                  "flex items-center gap-3 rounded-xl px-4 py-3 text-sm transition",
                   active
-                    ? "bg-gradient-to-r from-cyan-500/20 to-violet-500/20 text-white ring-1 ring-cyan-400/30"
+                    ? "bg-cyan-500/20 text-white ring-1 ring-cyan-400/30"
                     : "text-slate-300 hover:bg-white/5 hover:text-white"
                 )}
               >
-                <div
-                  className={clsx(
-                    "flex h-9 w-9 items-center justify-center rounded-xl transition",
-                    active
-                      ? "bg-white/10 text-cyan-300"
-                      : "bg-white/[0.04] text-slate-400 group-hover:text-white"
-                  )}
-                >
-                  <Icon size={17} />
-                </div>
+                <Icon size={18} />
                 <span>{item.label}</span>
               </Link>
             );
