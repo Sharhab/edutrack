@@ -87,10 +87,10 @@ export async function ensureTeacherCanEnter({
   classId,
   subjectId,
 }) {
-  const teacherId = user?.id || user?._id;
+  const userId = user?.id || user?._id;
 
   const teacher = await mongoose.model("Teacher").findOne({
-    _id: teacherId,
+    userId: userId,   // ✅ FIX IS HERE
     schoolId,
   });
 
@@ -98,7 +98,6 @@ export async function ensureTeacherCanEnter({
     throw new ApiError(403, "Teacher not found");
   }
 
-  // 1. PRIMARY CHECK: class + subject mapping
   const hasAssignment = teacher.assignments?.some(
     (a) =>
       a.classId?.toString() === classId?.toString() &&
@@ -107,7 +106,6 @@ export async function ensureTeacherCanEnter({
 
   if (hasAssignment) return true;
 
-  // 2. FALLBACK (optional legacy support)
   const classOk = teacher.classIds?.some(
     (id) => id.toString() === classId?.toString()
   );
