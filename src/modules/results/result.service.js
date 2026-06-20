@@ -92,17 +92,37 @@ export async function ensureTeacherCanEnter({
   const teacher = await mongoose.model("Teacher").findOne({
     _id: teacherId,
     schoolId,
-    classIds: classId,
-    subjectIds: subjectId,
   });
 
   if (!teacher) {
-    throw new ApiError(403, "You are not assigned to this class/subject");
+    throw new ApiError(403, "Teacher not found");
   }
 
-  return true;
-}
+  // 1. PRIMARY CHECK: class + subject mapping
+  const hasAssignment = teacher.assignments?.some(
+    (a) =>
+      a.classId?.toString() === classId?.toString() &&
+      a.subjectId?.toString() === subjectId?.toString()
+  );
 
+  if (hasAssignment) return true;
+
+  // 2. FALLBACK (optional legacy support)
+  const classOk = teacher.classIds?.some(
+    (id) => id.toString() === classId?.toString()
+  );
+
+  const subjectOk = teacher.subjectIds?.some(
+    (id) => id.toString() === subjectId?.toString()
+  );
+
+  if (classOk && subjectOk) return true;
+
+  throw new ApiError(
+    403,
+    "You are not assigned to this class/subject"
+  );
+}
 /* =========================================
    UPSERT (SINGLE RESULT)
 ========================================= */
