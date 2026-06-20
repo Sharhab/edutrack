@@ -87,17 +87,22 @@ export async function ensureTeacherCanEnter({
   classId,
   subjectId,
 }) {
-  const userId = user?.id || user?._id;
+  const userId = new mongoose.Types.ObjectId(
+    user?.id || user?._id
+  );
 
   const teacher = await mongoose.model("Teacher").findOne({
-    userId: userId,   // ✅ FIX IS HERE
+    userId,
     schoolId,
   });
 
   if (!teacher) {
+    console.log("❌ Teacher not found", { userId, schoolId });
+
     throw new ApiError(403, "Teacher not found");
   }
 
+  // PRIMARY: assignment mapping
   const hasAssignment = teacher.assignments?.some(
     (a) =>
       a.classId?.toString() === classId?.toString() &&
@@ -106,15 +111,14 @@ export async function ensureTeacherCanEnter({
 
   if (hasAssignment) return true;
 
-  const classOk = teacher.classIds?.some(
+  // OPTIONAL LEGACY (can remove later)
+  const legacyMatch = teacher.classIds?.some(
     (id) => id.toString() === classId?.toString()
-  );
-
-  const subjectOk = teacher.subjectIds?.some(
+  ) && teacher.subjectIds?.some(
     (id) => id.toString() === subjectId?.toString()
   );
 
-  if (classOk && subjectOk) return true;
+  if (legacyMatch) return true;
 
   throw new ApiError(
     403,
