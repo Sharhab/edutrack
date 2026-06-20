@@ -15,49 +15,69 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin) {
-        return callback(null, true);
-      }
+/* =========================================
+   SAFE CORS (PRODUCTION SAAS READY)
+========================================= */
 
-      const hostname =
-        new URL(origin).hostname;
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow server-to-server / Postman
+    if (!origin) return callback(null, true);
 
-      if (
+    try {
+      const hostname = new URL(origin).hostname;
+
+      const isAllowed =
         hostname === "localhost" ||
         hostname === "edutrack.cloud" ||
-        hostname ===
-          "www.edutrack.cloud" ||
-        hostname.endsWith(
-          ".edutrack.cloud"
-        )
-      ) {
+        hostname === "www.edutrack.cloud" ||
+        hostname.endsWith(".edutrack.cloud");
+
+      if (isAllowed) {
         return callback(null, true);
       }
 
-      callback(
-        new Error("Not allowed by CORS")
-      );
-    },
-    credentials: true,
-  })
-);
+      return callback(new Error("Not allowed by CORS: " + origin));
+
+    } catch (err) {
+      // If origin parsing fails, block safely
+      return callback(new Error("Invalid origin"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
+
+/* IMPORTANT: Handle preflight */
+app.options("*", cors());
+
+/* =========================================
+   MIDDLEWARES
+========================================= */
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// 🔥 REQUIRED
 app.use(cookieParser());
+
+/* =========================================
+   STATIC FILES
+========================================= */
 
 app.use(
   "/uploads",
-  express.static(
-    path.join(__dirname, "../uploads")
-  )
+  express.static(path.join(__dirname, "../uploads"))
 );
 
+/* =========================================
+   API ROUTES
+========================================= */
+
 app.use("/api", routes);
+
+/* =========================================
+   ERROR HANDLERS
+========================================= */
 
 app.use(notFoundHandler);
 app.use(errorHandler);
