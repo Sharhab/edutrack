@@ -11,24 +11,26 @@ export interface ResolvedTenant {
   _id: string;
   schoolName: string;
   slug: string;
-
+  currentSession: string;
+  currentTerm: string;
+  fullDomain?: string;
   // branding
   logoUrl?: string;
   themeColor?: string;
-
+    principalName?: string;
+  motto?: string;
+    faviconUrl?: string | null;
+      customDomain?: string | null;
   // domain
   domain?: string;
-
   // contact
   address?: string;
   phone?: string;
   email?: string;
-
   // system state
   status?: TenantStatus;
   subscriptionStatus?: TenantSubscriptionStatus;
   expiryDate?: string;
-
   billing?: {
     status:
       | "trial"

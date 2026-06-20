@@ -28,6 +28,15 @@ type SidebarProps = {
   onNavigate?: () => void;
 };
 
+function formatRole(role: string) {
+  return role
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/* =========================================
+   NAV CONFIG
+========================================= */
 const navByRole: Record<
   UserRole,
   { label: string; href: string; icon: React.ElementType }[]
@@ -48,7 +57,7 @@ const navByRole: Record<
     { label: "Classes", href: "/school-admin/classes", icon: Building2 },
     { label: "Results", href: "/school-admin/results", icon: BookOpen },
     { label: "Import Students", href: "/school-admin/students/import", icon: Upload },
-    { label: "Students Bulk Entry", href: "/school-admin/students/bulk", icon: Users },
+    { label: "Bulk Entry", href: "/school-admin/students/bulk", icon: Users },
     { label: "Report Cards", href: "/school-admin/results/report-cards", icon: FileText },
     { label: "Class Reports", href: "/school-admin/results/class-reports", icon: GraduationCap },
     { label: "Parents", href: "/school-admin/parents", icon: Users },
@@ -72,9 +81,9 @@ const navByRole: Record<
 
   student: [
     { label: "Dashboard", href: "/student", icon: LayoutDashboard },
-    { label: "My Children", href: "/parent/children", icon: GraduationCap },
-    { label: "Results", href: "/parent/results", icon: BookOpen },
-    { label: "Announcements", href: "/parent/announcements", icon: Bell },
+    { label: "My Classes", href: "/student/classes", icon: GraduationCap },
+    { label: "Results", href: "/student/results", icon: BookOpen },
+    { label: "Announcements", href: "/student/announcements", icon: Bell },
   ],
 };
 
@@ -84,34 +93,35 @@ export default function Sidebar({ role, onNavigate }: SidebarProps) {
   const items = navByRole[role];
 
   return (
-    <aside className="h-full w-72 overflow-hidden border-r border-white/10 bg-slate-950 text-white shadow-2xl">
-      <div className="flex h-full flex-col p-5">
+    <aside className="relative h-full w-72 overflow-hidden border-r border-white/10 bg-slate-950 text-white shadow-2xl">
+      {/* THEME LAYER */}
+      <div className="pointer-events-none absolute inset-0 opacity-20">
+        <TenantThemeSurface tenant={tenant} />
+      </div>
 
-        {/* subtle theme layer (NOT transparent anymore) */}
-        <div className="pointer-events-none absolute inset-0 opacity-20">
-          <TenantThemeSurface tenant={tenant} />
-        </div>
-
+      <div className="relative flex h-full flex-col p-5">
         {/* HEADER */}
-        <div className="relative mb-8 flex items-center gap-3">
+        <div className="mb-8 flex items-center gap-3">
           <TenantLogo tenant={tenant} size={48} roundedClassName="rounded-2xl" />
+
           <div>
             <p className="text-lg font-bold text-white">
               {tenant?.schoolName || "EduTrack"}
             </p>
             <p className="text-xs text-slate-400">
-              {tenant ? "Tenant workspace" : "Premium school workspace"}
+              {tenant ? "Tenant workspace" : "Premium workspace"}
             </p>
           </div>
         </div>
 
-        {/* ROLE */}
-        <div className="relative mb-6 rounded-2xl border border-white/10 bg-slate-900 p-4">
+        {/* ROLE CARD */}
+        <div className="mb-6 rounded-2xl border border-white/10 bg-slate-900 p-4">
           <p className="text-xs uppercase tracking-widest text-slate-400">
             Active Role
           </p>
-          <p className="mt-1 text-sm font-semibold capitalize text-white">
-            {role.replace("_", " ")}
+
+          <p className="mt-1 text-sm font-semibold text-white">
+            {formatRole(role)}
           </p>
 
           <div className="mt-3">

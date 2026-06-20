@@ -37,6 +37,40 @@ const schoolSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    currentSession: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+currentTerm: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+themeColor: {
+  type: String,
+  default: "#06b6d4",
+},
+
+logo: {
+  type: String,
+  default: "",
+},
+
+favicon: {
+  type: String,
+  default: "",
+},
+
+motto: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+
      fullDomain: { type: String, default: "" }, 
 customDomain: { type: String, default: "" }, // optional future
     // =========================

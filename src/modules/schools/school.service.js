@@ -201,118 +201,58 @@ export async function getSchoolById(id) {
   return school;
 }
 
-export async function updateSchool(
-  id,
-  payload
-) {
-  const school =
-    await School.findById(id);
+export async function updateSchool(id, payload) {
+  const school = await School.findById(id);
 
   if (!school) {
-    throw new ApiError(
-      404,
-      "School not found"
-    );
+    throw new ApiError(404, "School not found");
   }
 
-  if (
-    payload.domain !== undefined
-  ) {
-    await ensureUniqueDomain(
-      payload.domain,
-      id
-    );
-
-    // FIXED: no ""
-    school.domain =
-      normalizeDomain(
-        payload.domain
-      );
+  if (payload.domain !== undefined) {
+    await ensureUniqueDomain(payload.domain, id);
+    school.domain = normalizeDomain(payload.domain);
   }
 
-  if (
-    payload.name !== undefined
-  ) {
-    school.name = payload.name;
+  if (payload.name !== undefined) school.name = payload.name;
+  if (payload.email !== undefined) school.email = normalizeEmail(payload.email);
+  if (payload.phone !== undefined) school.phone = payload.phone;
+  if (payload.address !== undefined) school.address = payload.address;
+  if (payload.principalName !== undefined) school.principalName = payload.principalName;
+  if (payload.themeColor !== undefined) school.themeColor = payload.themeColor;
+
+  // ✅ FIXED (must use logo, not logoUrl field)
+  if (payload.logo !== undefined) {
+    school.logo = payload.logo;
   }
 
-  if (
-    payload.email !== undefined
-  ) {
-    school.email =
-      normalizeEmail(
-        payload.email
-      );
+  if (payload.favicon !== undefined) {
+    school.favicon = payload.favicon;
   }
 
-  if (
-    payload.phone !== undefined
-  ) {
-    school.phone =
-      payload.phone;
+  if (payload.motto !== undefined) {
+    school.motto = payload.motto;
   }
 
-  if (
-    payload.address !== undefined
-  ) {
-    school.address =
-      payload.address;
+  if (payload.subscriptionPlan !== undefined) {
+    school.subscriptionPlan = payload.subscriptionPlan;
   }
 
-  if (
-    payload.principalName !==
-    undefined
-  ) {
-    school.principalName =
-      payload.principalName;
+  if (payload.subscriptionStatus !== undefined) {
+    school.subscriptionStatus = payload.subscriptionStatus;
   }
 
-  if (
-    payload.themeColor !==
-    undefined
-  ) {
-    school.themeColor =
-      payload.themeColor;
+  if (payload.expiryDate !== undefined) {
+    school.expiryDate = payload.expiryDate || null;
   }
 
-  if (
-    payload.subscriptionPlan !==
-    undefined
-  ) {
-    school.subscriptionPlan =
-      payload.subscriptionPlan;
-  }
-
-  if (
-    payload.subscriptionStatus !==
-    undefined
-  ) {
-    school.subscriptionStatus =
-      payload.subscriptionStatus;
-  }
-
-  if (
-    payload.expiryDate !==
-    undefined
-  ) {
-    school.expiryDate =
-      payload.expiryDate ||
-      null;
-  }
-
-  if (
-    payload.isActive !==
-    undefined
-  ) {
-    school.isActive =
-      payload.isActive;
+  if (payload.isActive !== undefined) {
+    school.isActive = payload.isActive;
   }
 
   await school.save();
 
   return school;
 }
-
 export async function toggleSchoolStatus(
   id
 ) {

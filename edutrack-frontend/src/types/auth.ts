@@ -15,13 +15,18 @@ export interface AuthTenant {
 }
 
 export interface AuthUser {
-  id: string;
   _id?: string;
-  name?: string;
+
+  firstName?: string;
+  lastName?: string;
+
+  name?: string; // optional fallback (if backend sends full name)
+
   email?: string;
-  role: UserRole;
-  schoolId?: string | null;
-  tenant?: AuthTenant | null;
+  role: string;
+
+  schoolId?: string;
+  avatar?: string;
 }
 
 export interface LoginResponse {

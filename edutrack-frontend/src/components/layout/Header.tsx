@@ -12,6 +12,13 @@ type HeaderProps = {
   onMenuToggle?: () => void;
 };
 
+function formatRole(role?: string) {
+  if (!role) return "User";
+  return role
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function Header({
   title,
   subtitle,
@@ -20,10 +27,21 @@ export default function Header({
   const { user, logout } = useAuth();
   const { tenant } = useTenant();
 
+  const schoolName =
+    tenant?.schoolName ||
+    tenant?.fullDomain ||
+    "EduTrack School";
+
+  const userName =
+    user?.name ||
+    `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() ||
+    "User";
+
   return (
     <header className="card mb-6 flex items-center justify-between gap-4 px-5 py-4 print:hidden">
       {/* LEFT SIDE */}
       <div className="flex items-center gap-4">
+        {/* MOBILE MENU */}
         <button
           onClick={onMenuToggle}
           className="rounded-2xl border border-white/10 bg-white/5 p-2 text-slate-300 lg:hidden"
@@ -43,7 +61,7 @@ export default function Header({
           <p className="text-xs text-slate-400">School</p>
 
           <h2 className="text-sm font-semibold text-white">
-            {tenant?.schoolName || "EduTrack School"}
+            {schoolName}
           </h2>
 
           <div className="mt-1">
@@ -53,8 +71,12 @@ export default function Header({
 
         {/* PAGE TITLE */}
         <div className="ml-4 hidden border-l border-white/10 pl-4 md:block">
-          <h1 className="text-lg font-bold text-white">{title}</h1>
-          <p className="text-xs text-slate-400">{subtitle}</p>
+          <h1 className="text-lg font-bold text-white">
+            {title}
+          </h1>
+          <p className="text-xs text-slate-400">
+            {subtitle}
+          </p>
         </div>
       </div>
 
@@ -62,14 +84,21 @@ export default function Header({
       <div className="flex items-center gap-3">
         <div className="hidden text-right sm:block">
           <p className="text-sm font-semibold text-white">
-            {user?.name ?? "User"}
+            {userName}
           </p>
+
           <p className="text-xs uppercase tracking-wide text-slate-400">
-            {user?.role?.replace("_", " ")}
+            {formatRole(user?.role)}
           </p>
-          <p className="text-[11px] text-slate-500">{user?.email ?? ""}</p>
+
+          {user?.email && (
+            <p className="text-[11px] text-slate-500">
+              {user.email}
+            </p>
+          )}
         </div>
 
+        {/* LOGOUT */}
         <button
           onClick={logout}
           className="rounded-2xl border border-white/10 bg-white/5 p-3 text-slate-300 transition hover:bg-white/10 hover:text-white"
