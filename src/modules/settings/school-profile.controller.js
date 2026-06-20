@@ -10,14 +10,30 @@ import { ApiError } from "../../utils/apiError.js";
 /* =========================================
    GET PROFILE
 ========================================= */
+export async function getSchoolProfileHandler(req, res) {
+  const profile = await getSchoolProfile(req.user);
+
+  res.json({
+    success: true,
+    message: "School profile fetched successfully",
+    data: {
+      profile,
+    },
+  });
+}
+
+/* =========================================
+   UPDATE PROFILE
+========================================= */
 export async function updateSchoolProfileHandler(req, res) {
   const parsed = updateSchoolProfileSchema.parse(req.body);
 
+  // uploaded through PUT /
   if (req.file) {
     parsed.logoUrl = `/uploads/logos/${req.file.filename}`;
   }
 
-  const data = await updateSchoolProfile(
+  const profile = await updateSchoolProfile(
     parsed,
     req.user
   );
@@ -25,15 +41,21 @@ export async function updateSchoolProfileHandler(req, res) {
   res.json({
     success: true,
     message: "School profile updated successfully",
-    data,
+    data: {
+      profile,
+    },
   });
 }
+
 /* =========================================
    UPLOAD LOGO
 ========================================= */
 export async function uploadSchoolLogoHandler(req, res) {
   if (!req.file) {
-    throw new ApiError(400, "Logo file is required");
+    throw new ApiError(
+      400,
+      "Logo file is required"
+    );
   }
 
   const filePath = `/uploads/logos/${req.file.filename}`;
@@ -57,10 +79,9 @@ export async function deleteSchoolLogoHandler(
   req,
   res
 ) {
-  const data =
-    await deleteSchoolLogo(
-      req.user
-    );
+  const data = await deleteSchoolLogo(
+    req.user
+  );
 
   res.json({
     success: true,
