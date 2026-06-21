@@ -87,36 +87,56 @@ export async function ensureTeacherCanEnter({
   classId,
   subjectId,
 }) {
-  const userId = new mongoose.Types.ObjectId(
-    user?.id || user?._id
-  );
+  if (!user) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  const userId = user._id?.toString();
+
+  if (!userId) {
+    throw new ApiError(400, "Invalid user ID");
+  }
 
   const teacher = await mongoose.model("Teacher").findOne({
-    userId,
-    schoolId,
+    userId: new mongoose.Types.ObjectId(userId),
+    schoolId: new mongoose.Types.ObjectId(schoolId),
   });
 
   if (!teacher) {
-    console.log("❌ Teacher not found", { userId, schoolId });
+    console.log("❌ Teacher not found", {
+      userId,
+      schoolId,
+    });
 
     throw new ApiError(403, "Teacher not found");
   }
 
-  // PRIMARY: assignment mapping
-  const hasAssignment = teacher.assignments?.some(
-    (a) =>
+  /**
+   * ===========================
+   * PRIMARY: assignments check
+   * ===========================
+   */
+  const hasAssignment = teacher.assignments?.some((a) => {
+    return (
       a.classId?.toString() === classId?.toString() &&
       a.subjectId?.toString() === subjectId?.toString()
-  );
+    );
+  });
 
   if (hasAssignment) return true;
 
-  // OPTIONAL LEGACY (can remove later)
-  const legacyMatch = teacher.classIds?.some(
-    (id) => id.toString() === classId?.toString()
-  ) && teacher.subjectIds?.some(
-    (id) => id.toString() === subjectId?.toString()
-  );
+  /**
+   * ===========================
+   * LEGACY fallback
+   * ===========================
+   */
+  const legacyMatch =
+    teacher.classIds?.some(
+      (id) => id.toString() === classId?.toString()
+    ) &&
+    teacher.subjectIds?.some(
+      (id) => id.toString() === subjectId?.toString()
+    );
 
   if (legacyMatch) return true;
 
