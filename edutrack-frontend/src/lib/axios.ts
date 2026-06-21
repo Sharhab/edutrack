@@ -1,30 +1,14 @@
 import axios from "axios";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://edutrack-dpui.onrender.com/api";
-
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
+  baseURL:
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://edutrack-dpui.onrender.com/api",
+  withCredentials: true, // ✅ MUST KEEP
 });
 
-// ========================
-// REQUEST INTERCEPTOR
-// ========================
-api.interceptors.request.use((config) => {
-
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("token")
-      : null;
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
-  return config;
-});
+// ❌ REMOVE this completely:
+// localStorage token interceptor (BREAKS AUTH CONSISTENCY)
 
 // ========================
 // RESPONSE INTERCEPTOR
