@@ -19,7 +19,7 @@ export async function getSchoolProfile(): Promise<SchoolProfile> {
       SETTINGS_ENDPOINTS.getProfile
     );
 
-  return data.data;
+  return data.data.profile;
 }
 
 /* =========================================
@@ -48,5 +48,5 @@ export async function updateSchoolProfile(
       }
     );
 
-  return data.data;
+  return data.data.profile;
 }

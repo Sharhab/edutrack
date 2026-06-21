@@ -22,11 +22,12 @@ export interface SchoolProfile {
 
 export interface SchoolProfileResponse {
   success: boolean;
-  message?: string;
+  message: string;
   data: {
     profile: SchoolProfile;
   };
 }
+
 export interface SchoolProfileFormValues {
   schoolName: string;
   email: string;
