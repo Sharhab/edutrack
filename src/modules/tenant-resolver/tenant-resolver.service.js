@@ -56,6 +56,15 @@ function mapTenantPayload(school) {
 
     domain: school.domain || "",
 
+    email: school.email || "",
+
+    phone: school.phone || "",
+
+    address: school.address || "",
+
+    principalName:
+      school.principalName || "",
+
     status: school.isActive
       ? "active"
       : "inactive",
@@ -274,16 +283,31 @@ export async function getPublicTenantPage(
     tenant:
       mapTenantPayload(school),
 
-    page: {
-      schoolName:
-        school.name,
+   page: {
+  schoolName:
+    school.name,
 
-      logoUrl:
-        school.logo || "",
+  logoUrl:
+    school.logo || "",
 
-      themeColor:
-        school.themeColor ||
-        "#2563eb",
-    },
+  themeColor:
+    school.themeColor ||
+    "#2563eb",
+
+  email:
+    school.email || "",
+
+  phone:
+    school.phone || "",
+
+  address:
+    school.address || "",
+
+  principalName:
+    school.principalName || "",
+
+  domain:
+    school.domain || "",
+},
   };
 }
