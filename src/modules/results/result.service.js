@@ -4,7 +4,6 @@ import { computeGrade } from "./grade.utils.js";
 import { ApiError } from "../../utils/apiError.js";
 import { Teacher } from "../teachers/teacher.model.js";
 
-
 /* =========================================
    CORE UTILS (SINGLE SOURCE OF TRUTH)
 ========================================= */
@@ -191,41 +190,6 @@ export async function ensureTeacherCanEnter({
     "You are not assigned to this class/subject"
   );
 }
-
-  /**
-   * ===========================
-   * PRIMARY: assignments check
-   * ===========================
-   */
-  const hasAssignment = teacher.assignments?.some((a) => {
-    return (
-      a.classId?.toString() === classId?.toString() &&
-      a.subjectId?.toString() === subjectId?.toString()
-    );
-  });
-
-  if (hasAssignment) return true;
-
-  /**
-   * ===========================
-   * LEGACY fallback
-   * ===========================
-   */
-  const legacyMatch =
-    teacher.classIds?.some(
-      (id) => id.toString() === classId?.toString()
-    ) &&
-    teacher.subjectIds?.some(
-      (id) => id.toString() === subjectId?.toString()
-    );
-
-  if (legacyMatch) return true;
-
-  throw new ApiError(
-    403,
-    "You are not assigned to this class/subject"
-  );
-
 /* =========================================
    UPSERT (SINGLE RESULT)
 ========================================= */
