@@ -230,68 +230,83 @@ export async function bulkUpsertResults({
     subjectId,
   });
 
-  /* =========================================
-   PREVENT UPDATING LOCKED RESULTS
-========================================= */
+  /**
+   * =========================================
+   * PREVENT LOCKED RESULTS UPDATE
+   * =========================================
+   */
+  const studentIds = results.map((r) => r.studentId);
 
-const lockedResults = await Result.find({
-  schoolId,
-  subjectId,
-  sessionId,
-  termId,
-  status: "locked",
-  studentId: {
-    $in: results.map((r) => r.studentId),
-  },
-});
+  const lockedResults = await Result.find({
+    schoolId,
+    subjectId,
+    sessionId,
+    termId,
+    status: "locked",
+    studentId: { $in: studentIds },
+  });
 
-if (lockedResults.length > 0) {
-  const lockedStudents = lockedResults
-    .map((r) => r.studentId.toString())
-    .join(", ");
+  if (lockedResults.length > 0) {
+    const lockedStudents = lockedResults
+      .map((r) => r.studentId.toString())
+      .join(", ");
 
-  throw new ApiError(
-    400,
-    `Some results are locked and cannot be modified. Students: ${lockedStudents}`
-  );
-}
+    throw new ApiError(
+      400,
+      `Some results are locked. Students: ${lockedStudents}`
+    );
+  }
 
-/* =========================================
-   BUILD BULK OPERATIONS
-========================================= */
+  /**
+   * =========================================
+   * BUILD BULK OPS
+   * =========================================
+   */
+  const operations = results.map((r) => {
+    const computed = calculateResultFields(r);
 
-const operations = results.map((r) => {
-  const computed = calculateResultFields(r);
-
-  return {
-    updateOne: {
-      filter: {
-        schoolId,
-        studentId: r.studentId,
-        subjectId,
-        sessionId,
-        termId,
-      },
-      update: {
-        $set: {
+    return {
+      updateOne: {
+        filter: {
           schoolId,
           studentId: r.studentId,
-          classId,
           subjectId,
           sessionId,
           termId,
-
-          ...computed,
-
-          status: "draft",
-
-          enteredBy: user._id,
         },
+        update: {
+          $set: {
+            schoolId,
+            studentId: r.studentId,
+            classId,
+            subjectId,
+            sessionId,
+            termId,
+
+            ...computed,
+
+            status: "draft",
+            enteredBy: user._id,
+          },
+        },
+        upsert: true,
       },
-      upsert: true,
-    },
+    };
+  });
+
+  /**
+   * =========================================
+   * EXECUTE BULK WRITE (🔥 MISSING PART FIXED)
+   * =========================================
+   */
+  const result = await Result.bulkWrite(operations);
+
+  return {
+    success: true,
+    matched: result.matchedCount,
+    modified: result.modifiedCount,
+    upserted: result.upsertedCount,
   };
-});
 }
 
 /* =========================================

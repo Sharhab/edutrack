@@ -481,13 +481,23 @@ export async function unlockResultsHandler(
 
 
 export async function bulkUpsertResultsHandler(req, res) {
-  const result = await bulkUpsertResults({
-    schoolId: req.user.schoolId,
-    ...req.body,
-    user: req.user,
-  });
+  try {
+    const result = await bulkUpsertResults({
+      schoolId: req.user.schoolId,
+      ...req.body,
+      user: req.user,
+    });
 
-  res.json(result);
+    return res.status(200).json(result);
+
+  } catch (err) {
+    console.error("bulkUpsertResultsHandler error:", err);
+
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.message || "Internal Server Error",
+    });
+  }
 }
 
 export async function getTeacherResultContextHandler(req, res, next) {
