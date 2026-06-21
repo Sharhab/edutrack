@@ -16,48 +16,89 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 /* =========================================
-   SAFE CORS (PRODUCTION SAAS READY)
+   ALLOWED ORIGINS
 ========================================= */
 
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow server-to-server / Postman
-    if (!origin) return callback(null, true);
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
 
-    try {
-      const hostname = new URL(origin).hostname;
+  try {
+    const hostname = new URL(origin).hostname;
 
-      const isAllowed =
-        hostname === "localhost" ||
-        hostname === "edutrack.cloud" ||
-        hostname === "www.edutrack.cloud" ||
-        hostname.endsWith(".edutrack.cloud");
-
-      if (isAllowed) {
-        return callback(null, true);
-      }
-
-      return callback(new Error("Not allowed by CORS: " + origin));
-
-    } catch (err) {
-      // If origin parsing fails, block safely
-      return callback(new Error("Invalid origin"));
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "edutrack.cloud" ||
+      hostname === "www.edutrack.cloud"
+    ) {
+      return true;
     }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-}));
 
-/* IMPORTANT: Handle preflight */
-app.options("*", cors());
+    if (hostname.endsWith(".edutrack.cloud")) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 /* =========================================
-   MIDDLEWARES
+   CORS
+========================================= */
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      console.log("❌ CORS BLOCKED:", origin);
+
+      callback(
+        new Error(
+          `Origin not allowed: ${origin}`
+        )
+      );
+    }
+  },
+
+  credentials: true,
+
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+  ],
+
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+  ],
+
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+
+/* IMPORTANT */
+app.options(/.*/, cors(corsOptions));
+
+/* =========================================
+   BODY PARSERS
 ========================================= */
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
+);
+
 app.use(cookieParser());
 
 /* =========================================
@@ -66,20 +107,44 @@ app.use(cookieParser());
 
 app.use(
   "/uploads",
-  express.static(path.join(__dirname, "../uploads"))
+  express.static(
+    path.join(__dirname, "../uploads")
+  )
 );
 
 /* =========================================
-   API ROUTES
+   DEBUG REQUESTS
+========================================= */
+
+app.use((req, res, next) => {
+  console.log(
+    `${req.method} ${req.originalUrl}`
+  );
+
+  console.log(
+    "Origin:",
+    req.headers.origin
+  );
+
+  next();
+});
+
+/* =========================================
+   ROUTES
 ========================================= */
 
 app.use("/api", routes);
 
 /* =========================================
-   ERROR HANDLERS
+   NOT FOUND
 ========================================= */
 
 app.use(notFoundHandler);
+
+/* =========================================
+   ERROR HANDLER
+========================================= */
+
 app.use(errorHandler);
 
 export default app;

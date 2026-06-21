@@ -5,11 +5,30 @@ export function notFoundHandler(req, res) {
   });
 }
 
-export function errorHandler(err, req, res, next) {
-  const statusCode = err.statusCode || 500;
+export function errorHandler(
+  err,
+  req,
+  res,
+  next
+) {
+  console.error(err);
 
-  return res.status(statusCode).json({
+  if (
+    err.message &&
+    err.message.includes("Origin not allowed")
+  ) {
+    return res.status(403).json({
+      success: false,
+      message: err.message,
+    });
+  }
+
+  return res.status(
+    err.statusCode || 500
+  ).json({
     success: false,
-    message: err.message,
+    message:
+      err.message ||
+      "Internal server error",
   });
 }
