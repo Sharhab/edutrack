@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import { Result } from "./result.model.js";
 import { computeGrade } from "./grade.utils.js";
 import { ApiError } from "../../utils/apiError.js";
+import { Teacher } from "../teachers/teacher.model.js";
+
 
 /* =========================================
    CORE UTILS (SINGLE SOURCE OF TRUTH)
@@ -80,7 +82,6 @@ function formatResult(result) {
 /* =========================================
    TEACHER VALIDATION (STANDARDIZED)
 ========================================= */
-
 export async function ensureTeacherCanEnter({
   user,
   schoolId,
@@ -88,28 +89,108 @@ export async function ensureTeacherCanEnter({
   subjectId,
 }) {
   if (!user) {
-    throw new ApiError(401, "Unauthorized");
+    throw new ApiError(
+      401,
+      "Unauthorized"
+    );
   }
 
-  const userId = user._id?.toString();
+  /**
+   * Support both _id and id.
+   * Eventually standardize on _id everywhere.
+   */
+  const userId = user._id || user.id;
 
   if (!userId) {
-    throw new ApiError(400, "Invalid user ID");
+    console.log("❌ Missing user ID", user);
+
+    throw new ApiError(
+      401,
+      "Invalid user"
+    );
   }
 
-  const teacher = await mongoose.model("Teacher").findOne({
-    userId: new mongoose.Types.ObjectId(userId),
-    schoolId: new mongoose.Types.ObjectId(schoolId),
-  });
-
-  if (!teacher) {
-    console.log("❌ Teacher not found", {
-      userId,
-      schoolId,
+  const teacher =
+    await Teacher.findOne({
+      userId: new mongoose.Types.ObjectId(
+        userId
+      ),
+      schoolId:
+        new mongoose.Types.ObjectId(
+          schoolId
+        ),
     });
 
-    throw new ApiError(403, "Teacher not found");
+  if (!teacher) {
+    console.log(
+      "❌ Teacher not found",
+      {
+        userId,
+        schoolId,
+      }
+    );
+
+    throw new ApiError(
+      403,
+      "Teacher not found"
+    );
   }
+
+  /**
+   * Assignment-based authorization
+   */
+  const hasAssignment =
+    teacher.assignments?.some(
+      (assignment) =>
+        assignment.classId?.toString() ===
+          classId?.toString() &&
+        assignment.subjectId?.toString() ===
+          subjectId?.toString()
+    );
+
+  if (hasAssignment) {
+    return true;
+  }
+
+  /**
+   * Legacy support
+   */
+  const legacyMatch =
+    teacher.classIds?.some(
+      (id) =>
+        id.toString() ===
+        classId?.toString()
+    ) &&
+    teacher.subjectIds?.some(
+      (id) =>
+        id.toString() ===
+        subjectId?.toString()
+    );
+
+  if (legacyMatch) {
+    return true;
+  }
+
+  console.log(
+    "❌ Assignment denied",
+    {
+      teacherId: teacher._id,
+      classId,
+      subjectId,
+      assignments:
+        teacher.assignments,
+      classIds:
+        teacher.classIds,
+      subjectIds:
+        teacher.subjectIds,
+    }
+  );
+
+  throw new ApiError(
+    403,
+    "You are not assigned to this class/subject"
+  );
+}
 
   /**
    * ===========================
@@ -144,7 +225,7 @@ export async function ensureTeacherCanEnter({
     403,
     "You are not assigned to this class/subject"
   );
-}
+
 /* =========================================
    UPSERT (SINGLE RESULT)
 ========================================= */
