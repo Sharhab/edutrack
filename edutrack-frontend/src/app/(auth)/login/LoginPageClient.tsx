@@ -121,7 +121,6 @@ export default function LoginPageClient() {
       if (!rawUser) throw new Error("User missing");
 
       const user: AuthUser = {
-        id: rawUser.id || rawUser._id,
         _id: rawUser._id,
         schoolId: rawUser.schoolId || null,
         role: rawUser.role,
