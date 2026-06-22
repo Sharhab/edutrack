@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-
+import { apiResponse } from "../../utils/apiResponse.js";
 import {
   createOrUpdateResult,
   listResults,
