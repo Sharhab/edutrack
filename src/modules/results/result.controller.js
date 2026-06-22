@@ -479,18 +479,49 @@ export async function unlockResultsHandler(
   }
 }
 
+export async function bulkUpsertResultsHandler(
+  req,
+  res
+) {
+  try {
+    console.log("REQ USER:", req.user);
 
-export async function bulkUpsertResultsHandler(req, res) {
-  console.log("REQ USER:", req.user);
+    const {
+      classId,
+      subjectId,
+      sessionId,
+      termId,
+      results,
+    } = req.body;
 
-  const result = await bulkUpsertResults({
-    schoolId: req.user.schoolId,
-    ...req.body,
-    user: req.user,
-  });
+    const data =
+      await bulkUpsertResults({
+        schoolId: req.user.schoolId,
+        classId,
+        subjectId,
+        sessionId,
+        termId,
+        results,
 
-  res.json(result);
+        user: req.user, // VERY IMPORTANT
+      });
+
+    return apiResponse(
+      res,
+      200,
+      "Results saved successfully",
+      data
+    );
+  } catch (error) {
+    console.error(
+      "bulkUpsertResultsHandler error:",
+      error
+    );
+
+    throw error;
+  }
 }
+
 
 export async function getTeacherResultContextHandler(req, res, next) {
   try {
