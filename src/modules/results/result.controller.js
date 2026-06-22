@@ -9,11 +9,11 @@ import {
   publishClassResults,
   lockClassResults,
   unlockClassResults,
+  bulkUpsertResults ,
 } from "./result.service.js";
 import {
   getAdminResultSummary,
 } from "./result.service.js";
-import { bulkUpsertResults } from "./bulk-upsert.js";
 
 /* =========================================
    MISSING IMPORTS (IMPORTANT)
