@@ -31,17 +31,25 @@ export async function loginUser({ email, password }) {
 
   const token = generateToken(user);
 
-  return {
-    token,
-    user: {
-      _id: user._id.toString(),   // ✅ FIXED
-      schoolId: user.schoolId?.toString(),
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      role: user.role,
-    },
-  };
+return {
+  token,
+
+  user: {
+    _id: user._id,
+    id: user._id,
+
+    schoolId: user.schoolId,
+
+    firstName: user.firstName,
+    lastName: user.lastName,
+
+    name:
+      `${user.firstName} ${user.lastName}`,
+
+    email: user.email,
+    role: user.role,
+  },
+};
 }
 
 export async function logoutUser() {

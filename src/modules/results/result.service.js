@@ -87,30 +87,27 @@ export async function ensureTeacherCanEnter({
   classId,
   subjectId,
 }) {
+  console.log("ENSURE USER:", user);
+
   if (!user) {
-    throw new ApiError(
-      401,
-      "Unauthorized"
-    );
+    throw new ApiError(401, "Unauthorized");
   }
 
-  /**
-   * Support both _id and id.
-   * Eventually standardize on _id everywhere.
-   */
-  const userId = user._id || user.id;
+  const userId =
+    user._id?.toString() ||
+    user.id?.toString();
+
+  console.log("USER ID:", userId);
 
   if (!userId) {
-    console.log("❌ Missing user ID", user);
-
     throw new ApiError(
       401,
-      "Invalid user"
+      "User ID missing"
     );
   }
 
   const teacher =
-    await Teacher.findOne({
+    await mongoose.model("Teacher").findOne({
       userId: new mongoose.Types.ObjectId(
         userId
       ),
@@ -120,30 +117,21 @@ export async function ensureTeacherCanEnter({
         ),
     });
 
-  if (!teacher) {
-    console.log(
-      "❌ Teacher not found",
-      {
-        userId,
-        schoolId,
-      }
-    );
+  console.log("TEACHER:", teacher);
 
+  if (!teacher) {
     throw new ApiError(
       403,
       "Teacher not found"
     );
   }
 
-  /**
-   * Assignment-based authorization
-   */
   const hasAssignment =
     teacher.assignments?.some(
-      (assignment) =>
-        assignment.classId?.toString() ===
+      (a) =>
+        a.classId?.toString() ===
           classId?.toString() &&
-        assignment.subjectId?.toString() ===
+        a.subjectId?.toString() ===
           subjectId?.toString()
     );
 
@@ -151,9 +139,6 @@ export async function ensureTeacherCanEnter({
     return true;
   }
 
-  /**
-   * Legacy support
-   */
   const legacyMatch =
     teacher.classIds?.some(
       (id) =>
@@ -169,21 +154,6 @@ export async function ensureTeacherCanEnter({
   if (legacyMatch) {
     return true;
   }
-
-  console.log(
-    "❌ Assignment denied",
-    {
-      teacherId: teacher._id,
-      classId,
-      subjectId,
-      assignments:
-        teacher.assignments,
-      classIds:
-        teacher.classIds,
-      subjectIds:
-        teacher.subjectIds,
-    }
-  );
 
   throw new ApiError(
     403,
