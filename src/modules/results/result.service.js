@@ -93,31 +93,26 @@ export async function ensureTeacherCanEnter({
     throw new ApiError(401, "Unauthorized");
   }
 
-  const userId =
-    user._id?.toString() ||
-    user.id?.toString();
-
-  console.log("USER ID:", userId);
+  const userId = (
+    user._id ||
+    user.id
+  )?.toString();
 
   if (!userId) {
     throw new ApiError(
       401,
-      "User ID missing"
+      "Invalid user"
     );
   }
 
-  const teacher =
-    await mongoose.model("Teacher").findOne({
-      userId: new mongoose.Types.ObjectId(
-        userId
+  const teacher = await mongoose
+    .model("Teacher")
+    .findOne({
+      userId: new mongoose.Types.ObjectId(userId),
+      schoolId: new mongoose.Types.ObjectId(
+        schoolId
       ),
-      schoolId:
-        new mongoose.Types.ObjectId(
-          schoolId
-        ),
     });
-
-  console.log("TEACHER:", teacher);
 
   if (!teacher) {
     throw new ApiError(
@@ -126,7 +121,7 @@ export async function ensureTeacherCanEnter({
     );
   }
 
-  const hasAssignment =
+  const assigned =
     teacher.assignments?.some(
       (a) =>
         a.classId?.toString() ===
@@ -135,11 +130,11 @@ export async function ensureTeacherCanEnter({
           subjectId?.toString()
     );
 
-  if (hasAssignment) {
+  if (assigned) {
     return true;
   }
 
-  const legacyMatch =
+  const legacy =
     teacher.classIds?.some(
       (id) =>
         id.toString() ===
@@ -151,13 +146,13 @@ export async function ensureTeacherCanEnter({
         subjectId?.toString()
     );
 
-  if (legacyMatch) {
+  if (legacy) {
     return true;
   }
 
   throw new ApiError(
     403,
-    "You are not assigned to this class/subject"
+    "You are not assigned to this subject"
   );
 }
 /* =========================================
