@@ -9,7 +9,6 @@ import EmptyState from "../../../../../components/ui/EmptyState";
 import FormInput from "../../../../../components/ui/FormInput";
 import { bulkUpsertResults } from "../../../../../lib/results";
 import {
-  autosaveResults,
   getClassStudentsForResultEntry,
   getTeacherResultContext,
   publishResults,
@@ -23,20 +22,16 @@ import {
 
 type StudentRow = {
   studentId: string;
-
   firstName: string;
   lastName: string;
   fullName: string;
-
   admissionNumber?: string;
   gender?: string;
   attendanceStatus?: string;
-
   ca1: number;
   ca2: number;
   assignment: number;
   exam: number;
-
   total: number;
   grade: string;
   remark: string;
@@ -84,18 +79,22 @@ export default function ResultEntryPage() {
   const [termId, setTermId] = useState("");
 
   const [students, setStudents] = useState<StudentRow[]>([]);
+  const studentsRef = useRef<StudentRow[]>([]); // ✅ FIX: latest snapshot
+
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [published, setPublished] = useState(false);
   const [pageError, setPageError] = useState("");
 
-  // ✅ FIX: browser-safe timer type
-  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const savingLock = useRef(false); // ✅ FIX: prevent 26 requests
 
-  /* =========================================
-     LOAD TEACHER CONTEXT
-  ========================================= */
+  /* keep ref synced */
+  useEffect(() => {
+    studentsRef.current = students;
+  }, [students]);
 
+  /* LOAD CONTEXT */
   useEffect(() => {
     async function loadContext() {
       try {
@@ -103,14 +102,13 @@ export default function ResultEntryPage() {
         setPageError("");
 
         const data = await getTeacherResultContext();
-
         setContext(data);
 
         setClassId(data?.classes?.[0]?._id || "");
         setSubjectId(data?.subjects?.[0]?._id || "");
         setSessionId(data?.sessions?.[0]?._id || "");
         setTermId(data?.terms?.[0]?._id || "");
-      } catch (err: unknown) {
+      } catch (err) {
         if (axios.isAxiosError(err)) {
           setPageError(err.response?.data?.message || "Failed to load teacher context.");
         } else {
@@ -124,10 +122,7 @@ export default function ResultEntryPage() {
     loadContext();
   }, []);
 
-  /* =========================================
-     LOAD STUDENTS
-  ========================================= */
-
+  /* LOAD STUDENTS */
   useEffect(() => {
     if (!classId) return;
 
@@ -136,7 +131,6 @@ export default function ResultEntryPage() {
         setStudentsLoading(true);
 
         const response = await getClassStudentsForResultEntry(classId);
-
         const studentList = response?.students || [];
 
         const mapped: StudentRow[] = studentList.map((student: any) => ({
@@ -149,20 +143,16 @@ export default function ResultEntryPage() {
           admissionNumber: student.admissionNumber || "",
           gender: student.gender || "",
           attendanceStatus: student.attendanceStatus || "present",
-
           ca1: 0,
           ca2: 0,
           assignment: 0,
           exam: 0,
-
           total: 0,
           grade: "F",
           remark: "Fail",
         }));
 
         setStudents(mapped);
-      } catch (err) {
-        console.error(err);
       } finally {
         setStudentsLoading(false);
       }
@@ -171,27 +161,19 @@ export default function ResultEntryPage() {
     loadStudents();
   }, [classId]);
 
-  /* =========================================
-     FILTER STUDENTS
-  ========================================= */
-
+  /* FILTER */
   const filteredStudents = useMemo(() => {
     if (!search.trim()) return students;
 
-    const query = search.toLowerCase();
+    const q = search.toLowerCase();
 
-    return students.filter((student) => {
-      return (
-        student.fullName.toLowerCase().includes(query) ||
-        (student.admissionNumber || "").toLowerCase().includes(query)
-      );
-    });
+    return students.filter((s) =>
+      s.fullName.toLowerCase().includes(q) ||
+      (s.admissionNumber || "").toLowerCase().includes(q)
+    );
   }, [students, search]);
 
-  /* =========================================
-     UPDATE SCORE
-  ========================================= */
-
+  /* UPDATE SCORE */
   function updateScore(
     studentId: string,
     field: "ca1" | "ca2" | "assignment" | "exam",
@@ -216,14 +198,9 @@ export default function ResultEntryPage() {
     triggerAutosave();
   }
 
-  /* =========================================
-     AUTOSAVE (FIXED: prevent spam + 502 flood)
-  ========================================= */
-
+  /* AUTOSAVE (FIXED: no spam + lock + guards) */
   function triggerAutosave() {
-    if (autosaveTimer.current) {
-      clearTimeout(autosaveTimer.current);
-    }
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
 
     autosaveTimer.current = setTimeout(() => {
       saveDraft();
@@ -231,53 +208,39 @@ export default function ResultEntryPage() {
   }
 
   async function saveDraft() {
-    // ✅ FIX: prevent invalid requests (this was causing your 502 loop)
-    if (!classId || !subjectId || !sessionId || !termId) return;
-    if (!students.length) return;
+    // ✅ prevent spam calls
+    if (savingLock.current) return;
 
+    // ✅ prevent invalid requests (this also reduces 502 noise)
+    if (!classId || !subjectId || !sessionId || !termId) return;
+
+    savingLock.current = true;
     setSaving(true);
 
     try {
-      // ✅ FIX: send only required payload (NOT full StudentRow)
-      const payload = {
+      await bulkUpsertResults({
         classId,
         subjectId,
         sessionId,
         termId,
-        results: students.map((s) => ({
-          studentId: s.studentId,
-          ca1: s.ca1,
-          ca2: s.ca2,
-          assignment: s.assignment,
-          exam: s.exam,
-          total: s.total,
-          grade: s.grade,
-          remark: s.remark,
-        })),
-      };
-
-      await bulkUpsertResults(payload);
+        results: studentsRef.current, // ✅ always latest data
+      });
     } catch (err) {
-      console.error("AUTO-SAVE ERROR:", err);
+      console.error("bulk-upsert failed:", err);
     } finally {
+      savingLock.current = false;
       setSaving(false);
     }
   }
 
-  /* =========================================
-     PUBLISH
-  ========================================= */
-
+  /* PUBLISH */
   async function handlePublish() {
-    if (!classId || !subjectId || !sessionId || !termId) {
-      alert("All fields are required");
-      return;
-    }
+    if (!classId || !subjectId || !sessionId || !termId) return;
 
     try {
       setSaving(true);
 
-      const result = await publishResults({
+      await publishResults({
         classId,
         subjectId,
         sessionId,
@@ -292,15 +255,15 @@ export default function ResultEntryPage() {
     }
   }
 
-  /* =========================================
-     UI STATES
-  ========================================= */
-
+  /* STATES */
   if (loading) return <PageLoader />;
 
   if (pageError)
     return (
-      <EmptyState title="Unable to load result system" description={pageError} />
+      <EmptyState
+        title="Unable to load result system"
+        description={pageError}
+      />
     );
 
   if (!context)
@@ -311,28 +274,25 @@ export default function ResultEntryPage() {
       />
     );
 
+  /* UI (UNCHANGED TABLE) */
   return (
     <div className="space-y-6">
-      {/* UI REMAINS EXACTLY SAME (UNCHANGED) */}
 
       <SectionCard
         title="Result Entry Engine"
         subtitle="Live grading • autosave • smart publishing"
       >
+
         <div className="grid gap-4 md:grid-cols-4">
+
           {/* CLASS */}
           <div>
             <label className="mb-2 block text-sm text-slate-400">Class</label>
-            <select
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-            >
+            <select value={classId} onChange={(e) => setClassId(e.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none">
               <option value="">Select Class</option>
               {context?.classes?.map((item: any) => (
-                <option key={item._id} value={item._id}>
-                  {item.name}
-                </option>
+                <option key={item._id} value={item._id}>{item.name}</option>
               ))}
             </select>
           </div>
@@ -340,16 +300,11 @@ export default function ResultEntryPage() {
           {/* SUBJECT */}
           <div>
             <label className="mb-2 block text-sm text-slate-400">Subject</label>
-            <select
-              value={subjectId}
-              onChange={(e) => setSubjectId(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-            >
+            <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none">
               <option value="">Select Subject</option>
               {context?.subjects?.map((item: any) => (
-                <option key={item._id} value={item._id}>
-                  {item.name}
-                </option>
+                <option key={item._id} value={item._id}>{item.name}</option>
               ))}
             </select>
           </div>
@@ -357,16 +312,11 @@ export default function ResultEntryPage() {
           {/* SESSION */}
           <div>
             <label className="mb-2 block text-sm text-slate-400">Session</label>
-            <select
-              value={sessionId}
-              onChange={(e) => setSessionId(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-            >
+            <select value={sessionId} onChange={(e) => setSessionId(e.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none">
               <option value="">Select Session</option>
               {context?.sessions?.map((item: any) => (
-                <option key={item._id} value={item._id}>
-                  {item.name}
-                </option>
+                <option key={item._id} value={item._id}>{item.name}</option>
               ))}
             </select>
           </div>
@@ -374,23 +324,148 @@ export default function ResultEntryPage() {
           {/* TERM */}
           <div>
             <label className="mb-2 block text-sm text-slate-400">Term</label>
-            <select
-              value={termId}
-              onChange={(e) => setTermId(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-            >
+            <select value={termId} onChange={(e) => setTermId(e.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none">
               <option value="">Select Term</option>
               {context?.terms?.map((item: any) => (
-                <option key={item._id} value={item._id}>
-                  {item.name}
-                </option>
+                <option key={item._id} value={item._id}>{item.name}</option>
               ))}
             </select>
           </div>
+
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
+            Students: <span className="ml-2 font-bold text-white">{students.length}</span>
+          </div>
+
+          <div className={`rounded-full px-4 py-2 text-sm ${
+            saving ? "bg-yellow-500/20 text-yellow-300" : "bg-green-500/20 text-green-300"
+          }`}>
+            {saving ? "Saving..." : "Saved"}
+          </div>
+
+          {published && (
+            <div className="rounded-full bg-cyan-500/20 px-4 py-2 text-sm text-cyan-300">
+              Results Published ✔
+            </div>
+          )}
         </div>
       </SectionCard>
 
-      {/* REST OF UI UNCHANGED */}
+      {/* STUDENTS TABLE (UNCHANGED) */}
+      <SectionCard
+        title="Student Results"
+        subtitle="Enter scores for all students in selected class"
+      >
+
+        <div className="mb-5 max-w-md">
+          <div className="relative">
+            <Search size={18} className="pointer-events-none absolute left-4 top-11 text-slate-400" />
+            <div className="[&_input]:pl-11">
+              <FormInput
+                label="Search Students"
+                name="search"
+                value={search}
+                placeholder="Search by name or admission number..."
+                onChange={setSearch}
+              />
+            </div>
+          </div>
+        </div>
+
+        {studentsLoading ? (
+          <PageLoader />
+        ) : filteredStudents.length === 0 ? (
+          <EmptyState title="No students found" description="No students available in selected class." />
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-3xl border border-white/10">
+              <table className="min-w-full">
+
+                <thead className="bg-slate-900">
+                  <tr className="text-left text-sm text-slate-300">
+                    <th className="p-4">Student</th>
+                    <th className="p-4">Admission No</th>
+                    <th className="p-4">CA1</th>
+                    <th className="p-4">CA2</th>
+                    <th className="p-4">Assignment</th>
+                    <th className="p-4">Exam</th>
+                    <th className="p-4">Total</th>
+                    <th className="p-4">Grade</th>
+                    <th className="p-4">Remark</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredStudents.map((student) => (
+                    <tr
+                      key={student.studentId}
+                      className="border-t border-white/5 hover:bg-white/[0.03]"
+                    >
+
+                      <td className="p-4">
+                        <div className="font-semibold text-white">{student.fullName}</div>
+                        <div className="mt-1 text-xs text-slate-400">
+                          {student.gender} • {student.attendanceStatus}
+                        </div>
+                      </td>
+
+                      <td className="p-4 text-slate-300">{student.admissionNumber}</td>
+
+                      {(["ca1", "ca2", "assignment", "exam"] as const).map((field) => (
+                        <td key={field} className="p-4">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={student[field]}
+                            onChange={(e) =>
+                              updateScore(student.studentId, field, Number(e.target.value))
+                            }
+                            className="w-24 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-center text-white outline-none focus:border-cyan-500"
+                          />
+                        </td>
+                      ))}
+
+                      <td className="p-4 text-cyan-300 font-bold">{student.total}</td>
+                      <td className="p-4 text-yellow-300 font-bold">{student.grade}</td>
+                      <td className="p-4 text-slate-300">{student.remark}</td>
+                    </tr>
+                  ))}
+                </tbody>
+
+              </table>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+
+              <button
+                type="button"
+                onClick={saveDraft}
+                disabled={saving}
+                className="rounded-2xl bg-slate-700 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-600 disabled:opacity-60"
+              >
+                <Save size={16} className="mr-2 inline" />
+                Save Draft
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={saving}
+                className="rounded-2xl bg-green-600 px-5 py-3 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-60"
+              >
+                <UploadCloud size={16} className="mr-2 inline" />
+                Publish Results
+              </button>
+
+            </div>
+          </>
+        )}
+
+      </SectionCard>
     </div>
   );
 }
