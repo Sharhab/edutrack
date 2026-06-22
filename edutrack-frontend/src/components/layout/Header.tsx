@@ -39,8 +39,10 @@ export default function Header({
 
   return (
     <header className="card mb-6 flex items-center justify-between gap-4 px-5 py-4 print:hidden">
-      {/* LEFT SIDE */}
-      <div className="flex items-center gap-4">
+
+      {/* ================= LEFT SIDE ================= */}
+      <div className="flex items-center gap-5">
+
         {/* MOBILE MENU */}
         <button
           onClick={onMenuToggle}
@@ -49,28 +51,39 @@ export default function Header({
           <Menu size={18} />
         </button>
 
-        {/* LOGO */}
-        <TenantLogo
-          tenant={tenant}
-          size={44}
-          roundedClassName="rounded-2xl"
-        />
+        {/* ================= SCHOOL IDENTITY BLOCK ================= */}
+        <div className="flex items-center gap-3">
 
-        {/* SCHOOL INFO */}
-        <div className="leading-tight">
-          <p className="text-xs text-slate-400">School</p>
+          {/* LOGO */}
+          <TenantLogo
+            tenant={tenant}
+            size={44}
+            roundedClassName="rounded-2xl"
+          />
 
-          <h2 className="text-sm font-semibold text-white">
-            {schoolName}
-          </h2>
+          {/* SCHOOL NAME + BADGE + ROLE CONTEXT */}
+          <div className="leading-tight">
+            <p className="text-[11px] text-slate-400">
+              School
+            </p>
 
-          <div className="mt-1">
-            <TenantBadge tenant={tenant} />
+            <h2 className="text-sm font-semibold text-white">
+              {schoolName}
+            </h2>
+
+            <div className="mt-1 flex items-center gap-2">
+              <TenantBadge tenant={tenant} />
+
+              {/* optional role context (light, non-intrusive) */}
+              <span className="text-[11px] text-slate-500">
+                {formatRole(user?.role)}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* PAGE TITLE */}
-        <div className="ml-4 hidden border-l border-white/10 pl-4 md:block">
+        {/* ================= PAGE TITLE ================= */}
+        <div className="ml-2 hidden border-l border-white/10 pl-4 md:block">
           <h1 className="text-lg font-bold text-white">
             {title}
           </h1>
@@ -80,8 +93,9 @@ export default function Header({
         </div>
       </div>
 
-      {/* RIGHT SIDE */}
+      {/* ================= RIGHT SIDE ================= */}
       <div className="flex items-center gap-3">
+
         <div className="hidden text-right sm:block">
           <p className="text-sm font-semibold text-white">
             {userName}

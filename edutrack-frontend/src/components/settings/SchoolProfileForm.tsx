@@ -5,8 +5,16 @@ import FormInput from "../../components/ui/FormInput";
 import SelectField from "../../components/ui/SelectField";
 import { SchoolProfileFormValues } from "../../types/settings";
 
+type Option = {
+  label: string;
+  value: string;
+};
+
 type SchoolProfileFormProps = {
   values: SchoolProfileFormValues;
+
+  sessions?: Option[];
+  terms?: Option[];
 
   onChange: (
     field: keyof SchoolProfileFormValues,
@@ -32,14 +40,14 @@ const presetColors = [
 
 export default function SchoolProfileForm({
   values,
+  sessions = [],
+  terms = [],
   onChange,
   onSubmit,
   submitting = false,
 }: SchoolProfileFormProps) {
   const fileInputRef =
-    useRef<HTMLInputElement | null>(
-      null
-    );
+    useRef<HTMLInputElement | null>(null);
 
   const previewUrl = useMemo(() => {
     if (values.logoFile) {
@@ -70,7 +78,7 @@ export default function SchoolProfileForm({
   return (
     <div className="space-y-6">
       {/* =========================
-          BASIC DETAILS
+          SCHOOL INFORMATION
       ========================= */}
       <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
         <div className="mb-5">
@@ -79,8 +87,7 @@ export default function SchoolProfileForm({
           </h3>
 
           <p className="mt-1 text-sm text-slate-400">
-            Basic information about
-            your school
+            Basic information about your school.
           </p>
         </div>
 
@@ -89,7 +96,7 @@ export default function SchoolProfileForm({
             label="School Name"
             name="schoolName"
             value={values.schoolName}
-            placeholder="Globstand International School"
+            placeholder="Demo Academic School"
             onChange={(value) =>
               onChange(
                 "schoolName",
@@ -120,7 +127,10 @@ export default function SchoolProfileForm({
             value={values.email}
             placeholder="school@example.com"
             onChange={(value) =>
-              onChange("email", value)
+              onChange(
+                "email",
+                value
+              )
             }
           />
 
@@ -128,9 +138,12 @@ export default function SchoolProfileForm({
             label="Phone"
             name="phone"
             value={values.phone}
-            placeholder="080..."
+            placeholder="08012345678"
             onChange={(value) =>
-              onChange("phone", value)
+              onChange(
+                "phone",
+                value
+              )
             }
           />
         </div>
@@ -152,7 +165,7 @@ export default function SchoolProfileForm({
       </div>
 
       {/* =========================
-          SESSION SETTINGS
+          ACADEMIC SETTINGS
       ========================= */}
       <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
         <div className="mb-5">
@@ -161,23 +174,28 @@ export default function SchoolProfileForm({
           </h3>
 
           <p className="mt-1 text-sm text-slate-400">
-            Current academic session
-            and term
+            Select the active academic session and term.
           </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <FormInput
+          <SelectField
             label="Current Session"
             name="currentSession"
             value={values.currentSession}
-            placeholder="2025/2026"
             onChange={(value) =>
               onChange(
                 "currentSession",
                 value
               )
             }
+            options={[
+              {
+                label: "Select Session",
+                value: "",
+              },
+              ...sessions,
+            ]}
           />
 
           <SelectField
@@ -192,22 +210,10 @@ export default function SchoolProfileForm({
             }
             options={[
               {
-                label:
-                  "Select Term",
+                label: "Select Term",
                 value: "",
               },
-              {
-                label: "1st Term",
-                value: "1st Term",
-              },
-              {
-                label: "2nd Term",
-                value: "2nd Term",
-              },
-              {
-                label: "3rd Term",
-                value: "3rd Term",
-              },
+              ...terms,
             ]}
           />
         </div>
@@ -223,8 +229,7 @@ export default function SchoolProfileForm({
           </h3>
 
           <p className="mt-1 text-sm text-slate-400">
-            Customize your school
-            appearance
+            Customize your school's appearance.
           </p>
         </div>
 
@@ -243,12 +248,22 @@ export default function SchoolProfileForm({
             {previewUrl ? (
               <img
                 src={previewUrl}
-                alt="School logo"
+                alt="School Logo"
                 className="mb-4 h-28 w-28 rounded-2xl object-cover shadow-lg"
               />
             ) : (
-              <div className="mb-4 flex h-28 w-28 items-center justify-center rounded-2xl bg-white/5 text-4xl">
-                🏫
+              <div
+                className="mb-4 flex h-28 w-28 items-center justify-center rounded-2xl text-3xl font-bold text-white"
+                style={{
+                  background:
+                    values.themeColor ||
+                    "#06b6d4",
+                }}
+              >
+                {values.schoolName
+                  ?.substring(0, 2)
+                  ?.toUpperCase() ||
+                  "SC"}
               </div>
             )}
 
@@ -257,7 +272,7 @@ export default function SchoolProfileForm({
             </p>
 
             <p className="mt-1 text-xs text-slate-400">
-              PNG, JPG or WEBP
+              PNG, JPG, WEBP
             </p>
 
             <input
@@ -276,7 +291,7 @@ export default function SchoolProfileForm({
             />
           </div>
 
-          {previewUrl ? (
+          {previewUrl && (
             <button
               type="button"
               onClick={removeLogo}
@@ -284,7 +299,7 @@ export default function SchoolProfileForm({
             >
               Remove Logo
             </button>
-          ) : null}
+          )}
         </div>
 
         {/* THEME COLORS */}
@@ -319,7 +334,6 @@ export default function SchoolProfileForm({
               )
             )}
 
-            {/* CUSTOM COLOR */}
             <label className="relative flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5">
               <input
                 type="color"
@@ -344,9 +358,9 @@ export default function SchoolProfileForm({
       </div>
 
       {/* =========================
-          SAVE BUTTON
+          SAVE
       ========================= */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-4">
         <button
           type="button"
           onClick={onSubmit}
@@ -359,8 +373,7 @@ export default function SchoolProfileForm({
         </button>
 
         <p className="text-sm text-slate-400">
-          Changes update your school
-          branding instantly.
+          Changes update your school branding instantly.
         </p>
       </div>
     </div>
