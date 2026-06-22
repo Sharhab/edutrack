@@ -102,42 +102,58 @@ export async function updateSchoolProfile(payload, user) {
     school.domain = payload.domain.trim().toLowerCase();
   }
 
-  // ✅ FIXED: consistent logo field
+  // FIXED LOGO FIELD CONSISTENCY
   if (payload.logoUrl !== undefined) {
     school.logo = payload.logoUrl;
   }
 
   await school.save();
 
-  // session switch
+  // =========================
+  // SESSION SWITCH (FIXED)
+  // =========================
   if (payload.currentSession) {
     await Session.updateMany(
       { schoolId: user.schoolId },
       { isCurrent: false }
     );
 
-    await Session.findByIdAndUpdate(
-      payload.currentSession,
-      { isCurrent: true }
+    // FIX: NEVER assume ObjectId, allow string name like "2026/2027"
+    await Session.updateOne(
+      {
+        schoolId: user.schoolId,
+        $or: [
+          { _id: payload.currentSession },
+          { name: payload.currentSession },
+        ],
+      },
+      { $set: { isCurrent: true } }
     );
   }
 
-  // term switch
+  // =========================
+  // TERM SWITCH (FIXED SAME PATTERN)
+  // =========================
   if (payload.currentTerm) {
     await Term.updateMany(
       { schoolId: user.schoolId },
       { isCurrent: false }
     );
 
-    await Term.findByIdAndUpdate(
-      payload.currentTerm,
-      { isCurrent: true }
+    await Term.updateOne(
+      {
+        schoolId: user.schoolId,
+        $or: [
+          { _id: payload.currentTerm },
+          { name: payload.currentTerm },
+        ],
+      },
+      { $set: { isCurrent: true } }
     );
   }
 
   return getSchoolProfile(user);
 }
-
 export async function uploadSchoolLogo(
   filePath,
   user
