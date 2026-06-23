@@ -10,9 +10,9 @@ function mapProfile(
   currentSession,
   currentTerm
 ) {
-  const logoUrl = school.logo
-    ? `${process.env.APP_URL}${school.logo}`
-    : "";
+  const apiUrl =
+    process.env.APP_URL ||
+    "https://edutrack-dpui.onrender.com";
 
   return {
     _id: school._id,
@@ -35,7 +35,9 @@ function mapProfile(
       school.currentTerm ||
       "",
 
-    logoUrl,
+    logoUrl: school.logo
+      ? `${apiUrl}${school.logo}`
+      : "",
 
     themeColor:
       school.themeColor ||

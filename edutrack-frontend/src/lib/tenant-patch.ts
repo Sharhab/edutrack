@@ -6,8 +6,14 @@ export function mapSchoolProfileToTenantPatch(
 ): Partial<ResolvedTenant> {
   return {
     schoolName: profile.schoolName,
+
     logoUrl: profile.logoUrl,
     themeColor: profile.themeColor,
+
+    principalName: profile.principalName,
+
+    currentSession: profile.currentSession,
+    currentTerm: profile.currentTerm,
 
     address: profile.address,
     phone: profile.phone,
@@ -15,6 +21,8 @@ export function mapSchoolProfileToTenantPatch(
 
     domain: profile.domain,
     slug: profile.slug,
+
     fullDomain: profile.fullDomain,
+   
   };
 }

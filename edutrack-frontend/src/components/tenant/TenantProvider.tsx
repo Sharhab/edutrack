@@ -1,52 +1,124 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { ResolvedTenant } from "../../types/tenant-resolver";
-import { getResolvedTenant, saveResolvedTenant } from "../../lib/tenant-storage";
+
+import {
+  getResolvedTenant,
+  saveResolvedTenant,
+} from "../../lib/tenant-storage";
 
 type TenantContextType = {
   tenant: ResolvedTenant | null;
-  setTenant: (tenant: ResolvedTenant | null) => void;
+
+  setTenant: (
+    tenant: ResolvedTenant | null
+  ) => void;
+
+  patchTenant: (
+    updates: Partial<ResolvedTenant>
+  ) => void;
+
   clearTenant: () => void;
 };
 
-const TenantContext = createContext<TenantContextType | null>(null);
+const TenantContext =
+  createContext<TenantContextType | null>(
+    null
+  );
 
-export function TenantProvider({ children }: { children: React.ReactNode }) {
-  const [tenant, setTenantState] = useState<ResolvedTenant | null>(null);
+export function TenantProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [tenant, setTenantState] =
+    useState<ResolvedTenant | null>(
+      null
+    );
 
   useEffect(() => {
-    const saved = getResolvedTenant();
-    if (saved) setTenantState(saved);
+    const saved =
+      getResolvedTenant();
+
+    if (saved) {
+      setTenantState(saved);
+    }
   }, []);
 
-  function setTenant(nextTenant: ResolvedTenant | null) {
+  function setTenant(
+    nextTenant:
+      | ResolvedTenant
+      | null
+  ) {
     setTenantState(nextTenant);
-    saveResolvedTenant(nextTenant);
+
+    saveResolvedTenant(
+      nextTenant
+    );
+  }
+
+  function patchTenant(
+    updates: Partial<ResolvedTenant>
+  ) {
+    setTenantState((prev) => {
+      if (!prev) return null;
+
+      const updated = {
+        ...prev,
+        ...updates,
+      };
+
+      saveResolvedTenant(
+        updated
+      );
+
+      return updated;
+    });
   }
 
   function clearTenant() {
     setTenantState(null);
-    saveResolvedTenant(null);
+
+    saveResolvedTenant(
+      null
+    );
   }
 
   const value = useMemo(
     () => ({
       tenant,
       setTenant,
+      patchTenant,
       clearTenant,
     }),
     [tenant]
   );
 
-  return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
+  return (
+    <TenantContext.Provider
+      value={value}
+    >
+      {children}
+    </TenantContext.Provider>
+  );
 }
 
 export function useTenant() {
-  const context = useContext(TenantContext);
+  const context =
+    useContext(TenantContext);
 
   if (!context) {
-    throw new Error("useTenant must be used inside TenantProvider");
+    throw new Error(
+      "useTenant must be used inside TenantProvider"
+    );
   }
 
   return context;
