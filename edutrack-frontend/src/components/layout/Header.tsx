@@ -27,6 +27,7 @@ export default function Header({
 }: HeaderProps) {
   const { user, logout } = useAuth();
   const { tenant } = useTenant();
+console.log("HEADER TENANT", tenant);
 
   const userName =
     user?.name ||
