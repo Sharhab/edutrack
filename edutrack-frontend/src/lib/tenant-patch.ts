@@ -1,3 +1,5 @@
+// lib/tenant-patch.ts
+
 import { SchoolProfile } from "../types/settings";
 import { ResolvedTenant } from "../types/tenant-resolver";
 
@@ -6,7 +8,6 @@ export function mapSchoolProfileToTenantPatch(
 ): Partial<ResolvedTenant> {
   return {
     schoolName: profile.schoolName,
-
     logoUrl: profile.logoUrl,
     themeColor: profile.themeColor,
 
@@ -24,5 +25,7 @@ export function mapSchoolProfileToTenantPatch(
 
     fullDomain: profile.fullDomain,
    
+
+    status: "active",
   };
 }

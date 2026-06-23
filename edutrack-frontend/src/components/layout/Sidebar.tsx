@@ -101,18 +101,39 @@ export default function Sidebar({ role, onNavigate }: SidebarProps) {
 
       <div className="relative flex h-full flex-col p-5">
         {/* HEADER */}
-        <div className="mb-8 flex items-center gap-3">
-          <TenantLogo tenant={tenant} size={48} roundedClassName="rounded-2xl" />
+<div className="mb-8 flex items-center gap-4">
+  {tenant?.logoUrl ? (
+    <img
+      src={tenant.logoUrl}
+      alt={tenant.schoolName}
+      className="h-14 w-14 rounded-2xl object-cover border border-white/10"
+    />
+  ) : (
+    <div
+      className="flex h-14 w-14 items-center justify-center rounded-2xl text-xl font-bold text-white"
+      style={{
+        background:
+          tenant?.themeColor || "#06b6d4",
+      }}
+    >
+      🏫
+    </div>
+  )}
 
-          <div>
-            <p className="text-lg font-bold text-white">
-              {tenant?.schoolName || "EduTrack"}
-            </p>
-            <p className="text-xs text-slate-400">
-              {tenant ? "Tenant workspace" : "Premium workspace"}
-            </p>
-          </div>
-        </div>
+  <div className="min-w-0">
+    <p className="truncate text-base font-bold text-white">
+      {tenant?.schoolName || "EduTrack"}
+    </p>
+
+    <p className="text-xs text-slate-400">
+      {tenant?.currentSession || ""}
+    </p>
+
+    <p className="text-xs text-cyan-300">
+      {tenant?.currentTerm || ""}
+    </p>
+  </div>
+</div>
 
         {/* ROLE CARD */}
         <div className="mb-6 rounded-2xl border border-white/10 bg-slate-900 p-4">
