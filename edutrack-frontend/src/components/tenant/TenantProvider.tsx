@@ -70,21 +70,39 @@ export function TenantProvider({
     );
   }
 
-  function patchTenant(
-    updates: Partial<ResolvedTenant>
-  ) {
-    setTenantState((previous) => {
-      const next = {
-        ...(previous || {}),
-        ...updates,
-      } as ResolvedTenant;
+ function patchTenant(
+  updates: Partial<ResolvedTenant>
+) {
+  setTenantState((previous) => {
+    if (!previous) {
+      const next =
+        updates as ResolvedTenant;
 
       saveResolvedTenant(next);
 
-      return next;
-    });
-  }
+      console.log(
+        "CREATED TENANT:",
+        next
+      );
 
+      return next;
+    }
+
+    const next = {
+      ...previous,
+      ...updates,
+    };
+
+    saveResolvedTenant(next);
+
+    console.log(
+      "UPDATED TENANT:",
+      next
+    );
+
+    return next;
+  });
+}
   function clearTenant() {
     setTenantState(null);
 

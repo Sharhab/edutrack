@@ -71,7 +71,7 @@ console.log("PATCH EXISTS", patchTenant);
 
         themeColor: profile.themeColor || "#06b6d4",
       });
-
+console.log("PATCH DATA", mapSchoolProfileToTenantPatch(profile));
       patchTenant(mapSchoolProfileToTenantPatch(profile));
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
