@@ -37,6 +37,8 @@ const initialForm: SchoolProfileFormValues = {
 export default function SchoolAdminSettingsPage() {
   const { patchTenant } = useTenant();
 
+
+console.log("PATCH EXISTS", patchTenant);
   const [form, setForm] =
     useState<SchoolProfileFormValues>(initialForm);
 
