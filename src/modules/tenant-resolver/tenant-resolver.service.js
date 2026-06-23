@@ -5,6 +5,15 @@ import { ApiError } from "../../utils/apiError.js";
 
 /**
  * =====================================
+ * APP URL
+ * =====================================
+ */
+const APP_URL =
+  process.env.APP_URL ||
+  "https://edutrack-dpui.onrender.com";
+
+/**
+ * =====================================
  * SAFE NORMALIZER
  * =====================================
  */
@@ -38,6 +47,24 @@ function safeObjectId(id) {
 
 /**
  * =====================================
+ * ABSOLUTE FILE URL
+ * =====================================
+ */
+function absoluteFileUrl(path) {
+  if (!path) return "";
+
+  if (
+    path.startsWith("http://") ||
+    path.startsWith("https://")
+  ) {
+    return path;
+  }
+
+  return `${APP_URL}${path}`;
+}
+
+/**
+ * =====================================
  * MAP TENANT PAYLOAD
  * =====================================
  */
@@ -45,35 +72,73 @@ function mapTenantPayload(school) {
   return {
     _id: safeObjectId(school._id),
 
-    schoolName: school.name,
+    schoolName: school.name || "",
 
-    slug: school.slug,
+    slug: school.slug || "",
 
-    logoUrl: school.logo || "",
+    currentSession:
+      school.currentSession || "",
+
+    currentTerm:
+      school.currentTerm || "",
+
+    logoUrl: absoluteFileUrl(
+      school.logo
+    ),
+
+    faviconUrl: absoluteFileUrl(
+      school.favicon
+    ),
 
     themeColor:
       school.themeColor || "#2563eb",
 
     domain: school.domain || "",
 
-    email: school.email || "",
+    fullDomain:
+      school.fullDomain || "",
 
-    phone: school.phone || "",
+    customDomain:
+      school.customDomain || "",
 
-    address: school.address || "",
+    email:
+      school.email || "",
+
+    phone:
+      school.phone || "",
+
+    address:
+      school.address || "",
 
     principalName:
       school.principalName || "",
+
+    motto:
+      school.motto || "",
 
     status: school.isActive
       ? "active"
       : "inactive",
 
     subscriptionStatus:
-      school.subscriptionStatus || "inactive",
+      school.subscriptionStatus ||
+      "trial",
 
     expiryDate:
-      school.expiryDate || null,
+      school.subscriptionExpiresAt ||
+      null,
+
+    billing: {
+      status:
+        school.billingStatus ||
+        "unknown",
+
+      isTrial:
+        school.billingStatus ===
+        "trial",
+
+      daysLeft: null,
+    },
   };
 }
 
@@ -82,12 +147,9 @@ function mapTenantPayload(school) {
  * TENANT VALIDATION
  * =====================================
  */
- /**
- * =====================================
- * TENANT VALIDATION
- * =====================================
- */
-function ensureTenantIsUsable(school) {
+function ensureTenantIsUsable(
+  school
+) {
   if (!school) {
     throw new ApiError(
       404,
@@ -95,9 +157,6 @@ function ensureTenantIsUsable(school) {
     );
   }
 
-  /**
-   * School manually disabled
-   */
   if (!school.isActive) {
     throw new ApiError(
       403,
@@ -105,9 +164,6 @@ function ensureTenantIsUsable(school) {
     );
   }
 
-  /**
-   * Onboarding suspended
-   */
   if (
     school.onboardingStatus ===
     "suspended"
@@ -118,9 +174,6 @@ function ensureTenantIsUsable(school) {
     );
   }
 
-  /**
-   * Billing blocked
-   */
   if (
     school.billingStatus ===
     "blocked"
@@ -131,9 +184,6 @@ function ensureTenantIsUsable(school) {
     );
   }
 
-  /**
-   * Expired subscription
-   */
   if (
     school.billingStatus ===
     "expired"
@@ -144,21 +194,6 @@ function ensureTenantIsUsable(school) {
     );
   }
 
-  /**
-   * Allowed states:
-   *
-   * trial
-   * active
-   * pending_payment
-   *
-   * These schools should still be able
-   * to access:
-   *
-   * - school landing page
-   * - login page
-   * - onboarding flow
-   * - payment page
-   */
   const allowedBillingStatuses = [
     "trial",
     "active",
@@ -177,9 +212,6 @@ function ensureTenantIsUsable(school) {
     );
   }
 
-  /**
-   * Allowed subscription states
-   */
   const allowedSubscriptionStatuses =
     [
       "trial",
@@ -201,12 +233,15 @@ function ensureTenantIsUsable(school) {
 
   return true;
 }
+
 /**
  * =====================================
  * RESOLVE BY SLUG
  * =====================================
  */
-export async function resolveTenantBySlug(slug) {
+export async function resolveTenantBySlug(
+  slug
+) {
   const normalizedSlug =
     normalize(slug);
 
@@ -227,7 +262,7 @@ export async function resolveTenantBySlug(slug) {
   return {
     tenant:
       mapTenantPayload(school),
-    };
+  };
 }
 
 /**
@@ -258,7 +293,7 @@ export async function resolveTenantByDomain(
   return {
     tenant:
       mapTenantPayload(school),
-    };
+  };
 }
 
 /**
@@ -279,35 +314,54 @@ export async function getPublicTenantPage(
 
   ensureTenantIsUsable(school);
 
+  const tenant =
+    mapTenantPayload(school);
+
   return {
-    tenant:
-      mapTenantPayload(school),
+    tenant,
 
-   page: {
-  schoolName:
-    school.name,
+    page: {
+      schoolName:
+        tenant.schoolName,
 
-  logoUrl:
-    school.logo || "",
+      logoUrl:
+        tenant.logoUrl,
 
-  themeColor:
-    school.themeColor ||
-    "#2563eb",
+      faviconUrl:
+        tenant.faviconUrl,
 
-  email:
-    school.email || "",
+      themeColor:
+        tenant.themeColor,
 
-  phone:
-    school.phone || "",
+      email:
+        tenant.email,
 
-  address:
-    school.address || "",
+      phone:
+        tenant.phone,
 
-  principalName:
-    school.principalName || "",
+      address:
+        tenant.address,
 
-  domain:
-    school.domain || "",
-},
+      principalName:
+        tenant.principalName,
+
+      currentSession:
+        tenant.currentSession,
+
+      currentTerm:
+        tenant.currentTerm,
+
+      domain:
+        tenant.domain,
+
+      fullDomain:
+        tenant.fullDomain,
+
+      customDomain:
+        tenant.customDomain,
+
+      motto:
+        tenant.motto,
+    },
   };
 }
