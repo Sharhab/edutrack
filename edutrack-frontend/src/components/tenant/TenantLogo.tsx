@@ -1,5 +1,8 @@
 import { ResolvedTenant } from "../../types/tenant-resolver";
-import { getBrandGradient, getBrandInitials } from "../../lib/tenant-branding";
+import {
+  getBrandGradient,
+  getBrandInitials,
+} from "../../lib/tenant-branding";
 
 type TenantLogoProps = {
   tenant?: ResolvedTenant | null;
@@ -14,24 +17,39 @@ export default function TenantLogo({
   roundedClassName = "rounded-2xl",
   textClassName = "text-white font-bold",
 }: TenantLogoProps) {
+  const hasLogo =
+    !!tenant?.logoUrl &&
+    tenant.logoUrl.trim() !== "";
+
   return (
     <div
-      className={`flex items-center justify-center overflow-hidden ${roundedClassName} ${textClassName}`}
+      className={`overflow-hidden flex items-center justify-center shrink-0 ${roundedClassName}`}
       style={{
         width: size,
         height: size,
-        background: getBrandGradient(tenant),
+        background: hasLogo
+          ? "transparent"
+          : getBrandGradient(tenant),
       }}
     >
-      {tenant?.logoUrl ? (
+      {hasLogo ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={tenant.logoUrl}
-          alt={tenant.schoolName || "Tenant Logo"}
+          alt={
+            tenant.schoolName ||
+            "School Logo"
+          }
           className="h-full w-full object-cover"
+          onError={(e) => {
+            e.currentTarget.style.display =
+              "none";
+          }}
         />
       ) : (
-        getBrandInitials(tenant)
+        <span className={textClassName}>
+          {getBrandInitials(tenant)}
+        </span>
       )}
     </div>
   );

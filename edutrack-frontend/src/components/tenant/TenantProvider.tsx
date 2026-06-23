@@ -8,7 +8,9 @@ import {
   useState,
 } from "react";
 
-import { ResolvedTenant } from "../../types/tenant-resolver";
+import {
+  ResolvedTenant,
+} from "../../types/tenant-resolver";
 
 import {
   getResolvedTenant,
@@ -17,15 +19,10 @@ import {
 
 type TenantContextType = {
   tenant: ResolvedTenant | null;
-
-  setTenant: (
-    tenant: ResolvedTenant | null
-  ) => void;
-
+  setTenant: (tenant: ResolvedTenant | null) => void;
   patchTenant: (
-    updates: Partial<ResolvedTenant>
+    patch: Partial<ResolvedTenant>
   ) => void;
-
   clearTenant: () => void;
 };
 
@@ -40,9 +37,7 @@ export function TenantProvider({
   children: React.ReactNode;
 }) {
   const [tenant, setTenantState] =
-    useState<ResolvedTenant | null>(
-      null
-    );
+    useState<ResolvedTenant | null>(null);
 
   useEffect(() => {
     const saved =
@@ -54,42 +49,32 @@ export function TenantProvider({
   }, []);
 
   function setTenant(
-    nextTenant:
-      | ResolvedTenant
-      | null
+    nextTenant: ResolvedTenant | null
   ) {
     setTenantState(nextTenant);
-
-    saveResolvedTenant(
-      nextTenant
-    );
+    saveResolvedTenant(nextTenant);
   }
 
   function patchTenant(
-    updates: Partial<ResolvedTenant>
+    patch: Partial<ResolvedTenant>
   ) {
     setTenantState((prev) => {
       if (!prev) return null;
 
-      const updated = {
+      const next = {
         ...prev,
-        ...updates,
+        ...patch,
       };
 
-      saveResolvedTenant(
-        updated
-      );
+      saveResolvedTenant(next);
 
-      return updated;
+      return next;
     });
   }
 
   function clearTenant() {
     setTenantState(null);
-
-    saveResolvedTenant(
-      null
-    );
+    saveResolvedTenant(null);
   }
 
   const value = useMemo(
