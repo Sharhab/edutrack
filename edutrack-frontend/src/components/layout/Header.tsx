@@ -15,7 +15,9 @@ function formatRole(role?: string) {
 
   return role
     .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\b\w/g, (c) =>
+      c.toUpperCase()
+    );
 }
 
 export default function Header({
@@ -28,12 +30,17 @@ export default function Header({
 
   const userName =
     user?.name ||
-    `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() ||
+    `${user?.firstName ?? ""} ${
+      user?.lastName ?? ""
+    }`.trim() ||
     "User";
+
+  const logoUrl =
+    tenant?.logoUrl?.trim() || "";
 
   return (
     <header className="card mb-6 flex items-center justify-between gap-4 px-5 py-4 print:hidden">
-      {/* LEFT SIDE */}
+      {/* LEFT */}
       <div className="flex items-center gap-4">
         {/* MOBILE MENU */}
         <button
@@ -43,52 +50,64 @@ export default function Header({
           <Menu size={18} />
         </button>
 
-        {/* SCHOOL LOGO */}
-        {tenant?.logoUrl ? (
-          <img
-            src={tenant.logoUrl}
-            alt={tenant.schoolName}
-            className="h-14 w-14 rounded-2xl object-cover border border-white/10"
-          />
-        ) : (
-          <div
-            className="flex h-14 w-14 items-center justify-center rounded-2xl text-lg font-bold text-white"
-            style={{
-              background:
-                tenant?.themeColor || "#06b6d4",
-            }}
-          >
-            🏫
-          </div>
-        )}
+        {/* LOGO */}
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-slate-900">
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={
+                tenant?.schoolName ||
+                "School Logo"
+              }
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-full w-full items-center justify-center text-lg font-bold text-white"
+              style={{
+                background:
+                  tenant?.themeColor ||
+                  "#06b6d4",
+              }}
+            >
+              🏫
+            </div>
+          )}
+        </div>
 
         {/* SCHOOL INFO */}
-        <div>
-          <h2 className="text-lg font-bold text-white">
-            {tenant?.schoolName || " "}
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-bold text-white">
+            {tenant?.schoolName ||
+              "EduTrack"}
           </h2>
 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
             {tenant?.currentSession && (
-              <span>{tenant.currentSession}</span>
+              <span>
+                {tenant.currentSession}
+              </span>
             )}
 
             {tenant?.currentTerm && (
               <>
                 <span>•</span>
-                <span>{tenant.currentTerm}</span>
+                <span>
+                  {tenant.currentTerm}
+                </span>
               </>
             )}
           </div>
 
           {tenant?.principalName && (
             <p className="text-xs text-cyan-300">
-              Principal: {tenant.principalName}
+              Principal:{" "}
+              {tenant.principalName}
             </p>
           )}
         </div>
 
-        {/* PAGE TITLE */}
+        {/* PAGE INFO */}
         <div className="ml-5 hidden border-l border-white/10 pl-5 md:block">
           <h1 className="text-lg font-bold text-white">
             {title}
@@ -100,7 +119,7 @@ export default function Header({
         </div>
       </div>
 
-      {/* RIGHT SIDE */}
+      {/* RIGHT */}
       <div className="flex items-center gap-3">
         <div className="hidden text-right sm:block">
           <p className="text-sm font-semibold text-white">
