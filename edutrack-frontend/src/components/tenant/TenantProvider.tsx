@@ -23,7 +23,7 @@ type TenantContextType = {
   ) => void;
 
   patchTenant: (
-    patch: Partial<ResolvedTenant>
+    updates: Partial<ResolvedTenant>
   ) => void;
 
   clearTenant: () => void;
@@ -40,10 +40,18 @@ export function TenantProvider({
   children: React.ReactNode;
 }) {
   const [tenant, setTenantState] =
-    useState<ResolvedTenant | null>(null);
+    useState<ResolvedTenant | null>(
+      null
+    );
 
   useEffect(() => {
-    const saved = getResolvedTenant();
+    const saved =
+      getResolvedTenant();
+
+    console.log(
+      "SAVED TENANT:",
+      saved
+    );
 
     if (saved) {
       setTenantState(saved);
@@ -51,29 +59,25 @@ export function TenantProvider({
   }, []);
 
   function setTenant(
-    nextTenant: ResolvedTenant | null
+    nextTenant:
+      | ResolvedTenant
+      | null
   ) {
     setTenantState(nextTenant);
-    saveResolvedTenant(nextTenant);
+
+    saveResolvedTenant(
+      nextTenant
+    );
   }
 
   function patchTenant(
-    patch: Partial<ResolvedTenant>
+    updates: Partial<ResolvedTenant>
   ) {
-    setTenantState((prev) => {
-      if (!prev) {
-        const next =
-          patch as ResolvedTenant;
-
-        saveResolvedTenant(next);
-
-        return next;
-      }
-
+    setTenantState((previous) => {
       const next = {
-        ...prev,
-        ...patch,
-      };
+        ...(previous || {}),
+        ...updates,
+      } as ResolvedTenant;
 
       saveResolvedTenant(next);
 
@@ -83,6 +87,7 @@ export function TenantProvider({
 
   function clearTenant() {
     setTenantState(null);
+
     saveResolvedTenant(null);
   }
 
@@ -97,7 +102,9 @@ export function TenantProvider({
   );
 
   return (
-    <TenantContext.Provider value={value}>
+    <TenantContext.Provider
+      value={value}
+    >
       {children}
     </TenantContext.Provider>
   );
