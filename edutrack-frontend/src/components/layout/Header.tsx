@@ -25,7 +25,7 @@ export default function Header({
 }: HeaderProps) {
   const { user, logout } = useAuth();
   const { tenant } = useTenant();
-   console.log("HEADER TENANT", tenant);
+
   const userName =
     user?.name ||
     `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() ||
@@ -33,8 +33,9 @@ export default function Header({
 
   return (
     <header className="card mb-6 flex items-center justify-between gap-4 px-5 py-4 print:hidden">
-      {/* LEFT */}
+      {/* LEFT SIDE */}
       <div className="flex items-center gap-4">
+        {/* MOBILE MENU */}
         <button
           onClick={onMenuToggle}
           className="rounded-2xl border border-white/10 bg-white/5 p-2 text-slate-300 lg:hidden"
@@ -42,7 +43,7 @@ export default function Header({
           <Menu size={18} />
         </button>
 
-        {/* LOGO */}
+        {/* SCHOOL LOGO */}
         {tenant?.logoUrl ? (
           <img
             src={tenant.logoUrl}
@@ -64,10 +65,10 @@ export default function Header({
         {/* SCHOOL INFO */}
         <div>
           <h2 className="text-lg font-bold text-white">
-            {tenant?.schoolName || "EduTrack School"}
+            {tenant?.schoolName || " "}
           </h2>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
             {tenant?.currentSession && (
               <span>{tenant.currentSession}</span>
             )}
@@ -79,6 +80,12 @@ export default function Header({
               </>
             )}
           </div>
+
+          {tenant?.principalName && (
+            <p className="text-xs text-cyan-300">
+              Principal: {tenant.principalName}
+            </p>
+          )}
         </div>
 
         {/* PAGE TITLE */}
@@ -93,7 +100,7 @@ export default function Header({
         </div>
       </div>
 
-      {/* RIGHT */}
+      {/* RIGHT SIDE */}
       <div className="flex items-center gap-3">
         <div className="hidden text-right sm:block">
           <p className="text-sm font-semibold text-white">
