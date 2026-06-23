@@ -8,9 +8,7 @@ import {
   useState,
 } from "react";
 
-import {
-  ResolvedTenant,
-} from "../../types/tenant-resolver";
+import { ResolvedTenant } from "../../types/tenant-resolver";
 
 import {
   getResolvedTenant,
@@ -19,10 +17,15 @@ import {
 
 type TenantContextType = {
   tenant: ResolvedTenant | null;
-  setTenant: (tenant: ResolvedTenant | null) => void;
+
+  setTenant: (
+    tenant: ResolvedTenant | null
+  ) => void;
+
   patchTenant: (
     patch: Partial<ResolvedTenant>
   ) => void;
+
   clearTenant: () => void;
 };
 
@@ -40,8 +43,7 @@ export function TenantProvider({
     useState<ResolvedTenant | null>(null);
 
   useEffect(() => {
-    const saved =
-      getResolvedTenant();
+    const saved = getResolvedTenant();
 
     if (saved) {
       setTenantState(saved);
@@ -59,7 +61,14 @@ export function TenantProvider({
     patch: Partial<ResolvedTenant>
   ) {
     setTenantState((prev) => {
-      if (!prev) return null;
+      if (!prev) {
+        const next =
+          patch as ResolvedTenant;
+
+        saveResolvedTenant(next);
+
+        return next;
+      }
 
       const next = {
         ...prev,
@@ -88,9 +97,7 @@ export function TenantProvider({
   );
 
   return (
-    <TenantContext.Provider
-      value={value}
-    >
+    <TenantContext.Provider value={value}>
       {children}
     </TenantContext.Provider>
   );
