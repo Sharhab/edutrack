@@ -20,26 +20,72 @@ async function ensureSchool(schoolId) {
   return school;
 }
 
+export async function syncSchoolFromSubscription(
+  schoolId
+) {
+  const subscription =
+    await Subscription.findOne({
+      schoolId,
+      status: "active",
+    }).sort({
+      expiresAt: -1,
+      createdAt: -1,
+    });
 
-export async function syncSchoolFromSubscription(schoolId) {
-  const subscription = await Subscription.findOne({ schoolId }).sort({ createdAt: -1 });
+  if (!subscription) {
+    return null;
+  }
 
-  if (!subscription) return;
+  const school =
+    await School.findById(schoolId);
 
-  const school = await School.findById(schoolId);
-  if (!school) return;
+  if (!school) {
+    return null;
+  }
 
-  school.plan = subscription.plan;
-  school.billingCycle = subscription.billingCycle;
-  school.subscriptionStatus = subscription.status;
-  school.subscriptionStartedAt = subscription.startsAt;
-  school.subscriptionExpiresAt = subscription.expiresAt;
+  school.plan =
+    subscription.plan;
 
-  school.isActive = subscription.status === "active";
-  school.isTrial = false; // 🔥 MISSING FIX
+  school.billingCycle =
+    subscription.billingCycle;
+
+  school.subscriptionStatus =
+    subscription.status;
+
+  school.subscriptionStartedAt =
+    subscription.startsAt;
+
+  school.subscriptionExpiresAt =
+    subscription.expiresAt;
+
+  school.isActive =
+    subscription.status === "active";
+
+  school.isTrial = false;
+
+  school.billingStatus =
+    subscription.status;
+
+  if (
+    subscription.status === "active"
+  ) {
+    school.onboardingStatus =
+      "active";
+  }
+
+  if (
+    subscription.status === "expired" ||
+    subscription.status === "cancelled"
+  ) {
+    school.onboardingStatus =
+      "suspended";
+  }
 
   await school.save();
+
+  return school;
 }
+
 /**
  * =========================================
  * INITIALIZE RENEWAL PAYMENT
@@ -132,42 +178,90 @@ export async function initializeRenewalPayment(user, payload) {
 }
 
 export async function paystackWebhookHandler(req, res) {
-  const event = req.body;
+  try {
+    const event = req.body;
 
-  if (event.event !== "charge.success") {
+    if (event.event !== "charge.success") {
+      return res.sendStatus(200);
+    }
+
+    const metadata = event.data?.metadata;
+
+    if (
+      !metadata?.subscriptionId ||
+      !metadata?.schoolId
+    ) {
+      return res.sendStatus(200);
+    }
+
+    const subscription =
+      await Subscription.findById(
+        metadata.subscriptionId
+      );
+
+    if (!subscription) {
+      return res.sendStatus(200);
+    }
+
+    // already processed
+    if (
+      subscription.status === "active" &&
+      subscription.expiresAt &&
+      subscription.expiresAt > new Date()
+    ) {
+      return res.sendStatus(200);
+    }
+
+    const now = new Date();
+
+    const duration =
+      subscription.billingCycle === "monthly"
+        ? 30
+        : subscription.billingCycle === "quarterly"
+        ? 90
+        : 365;
+
+    subscription.status = "active";
+    subscription.isTrial = false;
+    subscription.amount =
+      event.data.amount / 100;
+
+    subscription.startsAt = now;
+
+    subscription.expiresAt = new Date(
+      now.getTime() +
+        duration * 24 * 60 * 60 * 1000
+    );
+
+    await subscription.save();
+
+    // expire all other subscriptions
+    await Subscription.updateMany(
+      {
+        schoolId: metadata.schoolId,
+        _id: { $ne: subscription._id },
+        status: "active",
+      },
+      {
+        $set: {
+          status: "expired",
+        },
+      }
+    );
+
+    await syncSchoolFromSubscription(
+      metadata.schoolId
+    );
+
     return res.sendStatus(200);
+  } catch (error) {
+    console.error(
+      "PAYSTACK WEBHOOK ERROR:",
+      error
+    );
+
+    return res.sendStatus(500);
   }
-
-  const metadata = event.data.metadata;
-
-  if (!metadata?.subscriptionId || !metadata?.schoolId) {
-    return res.sendStatus(200);
-  }
-
-  const subscription = await Subscription.findById(metadata.subscriptionId);
-  if (!subscription) return res.sendStatus(200);
-
-  const now = new Date();
-
-  const duration =
-    subscription.billingCycle === "monthly"
-      ? 30
-      : subscription.billingCycle === "quarterly"
-      ? 90
-      : 365;
-
-  subscription.status = "active";
-  subscription.startsAt = now;
-  subscription.expiresAt = new Date(
-    now.getTime() + duration * 24 * 60 * 60 * 1000
-  );
-
-  await subscription.save();
-
-  // sync school
-  await syncSchoolFromSubscription(metadata.schoolId);
-
-  return res.sendStatus(200);
 }
 
 export async function listInvoices() {
@@ -203,11 +297,9 @@ export async function getSubscriptionById(id) {
     "schoolId",
     "name slug email isActive subscriptionPlan subscriptionStatus"
   );
-
   if (!doc) {
     throw new ApiError(404, "Subscription not found");
   }
-
   return doc;
 }
 
@@ -223,12 +315,12 @@ export async function createSubscription(
     plan: payload.plan,
     amount: payload.amount,
     billingCycle:
-      payload.billingCycle,
+    payload.billingCycle,
     status: payload.status,
     startsAt:
-      payload.startsAt || null,
+    payload.startsAt || null,
     expiresAt:
-      payload.expiresAt || null,
+    payload.expiresAt || null,
     notes: payload.notes || "",
   });
 
@@ -236,24 +328,17 @@ export async function createSubscription(
    * SYNC SCHOOL
    */
   school.plan = payload.plan;
-
   school.billingCycle =
     payload.billingCycle;
-
-  school.subscriptionStatus =
+school.subscriptionStatus =
     payload.status;
-
   school.subscriptionStartedAt =
     payload.startsAt || null;
-
   school.subscriptionExpiresAt =
     payload.expiresAt || null;
-
   school.isActive =
     payload.status === "active";
-
   school.isTrial = false;
-
   if (
     payload.status === "active"
   ) {
@@ -273,7 +358,6 @@ export async function updateSubscription(
 ) {
   const doc =
     await Subscription.findById(id);
-
   if (!doc) {
     throw new ApiError(
       404,
@@ -338,7 +422,6 @@ export async function updateSubscription(
       doc.status === "active";
 
     school.isTrial = false;
-
     /**
      * ONBOARDING STATUS SYNC
      */
@@ -458,27 +541,48 @@ export async function upgradeSubscription(user, payload) {
     throw new ApiError(404, "School not found");
   }
 
-  const plan = payload.plan || school.plan || "starter";
-  const billingCycle = payload.billingCycle || school.billingCycle || "monthly";
+  const plan = payload.plan || "starter";
+  const billingCycle = payload.billingCycle || "monthly";
 
-  // 1. create pending subscription FIRST
-  let subscription = await Subscription.create({
+  // 1. compute amount (same pricing logic)
+  const pricing = {
+    starter: { monthly: 10000, quarterly: 25000, yearly: 70000 },
+    growth: { monthly: 20000, quarterly: 55000, yearly: 140000 },
+    premium: { monthly: 30000, quarterly: 850000, yearly: 220000 },
+  };
+
+  const amount = pricing?.[plan]?.[billingCycle];
+
+  if (!amount) {
+    throw new ApiError(400, "Invalid plan pricing");
+  }
+
+  // 2. deactivate old active subscriptions (IMPORTANT)
+  await Subscription.updateMany(
+    { schoolId: school._id, status: "active" },
+    { status: "expired" }
+  );
+
+  // 3. create NEW subscription (pending)
+  const subscription = await Subscription.create({
     schoolId: school._id,
     plan,
     billingCycle,
-    amount: 0,
+    amount,
     status: "pending",
+    isTrial: false,
     startsAt: null,
     expiresAt: null,
   });
 
-  // 2. initialize Paystack WITH metadata (VERY IMPORTANT)
+  // 4. initialize payment
   const payment = await initializePaystackPayment({
     schoolId: school._id,
     email: school.email,
+    amount,
     plan,
     billingCycle,
-    amount: payload.amount, // MUST exist or calculate
+    callbackUrl: payload.callbackUrl,
     metadata: {
       subscriptionId: subscription._id,
       schoolId: school._id,
@@ -492,7 +596,6 @@ export async function upgradeSubscription(user, payload) {
     subscriptionId: subscription._id,
   };
 }
-
 /**
  * =========================================
  * SCHOOL BILLING HISTORY

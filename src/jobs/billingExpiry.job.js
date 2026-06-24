@@ -6,22 +6,27 @@ export async function runBillingExpiryJob() {
   try {
     const now = new Date();
 
-    // EXPIRE TRIALS
     await School.updateMany(
       {
         billingStatus: "trial",
         trialEndsAt: { $lt: now },
+        subscriptionStatus: { $ne: "active" },
       },
       {
         $set: {
           billingStatus: "expired",
+          subscriptionStatus: "expired",
+          onboardingStatus: "suspended",
           isActive: false,
         },
       }
     );
 
-    console.log("🔥 Trial expiry job completed");
+    console.log("🔥 Billing expiry job completed");
   } catch (error) {
-    console.error("❌ Billing expiry job error:", error);
+    console.error(
+      "❌ Billing expiry job error:",
+      error
+    );
   }
 }
