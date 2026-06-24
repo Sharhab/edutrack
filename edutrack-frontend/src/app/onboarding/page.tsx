@@ -5,7 +5,7 @@ import axios from "axios";
 
 import OnboardingForm from "../../components/onboarding/OnboardinForm";
 import { OnboardingFormValues } from "../../types/onboarding";
-import { useTenant } from "../../components/providers/TenantProvider";
+import { useTenant } from "../../components/tenant/TenantProvider";
 
 /**
  * API
