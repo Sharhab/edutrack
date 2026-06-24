@@ -16,7 +16,7 @@ import {
 
 import { SchoolProfileFormValues } from "../../../../types/settings";
 
-import { useTenant } from "../../../../components/providers/TenantProvider";
+import { useTenant } from "../../../../components/tenant/TenantProvider";
 import { mapSchoolProfileToTenantPatch } from "../../../../lib/tenant-patch";
 
 const initialForm: SchoolProfileFormValues = {
