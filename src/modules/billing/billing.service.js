@@ -22,9 +22,7 @@ async function ensureSchool(schoolId) {
 
 
 export async function syncSchoolFromSubscription(schoolId) {
-  const subscription = await Subscription.findOne({
-    schoolId,
-  }).sort({ createdAt: -1 });
+  const subscription = await Subscription.findOne({ schoolId }).sort({ createdAt: -1 });
 
   if (!subscription) return;
 
@@ -38,6 +36,7 @@ export async function syncSchoolFromSubscription(schoolId) {
   school.subscriptionExpiresAt = subscription.expiresAt;
 
   school.isActive = subscription.status === "active";
+  school.isTrial = false; // 🔥 MISSING FIX
 
   await school.save();
 }
@@ -131,6 +130,7 @@ export async function initializeRenewalPayment(user, payload) {
     amount,
   };
 }
+
 export async function paystackWebhookHandler(req, res) {
   const event = req.body;
 
@@ -140,18 +140,12 @@ export async function paystackWebhookHandler(req, res) {
 
   const metadata = event.data.metadata;
 
-  const schoolId = metadata.schoolId;
-  const subscriptionId = metadata.subscriptionId;
+  if (!metadata?.subscriptionId || !metadata?.schoolId) {
+    return res.sendStatus(200);
+  }
 
-  const amount = event.data.amount / 100;
-
-  const subscription = await Subscription.findById(subscriptionId);
-
+  const subscription = await Subscription.findById(metadata.subscriptionId);
   if (!subscription) return res.sendStatus(200);
-
-  // 1. Activate subscription
-  subscription.status = "active";
-  subscription.amount = amount;
 
   const now = new Date();
 
@@ -162,6 +156,7 @@ export async function paystackWebhookHandler(req, res) {
       ? 90
       : 365;
 
+  subscription.status = "active";
   subscription.startsAt = now;
   subscription.expiresAt = new Date(
     now.getTime() + duration * 24 * 60 * 60 * 1000
@@ -169,24 +164,10 @@ export async function paystackWebhookHandler(req, res) {
 
   await subscription.save();
 
-  // 2. Sync school
-  await syncSchoolFromSubscription(schoolId);
+  // sync school
+  await syncSchoolFromSubscription(metadata.schoolId);
 
   return res.sendStatus(200);
-}
-
-export async function ensureNoActiveSubscription(schoolId) {
-  const active = await Subscription.findOne({
-    schoolId,
-    status: "active",
-  });
-
-  if (active && new Date(active.expiresAt) > new Date()) {
-    throw new ApiError(
-      400,
-      "School already has an active subscription"
-    );
-  }
 }
 
 export async function listInvoices() {
@@ -470,37 +451,46 @@ export async function createInvoice(payload) {
   return getInvoiceById(doc._id);
 }
 
-export async function upgradeSubscription(
-  user,
-  payload
-) {
-  const school = await School.findById(
-    user.schoolId
-  );
+export async function upgradeSubscription(user, payload) {
+  const school = await School.findById(user.schoolId);
 
   if (!school) {
-    throw new ApiError(
-      404,
-      "School not found"
-    );
+    throw new ApiError(404, "School not found");
   }
 
-  const plan =
-    payload.plan || "starter";
+  const plan = payload.plan || school.plan || "starter";
+  const billingCycle = payload.billingCycle || school.billingCycle || "monthly";
 
-  const billingCycle =
-    payload.billingCycle ||
-    "monthly";
+  // 1. create pending subscription FIRST
+  let subscription = await Subscription.create({
+    schoolId: school._id,
+    plan,
+    billingCycle,
+    amount: 0,
+    status: "pending",
+    startsAt: null,
+    expiresAt: null,
+  });
 
-  const payment =
-    await initializePaystackPayment({
+  // 2. initialize Paystack WITH metadata (VERY IMPORTANT)
+  const payment = await initializePaystackPayment({
+    schoolId: school._id,
+    email: school.email,
+    plan,
+    billingCycle,
+    amount: payload.amount, // MUST exist or calculate
+    metadata: {
+      subscriptionId: subscription._id,
       schoolId: school._id,
-      email: school.email,
-      plan,
-      billingCycle,
-    });
+      type: "upgrade",
+    },
+  });
 
-  return payment;
+  return {
+    authorizationUrl: payment.authorizationUrl,
+    reference: payment.reference,
+    subscriptionId: subscription._id,
+  };
 }
 
 /**
