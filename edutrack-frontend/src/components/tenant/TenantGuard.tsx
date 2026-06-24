@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { useTenant } from "../providers/TenantProvider";
+import { useTenant } from "../tenant/TenantProvider";
 import TenantBlockedState from "./TenantBlockedState";
 import {
   isTenantBlocked,

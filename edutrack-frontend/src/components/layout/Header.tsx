@@ -2,7 +2,7 @@
 
 import { LogOut, Menu } from "lucide-react";
 import { useAuth } from "../../components/providers/AuthProvider";
-import { useTenant } from "../../components/providers/TenantProvider";
+import { useTenant } from "../../components/tenant/TenantProvider";
 
 type HeaderProps = {
   title: string;

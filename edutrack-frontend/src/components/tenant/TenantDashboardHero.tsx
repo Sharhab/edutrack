@@ -1,6 +1,6 @@
 "use client";
 
-import { useTenant } from "../../components/providers/TenantProvider";
+import { useTenant } from "../../components/tenant/TenantProvider";
 import TenantLogo from "../../components/tenant/TenantLogo";
 import { getBrandColor } from "../../lib/tenant-branding";
 

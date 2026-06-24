@@ -1,7 +1,7 @@
 "use client";
 
 import { ButtonHTMLAttributes } from "react";
-import { useTenant } from "../../components/providers/TenantProvider";
+import { useTenant } from "../../components/tenant/TenantProvider";
 import { getTenantButtonStyle } from "../../lib/tenant-ui";
 
 type TenantActionButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

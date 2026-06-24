@@ -1,6 +1,6 @@
 "use client";
 
-import { useTenant } from "../../components/providers/TenantProvider";
+import { useTenant } from "../../components/tenant/TenantProvider";
 import TenantFaviconAndTitle from "../../components/tenant/TenantFaviconAndTitle";
 
 type TenantReactiveTitleProps = {

@@ -6,7 +6,7 @@ import axios from "axios";
 
 import api from "../../../lib/axios";
 import { useAuth } from "../../../components/providers/AuthProvider";
-import { useTenant } from "../../../components/providers/TenantProvider";
+import { useTenant } from "../../../components/tenant/TenantProvider";
 
 import TenantBrandCard from "../../../components/tenant/TenantBrandCard";
 import TenantResolverLoader from "../../../components/tenant/TenantResolverLoader";

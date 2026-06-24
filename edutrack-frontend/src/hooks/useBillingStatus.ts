@@ -1,6 +1,6 @@
 // hooks/useBilling.ts
 
-import { useTenant } from "../components/providers/TenantProvider";
+import { useTenant } from "../components/tenant/TenantProvider";
 
 export function useBilling() {
   const { tenant } = useTenant();

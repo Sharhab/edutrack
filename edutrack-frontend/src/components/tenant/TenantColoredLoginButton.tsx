@@ -1,6 +1,6 @@
 "use client";
 
-import { useTenant } from "../../components/providers/TenantProvider";
+import { useTenant } from "../../components/tenant/TenantProvider";
 import { getTenantButtonStyle } from "../../lib/tenant-ui";
 
 type TenantColoredLoginButtonProps = {
