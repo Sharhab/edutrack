@@ -15,7 +15,7 @@ import {
   BadgeDollarSign,
 } from "lucide-react";
 
-import { useTenant } from "../../../components/providers/TenantProvider";
+import { useTenant } from "../../../components/tenant/TenantProvider";
 
 import TenantDashboardHero from "../../../components/tenant/TenantDashboardHero";
 import TenantStatCard from "../../../components/tenant/TenantStatCard";
