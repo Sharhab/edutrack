@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { UserRole } from "../../types/auth";
-import { useTenant } from "../../components/providers/TenantProvider";
+import { useTenant } from "../../components/tenant/TenantProvider";
 import TenantLogo from "../../components/tenant/TenantLogo";
 import TenantThemeSurface from "../../components/tenant/TenantThemeSurface";
 import TenantBadge from "../../components/tenant/TenantBadge";
