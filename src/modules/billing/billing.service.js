@@ -86,6 +86,28 @@ export async function syncSchoolFromSubscription(
   return school;
 }
 
+export async function ensureNoActiveSubscription(
+  schoolId
+) {
+  const active =
+    await Subscription.findOne({
+      schoolId,
+      status: "active",
+    });
+
+  if (
+    active &&
+    active.expiresAt &&
+    new Date(active.expiresAt) >
+      new Date()
+  ) {
+    throw new ApiError(
+      400,
+      "School already has an active subscription"
+    );
+  }
+}
+
 /**
  * =========================================
  * INITIALIZE RENEWAL PAYMENT
