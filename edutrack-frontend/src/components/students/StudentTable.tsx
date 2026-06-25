@@ -26,12 +26,22 @@ function displayName(value: unknown) {
       email?: string;
     };
 
-    const fullName = [obj.firstName, obj.lastName].filter(Boolean).join(" ");
+    const fullName = [obj.firstName, obj.lastName]
+      .filter(Boolean)
+      .join(" ");
 
     return obj.name || fullName || obj.email || "-";
   }
 
   return String(value);
+}
+
+function getStudentFullName(row: Student) {
+  const middle = (row as any).middleName
+    ? ` ${(row as any).middleName} `
+    : " ";
+
+  return `${row.firstName}${middle}${row.lastName}`;
 }
 
 export default function StudentsTable({
@@ -52,53 +62,83 @@ export default function StudentsTable({
     <DataTable<Student>
       data={data}
       columns={[
+        // ================= STUDENT =================
         {
           key: "student",
           title: "Student",
           render: (row) => (
             <div>
               <p className="font-semibold text-white">
-                {row.firstName} {row.lastName}
+                {getStudentFullName(row)}
               </p>
-              <p className="text-xs text-slate-400">{row.email || "-"}</p>
+
+              <p className="text-xs text-slate-400">
+                {row.email || row.phone || "-"}
+              </p>
+
+              <p className="text-[10px] text-slate-500">
+                {row.admissionNumber || "-"}
+              </p>
             </div>
           ),
         },
-        {
-          key: "admissionNumber",
-          title: "Admission No.",
-          render: (row) => row.admissionNumber || "-",
-        },
+
+        // ================= CLASS =================
         {
           key: "className",
           title: "Class",
-          render: (row) => row.className || displayName(row.classId),
+          render: (row) =>
+            row.className || displayName(row.classId),
         },
+
+        // ================= PARENT =================
         {
-          key: "parentName",
+          key: "parent",
           title: "Parent",
-          render: (row) => row.parentName || displayName(row.parentId),
+          render: (row) =>
+            row.parentName || displayName(row.parentId),
         },
+
+        // ================= GENDER =================
         {
           key: "gender",
           title: "Gender",
           render: (row) => row.gender || "-",
         },
+
+        // ================= ENTRY TYPE (NEW ADDITION) =================
+        {
+          key: "entryType",
+          title: "Entry",
+          render: (row) => (row as any).entryType || "-",
+        },
+
+        // ================= STATUS =================
         {
           key: "status",
           title: "Status",
           render: (row) => (
             <Badge
               label={row.status || "active"}
-              variant={row.status === "inactive" ? "warning" : "success"}
+              variant={
+                row.status === "inactive"
+                  ? "warning"
+                  : row.status === "suspended"
+                  ? "danger"
+                  : "success"
+              }
             />
           ),
         },
+
+        // ================= CREATED DATE =================
         {
           key: "createdAt",
           title: "Created",
           render: (row) => formatDate(row.createdAt),
         },
+
+        // ================= ACTIONS =================
         {
           key: "actions",
           title: "Actions",

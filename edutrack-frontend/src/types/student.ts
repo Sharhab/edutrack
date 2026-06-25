@@ -23,15 +23,42 @@ export interface StudentListResponse {
 }
 
 export interface StudentFormValues {
+  // ================= PERSONAL INFO =================
   firstName: string;
+  middleName: string;
   lastName: string;
+
   admissionNumber: string;
   gender: "male" | "female";
   dateOfBirth: string;
+
+  // ================= ACADEMIC =================
   classId: string;
+  entryType: "new" | "transfer" | "promotion" | "reentry";
+  previousSchool: string;
+
+  // ================= LOCATION =================
+  stateOfOrigin: string;
+  lga: string;
+
+  // ================= PARENT / GUARDIAN =================
   parentId: string;
+  emergencyName: string;
+  emergencyPhone: string;
+
+  // ================= CONTACT =================
   email: string;
   phone: string;
   address: string;
-  isActive: string;
+
+  // ================= HEALTH =================
+  bloodGroup: string;
+  genotype: string;
+
+  // ================= STATUS =================
+  status: "active" | "inactive" | "suspended" | "graduated";
+
+  // ================= OPTIONAL SAFETY =================
+  nin?: string;
+  birthCertificateNo?: string;
 }

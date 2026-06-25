@@ -8,10 +8,15 @@ import { getClassOptions } from "../../../../../lib/options";
 
 type StudentRow = {
   firstName: string;
+  middleName: string;
   lastName: string;
   admissionNumber: string;
   gender: string;
+  dateOfBirth: string;
   classId: string;
+  entryType: string;
+  phone: string;
+  status: string;
 };
 
 type ClassOption = {
@@ -20,15 +25,20 @@ type ClassOption = {
 };
 
 export default function StudentBulkPage() {
-  const [rows, setRows] = useState<StudentRow[]>([
-    {
-      firstName: "",
-      lastName: "",
-      admissionNumber: "",
-      gender: "male",
-      classId: "",
-    },
-  ]);
+const [rows, setRows] = useState<StudentRow[]>([
+  {
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    admissionNumber: "",
+    gender: "male",
+    dateOfBirth: "",
+    classId: "",
+    entryType: "new",
+    phone: "",
+    status: "active",
+  },
+]);
 
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,13 +69,18 @@ export default function StudentBulkPage() {
   function addRow() {
     setRows((prev) => [
       ...prev,
-      {
-        firstName: "",
-        lastName: "",
-        admissionNumber: "",
-        gender: "male",
-        classId: "",
-      },
+     {
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  admissionNumber: "",
+  gender: "male",
+  dateOfBirth: "",
+  classId: "",
+  entryType: "new",
+  phone: "",
+  status: "active",
+}
     ]);
   }
 
@@ -106,14 +121,18 @@ export default function StudentBulkPage() {
       setLoading(true);
       setError("");
 
-      const payload = rows.map((r) => ({
-        firstName: r.firstName,
-        lastName: r.lastName,
-        admissionNumber: r.admissionNumber,
-        gender: r.gender,
-        classId: r.classId,
-      }));
-
+       const payload = rows.map((r) => ({
+  firstName: r.firstName,
+  middleName: r.middleName,
+  lastName: r.lastName,
+  admissionNumber: r.admissionNumber,
+  gender: r.gender,
+  dateOfBirth: r.dateOfBirth || null,
+  classId: r.classId,
+  entryType: r.entryType,
+  phone: r.phone,
+  status: r.status,
+}));
       const res = await api.post("/students/bulk-upsert", {
         students: payload,
       });
@@ -124,15 +143,20 @@ export default function StudentBulkPage() {
         `Created: ${stats.created}\nUpdated: ${stats.updated}\nFailed: ${stats.failed}`
       );
 
-      setRows([
-        {
-          firstName: "",
-          lastName: "",
-          admissionNumber: "",
-          gender: "male",
-          classId: "",
-        },
-      ]);
+       setRows([
+  {
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    admissionNumber: "",
+    gender: "male",
+    dateOfBirth: "",
+    classId: "",
+    entryType: "new",
+    phone: "",
+    status: "active",
+  },
+]);
     } catch (e: any) {
       setError(e?.response?.data?.message || "Import failed");
     } finally {
@@ -164,13 +188,18 @@ export default function StudentBulkPage() {
         <table className="w-full text-sm">
           <thead className="bg-white/5">
             <tr>
-              <th className="p-3 text-left">First Name</th>
-              <th className="p-3 text-left">Last Name</th>
-              <th className="p-3 text-left">Admission No</th>
-              <th className="p-3 text-left">Gender</th>
-              <th className="p-3 text-left">Class</th>
-              <th></th>
-            </tr>
+  <th className="p-3 text-left">First Name</th>
+  <th className="p-3 text-left">Middle</th>
+  <th className="p-3 text-left">Last Name</th>
+  <th className="p-3 text-left">Admission No</th>
+  <th className="p-3 text-left">Gender</th>
+  <th className="p-3 text-left">Date of Birth</th>
+  <th className="p-3 text-left">Class</th>
+  <th className="p-3 text-left">Entry</th>
+  <th className="p-3 text-left">Phone</th>
+  <th className="p-3 text-left">Status</th>
+  <th></th>
+</tr>
           </thead>
 
           <tbody>
@@ -185,6 +214,17 @@ export default function StudentBulkPage() {
                     }
                   />
                 </td>
+                    
+                                
+                <td className="p-2">
+  <input
+    className="input"
+    value={row.middleName}
+    onChange={(e) =>
+      updateRow(i, "middleName", e.target.value)
+    }
+  />
+</td>
 
                 <td className="p-2">
                   <input
@@ -195,6 +235,7 @@ export default function StudentBulkPage() {
                     }
                   />
                 </td>
+    
 
                 <td className="p-2">
                   <input
@@ -219,6 +260,17 @@ export default function StudentBulkPage() {
                   </select>
                 </td>
 
+                <td className="p-2">
+  <input
+    type="date"
+    className="input"
+    value={row.dateOfBirth}
+    onChange={(e) =>
+      updateRow(i, "dateOfBirth", e.target.value)
+    }
+  />
+</td>
+
                 {/* CLASS SELECT (REAL DATA) */}
                 <td className="p-2">
                   <select
@@ -242,6 +294,46 @@ export default function StudentBulkPage() {
                     ))}
                   </select>
                 </td>
+
+                    <td className="p-2">
+  <select
+    className="input"
+    value={row.entryType}
+    onChange={(e) =>
+      updateRow(i, "entryType", e.target.value)
+    }
+  >
+    <option value="new">New</option>
+    <option value="transfer">Transfer</option>
+    <option value="promotion">Promotion</option>
+    <option value="reentry">Re-entry</option>
+  </select>
+</td>
+
+     <td className="p-2">
+  <input
+    className="input"
+    value={row.phone}
+    onChange={(e) =>
+      updateRow(i, "phone", e.target.value)
+    }
+  />
+</td> 
+
+<td className="p-2">
+  <select
+    className="input"
+    value={row.status}
+    onChange={(e) =>
+      updateRow(i, "status", e.target.value)
+    }
+  >
+    <option value="active">Active</option>
+    <option value="inactive">Inactive</option>
+    <option value="suspended">Suspended</option>
+    <option value="graduated">Graduated</option>
+  </select>
+</td>
 
                 <td className="p-2 text-center">
                   <button
