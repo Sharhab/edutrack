@@ -22,43 +22,33 @@ export interface StudentListResponse {
   students: Student[];
 }
 
-export interface StudentFormValues {
-  // ================= PERSONAL INFO =================
-  firstName: string;
-  middleName: string;
-  lastName: string;
 
+export interface StudentFormValues {
+  firstName: string;
+  middleName?: string;
+  lastName: string;
   admissionNumber: string;
   gender: "male" | "female";
   dateOfBirth: string;
-
-  // ================= ACADEMIC =================
   classId: string;
-  entryType: "new" | "transfer" | "promotion" | "reentry";
-  previousSchool: string;
-
-  // ================= LOCATION =================
-  stateOfOrigin: string;
-  lga: string;
-
-  // ================= PARENT / GUARDIAN =================
   parentId: string;
-  emergencyName: string;
-  emergencyPhone: string;
-
-  // ================= CONTACT =================
   email: string;
   phone: string;
   address: string;
+  status: string;
 
-  // ================= HEALTH =================
-  bloodGroup: string;
-  genotype: string;
+  entryType?: string;
+  previousSchool?: string;
 
-  // ================= STATUS =================
-  status: "active" | "inactive" | "suspended" | "graduated";
+  stateOfOrigin?: string;
+  lga?: string;
 
-  // ================= OPTIONAL SAFETY =================
+  emergencyName?: string;
+  emergencyPhone?: string;
+
+  bloodGroup?: string;
+  genotype?: string;
+
   nin?: string;
   birthCertificateNo?: string;
 }
