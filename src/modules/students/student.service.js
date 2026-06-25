@@ -34,40 +34,170 @@ export async function createStudent(payload, schoolId) {
   });
 
   if (existing) {
-    throw new ApiError(400, "Student with this admission number already exists");
-  }
-
-  await validateClassId(payload.classId, schoolId);
-  await validateParentIds(payload.parentIds, schoolId);
-
-  const student = await Student.create({
-    schoolId,
-    admissionNumber: payload.admissionNumber,
-    firstName: payload.firstName,
-    lastName: payload.lastName,
-    gender: payload.gender,
-    dateOfBirth: payload.dateOfBirth || null,
-    classId: payload.classId,
-    parentIds: payload.parentIds || [],
-    status: payload.status,
-    enrollmentDate: payload.enrollmentDate || new Date(),
-    photo: payload.photo || "",
-  });
-
-  if (payload.parentIds?.length) {
-    await Parent.updateMany(
-      { _id: { $in: payload.parentIds }, schoolId },
-      { $addToSet: { studentIds: student._id } }
+    throw new ApiError(
+      400,
+      "Student with this admission number already exists"
     );
   }
 
+  // Safe defaults
+  payload.parentIds ??= [];
+  payload.status ??= "active";
+  payload.entryType ??= "new";
+
+  await validateClassId(
+    payload.classId,
+    schoolId
+  );
+
+  await validateParentIds(
+    payload.parentIds,
+    schoolId
+  );
+
+  const student = await Student.create({
+    /**
+     * SCHOOL
+     */
+    schoolId,
+
+    /**
+     * ADMISSION
+     */
+    admissionNumber:
+      payload.admissionNumber,
+
+    enrollmentDate:
+      payload.enrollmentDate ||
+      new Date(),
+
+    entryType:
+      payload.entryType,
+
+    previousSchool:
+      payload.previousSchool || "",
+
+    /**
+     * PERSONAL INFORMATION
+     */
+    firstName:
+      payload.firstName,
+
+    middleName:
+      payload.middleName || "",
+
+    lastName:
+      payload.lastName,
+
+    gender:
+      payload.gender || "male",
+
+    dateOfBirth:
+      payload.dateOfBirth || null,
+
+    /**
+     * LOCATION
+     */
+    stateOfOrigin:
+      payload.stateOfOrigin || "",
+
+    lga:
+      payload.lga || "",
+
+    address:
+      payload.address || "",
+
+    /**
+     * CONTACT
+     */
+    email:
+      payload.email || "",
+
+    phone:
+      payload.phone || "",
+
+    /**
+     * CLASS
+     */
+    classId:
+      payload.classId,
+
+    /**
+     * PARENTS
+     */
+    parentIds:
+      payload.parentIds || [],
+
+    /**
+     * EMERGENCY
+     */
+    emergencyName:
+      payload.emergencyName || "",
+
+    emergencyPhone:
+      payload.emergencyPhone || "",
+
+    /**
+     * HEALTH
+     */
+    bloodGroup:
+      payload.bloodGroup || "",
+
+    genotype:
+      payload.genotype || "",
+
+    /**
+     * DOCUMENTS
+     */
+    nin:
+      payload.nin || "",
+
+    birthCertificateNo:
+      payload.birthCertificateNo || "",
+
+    /**
+     * SYSTEM
+     */
+    status:
+      payload.status,
+
+    photo:
+      payload.photo || "",
+  });
+
+  /**
+   * LINK STUDENT TO PARENTS
+   */
+  if (payload.parentIds?.length) {
+    await Parent.updateMany(
+      {
+        _id: {
+          $in: payload.parentIds,
+        },
+        schoolId,
+      },
+      {
+        $addToSet: {
+          studentIds: student._id,
+        },
+      }
+    );
+  }
+
+  /**
+   * RETURN POPULATED STUDENT
+   */
   return Student.findById(student._id)
-    .populate("classId", "name level")
+    .populate(
+      "classId",
+      "name level"
+    )
     .populate({
       path: "parentIds",
       populate: {
         path: "userId",
-        select: "firstName lastName email phone",
+        select:
+          "firstName lastName email phone",
       },
     });
 }
@@ -274,13 +404,50 @@ export async function bulkUpsertStudents(rows, schoolId) {
         schoolId,
         admissionNumber: row.admissionNumber,
       });
+      
+      if (!row.admissionNumber) {
+  throw new Error(
+    "Admission number is required"
+  );
+}
 
+if (!row.firstName) {
+  throw new Error(
+    "First name is required"
+  );
+}
+
+if (!row.lastName) {
+  throw new Error(
+    "Last name is required"
+  );
+}
       if (existing) {
-        existing.firstName = row.firstName ?? existing.firstName;
-        existing.lastName = row.lastName ?? existing.lastName;
-        existing.gender = row.gender ?? existing.gender;
-        existing.classId = classId;
+       existing.firstName =
+  row.firstName ?? existing.firstName;
 
+existing.middleName =
+  row.middleName ?? existing.middleName;
+
+existing.lastName =
+  row.lastName ?? existing.lastName;
+
+existing.gender =
+  row.gender ?? existing.gender;
+
+existing.dateOfBirth =
+  row.dateOfBirth || existing.dateOfBirth;
+
+existing.phone =
+  row.phone ?? existing.phone;
+
+existing.entryType =
+  row.entryType ?? existing.entryType;
+
+existing.status =
+  row.status ?? existing.status;
+
+existing.classId = classId;
         await existing.save();
 
         updated++;
@@ -291,15 +458,37 @@ export async function bulkUpsertStudents(rows, schoolId) {
         });
       } else {
         await Student.create({
-          schoolId,
-          admissionNumber: row.admissionNumber,
-          firstName: row.firstName,
-          lastName: row.lastName,
-          gender: row.gender || "male",
-          classId,
-          status: "active",
-        });
+  schoolId,
 
+  admissionNumber:
+    row.admissionNumber,
+
+  firstName:
+    row.firstName,
+
+  middleName:
+    row.middleName || "",
+
+  lastName:
+    row.lastName,
+
+  gender:
+    row.gender || "male",
+
+  dateOfBirth:
+    row.dateOfBirth || null,
+
+  phone:
+    row.phone || "",
+
+  entryType:
+    row.entryType || "new",
+
+  classId,
+
+  status:
+    row.status || "active",
+});
         created++;
 
         results.push({
@@ -310,11 +499,13 @@ export async function bulkUpsertStudents(rows, schoolId) {
     } catch (error) {
       failed++;
 
-      results.push({
-        admissionNumber: row.admissionNumber,
-        action: "failed",
-        error: error.message || "Unknown error",
-      });
+     results.push({
+  admissionNumber:
+    row.admissionNumber,
+  student:
+    `${row.firstName} ${row.lastName}`,
+  action: "updated",
+});
     }
   }
 
