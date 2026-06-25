@@ -202,47 +202,152 @@ export async function createStudent(payload, schoolId) {
     });
 }
 
-export async function listStudents(schoolId, query) {
-  const filter = { schoolId };
+export async function listStudents(
+  schoolId,
+  query = {}
+) {
+  const filter = {
+    schoolId,
+  };
 
+  /**
+   * =========================
+   * CLASS FILTER
+   * =========================
+   */
   if (query.classIds) {
     const classIds = query.classIds
       .split(",")
       .filter(Boolean);
 
-    filter.classId = { $in: classIds };
+    filter.classId = {
+      $in: classIds,
+    };
+  }
+
+  /**
+   * =========================
+   * STATUS FILTER
+   * =========================
+   */
+  if (query.status) {
+    filter.status = query.status;
+  }
+
+  /**
+   * =========================
+   * SEARCH
+   * =========================
+   */
+  if (query.search?.trim()) {
+    const search =
+      query.search.trim();
+
+    filter.$or = [
+      {
+        firstName: {
+          $regex: search,
+          $options: "i",
+        },
+      },
+      {
+        middleName: {
+          $regex: search,
+          $options: "i",
+        },
+      },
+      {
+        lastName: {
+          $regex: search,
+          $options: "i",
+        },
+      },
+      {
+        admissionNumber: {
+          $regex: search,
+          $options: "i",
+        },
+      },
+      {
+        phone: {
+          $regex: search,
+          $options: "i",
+        },
+      },
+      {
+        email: {
+          $regex: search,
+          $options: "i",
+        },
+      },
+    ];
   }
 
   return Student.find(filter)
-    .populate("classId", "name")
-    .sort({ createdAt: -1 });
-}
-
-export async function getStudentById(id, schoolId) {
-  const student = await Student.findOne({ _id: id, schoolId })
-    .populate("classId", "name level")
+    .populate(
+      "classId",
+      "name level"
+    )
     .populate({
       path: "parentIds",
       populate: {
         path: "userId",
-        select: "firstName lastName email phone",
+        select:
+          "firstName lastName email phone",
       },
+    })
+    .sort({
+      createdAt: -1,
     });
+}
+
+export async function getStudentById(
+  id,
+  schoolId
+) {
+  const student =
+    await Student.findOne({
+      _id: id,
+      schoolId,
+    })
+      .populate(
+        "classId",
+        "name level"
+      )
+      .populate({
+        path: "parentIds",
+        populate: {
+          path: "userId",
+          select:
+            "firstName lastName email phone",
+        },
+      });
 
   if (!student) {
-    throw new ApiError(404, "Student not found");
+    throw new ApiError(
+      404,
+      "Student not found"
+    );
   }
 
   return student;
 }
 
 export async function updateStudent(id, payload, schoolId) {
-  const student = await Student.findOne({ _id: id, schoolId });
+  const student = await Student.findOne({
+    _id: id,
+    schoolId,
+  });
 
   if (!student) {
     throw new ApiError(404, "Student not found");
   }
 
+  /**
+   * =========================================
+   * ADMISSION NUMBER VALIDATION
+   * =========================================
+   */
   if (
     payload.admissionNumber &&
     payload.admissionNumber !== student.admissionNumber
@@ -254,57 +359,275 @@ export async function updateStudent(id, payload, schoolId) {
     });
 
     if (existing) {
-      throw new ApiError(400, "Another student already uses this admission number");
+      throw new ApiError(
+        400,
+        "Another student already uses this admission number"
+      );
     }
   }
 
+  /**
+   * =========================================
+   * CLASS
+   * =========================================
+   */
   if (payload.classId !== undefined) {
-    await validateClassId(payload.classId, schoolId);
+    await validateClassId(
+      payload.classId,
+      schoolId
+    );
+
     student.classId = payload.classId;
   }
 
+  /**
+   * =========================================
+   * PARENTS
+   * =========================================
+   */
   if (payload.parentIds !== undefined) {
-    await validateParentIds(payload.parentIds, schoolId);
+    await validateParentIds(
+      payload.parentIds,
+      schoolId
+    );
 
     await Parent.updateMany(
-      { studentIds: student._id, schoolId },
-      { $pull: { studentIds: student._id } }
+      {
+        studentIds: student._id,
+        schoolId,
+      },
+      {
+        $pull: {
+          studentIds: student._id,
+        },
+      }
     );
 
     if (payload.parentIds.length) {
       await Parent.updateMany(
-        { _id: { $in: payload.parentIds }, schoolId },
-        { $addToSet: { studentIds: student._id } }
+        {
+          _id: {
+            $in: payload.parentIds,
+          },
+          schoolId,
+        },
+        {
+          $addToSet: {
+            studentIds: student._id,
+          },
+        }
       );
     }
 
-    student.parentIds = payload.parentIds;
+    student.parentIds =
+      payload.parentIds;
   }
 
+  /**
+   * =========================================
+   * BASIC INFORMATION
+   * =========================================
+   */
   if (payload.admissionNumber !== undefined) {
-    student.admissionNumber = payload.admissionNumber;
+    student.admissionNumber =
+      payload.admissionNumber;
   }
-  if (payload.firstName !== undefined) student.firstName = payload.firstName;
-  if (payload.lastName !== undefined) student.lastName = payload.lastName;
-  if (payload.gender !== undefined) student.gender = payload.gender;
+
+  if (payload.firstName !== undefined) {
+    student.firstName =
+      payload.firstName;
+  }
+
+  if (payload.middleName !== undefined) {
+    student.middleName =
+      payload.middleName;
+  }
+
+  if (payload.lastName !== undefined) {
+    student.lastName =
+      payload.lastName;
+  }
+
+  if (payload.gender !== undefined) {
+    student.gender =
+      payload.gender;
+  }
+
   if (payload.dateOfBirth !== undefined) {
-    student.dateOfBirth = payload.dateOfBirth || null;
+    student.dateOfBirth =
+      payload.dateOfBirth || null;
   }
-  if (payload.status !== undefined) student.status = payload.status;
+
+  /**
+   * =========================================
+   * FRONTEND isActive SUPPORT
+   * =========================================
+   */
+  if (payload.isActive !== undefined) {
+    student.status =
+      payload.isActive === "true"
+        ? "active"
+        : "inactive";
+  }
+
+  /**
+   * =========================================
+   * DIRECT STATUS SUPPORT
+   * =========================================
+   */
+  if (payload.status !== undefined) {
+    student.status =
+      payload.status;
+  }
+
+  /**
+   * =========================================
+   * ENROLLMENT
+   * =========================================
+   */
   if (payload.enrollmentDate !== undefined) {
-    student.enrollmentDate = payload.enrollmentDate || student.enrollmentDate;
+    student.enrollmentDate =
+      payload.enrollmentDate ||
+      student.enrollmentDate;
   }
-  if (payload.photo !== undefined) student.photo = payload.photo;
+
+  /**
+   * =========================================
+   * CONTACT
+   * =========================================
+   */
+  if (payload.email !== undefined) {
+    student.email = payload.email;
+  }
+
+  if (payload.phone !== undefined) {
+    student.phone = payload.phone;
+  }
+
+  if (payload.address !== undefined) {
+    student.address =
+      payload.address;
+  }
+
+  /**
+   * =========================================
+   * ACADEMIC
+   * =========================================
+   */
+  if (payload.entryType !== undefined) {
+    student.entryType =
+      payload.entryType;
+  }
+
+  if (
+    payload.previousSchool !==
+    undefined
+  ) {
+    student.previousSchool =
+      payload.previousSchool;
+  }
+
+  /**
+   * =========================================
+   * LOCATION
+   * =========================================
+   */
+  if (
+    payload.stateOfOrigin !==
+    undefined
+  ) {
+    student.stateOfOrigin =
+      payload.stateOfOrigin;
+  }
+
+  if (payload.lga !== undefined) {
+    student.lga = payload.lga;
+  }
+
+  /**
+   * =========================================
+   * EMERGENCY
+   * =========================================
+   */
+  if (
+    payload.emergencyName !==
+    undefined
+  ) {
+    student.emergencyName =
+      payload.emergencyName;
+  }
+
+  if (
+    payload.emergencyPhone !==
+    undefined
+  ) {
+    student.emergencyPhone =
+      payload.emergencyPhone;
+  }
+
+  /**
+   * =========================================
+   * HEALTH
+   * =========================================
+   */
+  if (
+    payload.bloodGroup !==
+    undefined
+  ) {
+    student.bloodGroup =
+      payload.bloodGroup;
+  }
+
+  if (
+    payload.genotype !==
+    undefined
+  ) {
+    student.genotype =
+      payload.genotype;
+  }
+
+  /**
+   * =========================================
+   * DOCUMENTS
+   * =========================================
+   */
+  if (payload.nin !== undefined) {
+    student.nin = payload.nin;
+  }
+
+  if (
+    payload.birthCertificateNo !==
+    undefined
+  ) {
+    student.birthCertificateNo =
+      payload.birthCertificateNo;
+  }
+
+  /**
+   * =========================================
+   * PHOTO
+   * =========================================
+   */
+  if (payload.photo !== undefined) {
+    student.photo =
+      payload.photo;
+  }
 
   await student.save();
 
-  return Student.findById(student._id)
-    .populate("classId", "name level")
+  return Student.findById(
+    student._id
+  )
+    .populate(
+      "classId",
+      "name level"
+    )
     .populate({
       path: "parentIds",
       populate: {
         path: "userId",
-        select: "firstName lastName email phone",
+        select:
+          "firstName lastName email phone",
       },
     });
 }
