@@ -22,7 +22,6 @@ export interface StudentListResponse {
   students: Student[];
 }
 
-
 export interface StudentFormValues {
   firstName: string;
   middleName?: string;
@@ -35,7 +34,12 @@ export interface StudentFormValues {
   email: string;
   phone: string;
   address: string;
-  status: string;
+
+  // keep existing UI field
+  isActive: string;
+
+  // optional backend field
+  status?: string;
 
   entryType?: string;
   previousSchool?: string;

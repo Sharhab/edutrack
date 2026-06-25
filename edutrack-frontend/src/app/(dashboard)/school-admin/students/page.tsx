@@ -22,7 +22,8 @@ import { Plus, Search, Upload } from "lucide-react";
 import Link from "next/link";
 
 const initialForm: StudentFormValues = {
-  firstName: "",
+ firstName: "",
+  middleName: "",
   lastName: "",
   admissionNumber: "",
   gender: "male",
@@ -32,7 +33,17 @@ const initialForm: StudentFormValues = {
   email: "",
   phone: "",
   address: "",
-  isActive: "true",
+   entryType: "new",
+previousSchool: "",
+stateOfOrigin: "",
+lga: "",
+emergencyName: "",
+emergencyPhone: "",
+bloodGroup: "",
+genotype: "",
+nin: "",
+birthCertificateNo: "",
+isActive: "true",
 };
 
 export default function SchoolAdminStudentsPage() {
@@ -150,7 +161,10 @@ export default function SchoolAdminStudentsPage() {
       email: student.email || "",
       phone: student.phone || "",
       address: student.address || "",
-      isActive: String(student.isActive ?? true),
+     isActive:
+  student.status === "inactive"
+    ? "false"
+    : "true",
     });
     setEditOpen(true);
   }

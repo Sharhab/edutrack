@@ -264,17 +264,15 @@ export default function StudentForm({
 
       {/* ================= STATUS ================= */}
       <SelectField
-        label="Status"
-        name="status"
-        value={values.status}
-        onChange={(value) => onChange("status", value)}
-        options={[
-          { label: "Active", value: "active" },
-          { label: "Inactive", value: "inactive" },
-          { label: "Suspended", value: "suspended" },
-          { label: "Graduated", value: "graduated" },
-        ]}
-      />
+  label="Status"
+  name="isActive"
+  value={values.isActive}
+  onChange={(value) => onChange("isActive", value)}
+  options={[
+    { label: "Active", value: "true" },
+    { label: "Inactive", value: "false" },
+  ]}
+/>
 
       {/* ================= SUBMIT ================= */}
       <button
