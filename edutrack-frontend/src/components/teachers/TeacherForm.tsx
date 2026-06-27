@@ -34,7 +34,16 @@ export default function TeacherForm({
           value={values.firstName}
           onChange={(v) => onChange("firstName", v)}
         />
+         
+         <div className="grid gap-4 md:grid-cols-2">
+  <FormInput
+    label="Middle Name"
+    name="middleName"
+    value={values.middleName || ""}
+    onChange={(v) => onChange("middleName", v)}
+  />
 
+ 
         <FormInput
           label="Last Name"
           name="lastName"
@@ -52,6 +61,15 @@ export default function TeacherForm({
           onChange={(v) => onChange("email", v)}
         />
 
+         <FormInput
+    label="Date of Birth"
+    name="dateOfBirth"
+    type="date"
+    value={values.dateOfBirth || ""}
+    onChange={(v) => onChange("dateOfBirth", v)}
+  />
+</div>
+
         <FormInput
           label="Phone"
           name="phone"
@@ -67,7 +85,45 @@ export default function TeacherForm({
         value={values.employeeId}
         onChange={(v) => onChange("employeeId", v)}
       />
+        
+        <div className="grid gap-4 md:grid-cols-2">
+  <FormInput
+    label="Qualification"
+    name="qualification"
+    value={values.qualification || ""}
+    onChange={(v) => onChange("qualification", v)}
+  />
 
+  <FormInput
+    label="Designation"
+    name="designation"
+    value={values.designation || ""}
+    onChange={(v) => onChange("designation", v)}
+  />
+</div>
+
+  <div className="grid gap-4 md:grid-cols-2">
+  <FormInput
+    label="Employment Date"
+    type="date"
+    name="employmentDate"
+    value={values.employmentDate || ""}
+    onChange={(v) => onChange("employmentDate", v)}
+  />
+
+  <select
+    className="input"
+    value={values.employmentType || "full_time"}
+    onChange={(e) =>
+      onChange("employmentType", e.target.value)
+    }
+  >
+    <option value="full_time">Full Time</option>
+    <option value="part_time">Part Time</option>
+    <option value="contract">Contract</option>
+    <option value="visiting">Visiting</option>
+  </select>
+</div>
       {/* ================= SUBJECTS ================= */}
       <div>
         <label className="text-sm text-slate-300 mb-2 block">

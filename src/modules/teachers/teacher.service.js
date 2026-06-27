@@ -66,119 +66,174 @@ return query
 }
 
 /**
-
-* ==================================================
-* CREATE
-* ==================================================
-  */
-  export async function createTeacher(
+ * ==================================================
+ * CREATE
+ * ==================================================
+ */
+export async function createTeacher(
   payload,
   schoolId
-  ) {
+) {
   const existingUser =
-  await User.findOne({
-  email:
-  payload.email.toLowerCase(),
-  });
+    await User.findOne({
+      email:
+        payload.email
+          .toLowerCase(),
+    });
 
-if (existingUser) {
-throw new ApiError(
-400,
-"A user with this email already exists"
-);
-}
+  if (existingUser) {
+    throw new ApiError(
+      400,
+      "A user with this email already exists"
+    );
+  }
 
-if (payload.employeeId) {
-const existingTeacher =
-await Teacher.findOne({
-schoolId,
-employeeId:
-payload.employeeId,
-});
+  if (payload.employeeId) {
+    const existingTeacher =
+      await Teacher.findOne({
+        schoolId,
+        employeeId:
+          payload.employeeId,
+      });
 
+    if (existingTeacher) {
+      throw new ApiError(
+        400,
+        "A teacher with this employee ID already exists"
+      );
+    }
+  }
 
-if (existingTeacher) {
-  throw new ApiError(
-    400,
-    "A teacher with this employee ID already exists"
+  await validateSubjectIds(
+    payload.subjectIds,
+    schoolId
   );
-}
 
+  await validateClassIds(
+    payload.classIds,
+    schoolId
+  );
 
-}
+  const passwordHash =
+    await hashPassword(
+      payload.password
+    );
 
-await validateSubjectIds(
-payload.subjectIds,
-schoolId
-);
+  const user =
+    await User.create({
+      schoolId,
 
-await validateClassIds(
-payload.classIds,
-schoolId
-);
+      role: "teacher",
 
-const passwordHash =
-await hashPassword(
-payload.password
-);
+      firstName:
+        payload.firstName,
 
-const user =
-await User.create({
-schoolId,
+      lastName:
+        payload.lastName,
 
+      email:
+        payload.email
+          .toLowerCase(),
 
-  role: "teacher",
+      phone:
+        payload.phone,
 
-  firstName:
-    payload.firstName,
+      passwordHash,
 
-  lastName:
-    payload.lastName,
+      isActive:
+        payload.isActive ??
+        payload.status ===
+          "active",
+    });
 
-  email:
-    payload.email.toLowerCase(),
+  const teacher =
+    await Teacher.create({
+      schoolId,
 
-  phone: payload.phone,
+      userId: user._id,
 
-  passwordHash,
+      employeeId:
+        payload.employeeId ||
+        "",
 
-  isActive:
-    payload.status ===
-    "active",
-});
+      qualification:
+        payload.qualification ||
+        "",
 
+      middleName:
+        payload.middleName ||
+        "",
 
-const teacher =
-await Teacher.create({
-schoolId,
+      gender:
+        payload.gender ||
+        "male",
 
+      dateOfBirth:
+        payload.dateOfBirth ||
+        null,
 
-  userId: user._id,
+      address:
+        payload.address ||
+        "",
 
-  employeeId:
-    payload.employeeId || "",
+      designation:
+        payload.designation ||
+        "",
 
-  qualification:
-    payload.qualification ||
-    "",
+      employmentDate:
+        payload.employmentDate ||
+        null,
 
-  subjectIds:
-    payload.subjectIds || [],
+      employmentType:
+        payload.employmentType ||
+        "full_time",
 
-  classIds:
-    payload.classIds || [],
+      emergencyName:
+        payload.emergencyName ||
+        "",
 
-  status:
-    payload.status ||
-    "active",
-});
+      emergencyPhone:
+        payload.emergencyPhone ||
+        "",
 
+      bloodGroup:
+        payload.bloodGroup ||
+        "",
 
-return teacherPopulate(
-Teacher.findById(
-teacher._id
-)
-);
+      genotype:
+        payload.genotype ||
+        "",
+
+      nin:
+        payload.nin ||
+        "",
+
+      photo:
+        payload.photo ||
+        "",
+
+      subjectIds:
+        payload.subjectIds ||
+        [],
+
+      classIds:
+        payload.classIds ||
+        [],
+
+      status:
+        payload.status ||
+        (
+          payload.isActive
+            ? "active"
+            : "inactive"
+        ),
+    });
+
+  return teacherPopulate(
+    Teacher.findById(
+      teacher._id
+    )
+  );
 }
 
 /**
@@ -227,6 +282,25 @@ throw new ApiError(
 return teacher;
 }
 
+function teacherPopulate(query) {
+  return query
+    .populate(
+      "userId",
+      "firstName lastName email phone isActive role"
+    )
+    .populate(
+      "subjectIds",
+      "name code"
+    )
+    .populate(
+      "classIds",
+      "name level arm"
+    )
+    .populate(
+      "classTeacherOf",
+      "name level arm"
+    );
+}
 /**
 
 * ==================================================

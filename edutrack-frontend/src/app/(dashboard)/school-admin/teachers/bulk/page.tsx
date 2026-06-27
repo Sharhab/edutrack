@@ -13,6 +13,7 @@ import {
 
 type Row = {
   firstName: string;
+  middleName: string;
   lastName: string;
 
   email: string;
@@ -28,13 +29,31 @@ type Row = {
 
   address: string;
 
+  dateOfBirth: string;
+  maritalStatus: string;
+
+  stateOfOrigin: string;
+  lga: string;
+  nationality: string;
+
+  employmentDate: string;
+  employmentType: string;
+  designation: string;
+
+  emergencyName: string;
+  emergencyPhone: string;
+
+  bloodGroup: string;
+  genotype: string;
+
+  nin: string;
+
   isActive: boolean;
 
   status: "active" | "inactive";
 
   password: string;
 };
-
 type ClassOption = {
   _id: string;
   name: string;
@@ -52,23 +71,36 @@ type SubjectOption = {
 export default function TeacherBulkEntryPage() {
   const [rows, setRows] = useState<Row[]>([
     {
-      firstName: "",
-      lastName: "",
-      email: "",
-      phone: "",
-      employeeId: "",
-      qualification: "",
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  gender: "male",
+  dateOfBirth: "",
+  maritalStatus: "",
+  email: "",
+  phone: "",
+  address: "",
+  employeeId: "",
+  qualification: "",
+  designation: "",
+  employmentDate: "",
+  employmentType: "full_time",
+  stateOfOrigin: "",
+  lga: "",
+  nationality: "Nigerian",
+  bloodGroup: "",
+  genotype: "",
+  emergencyName: "",
+  emergencyPhone: "",
+  nin: "",
+  subjectIds: [],
+  classIds: [],
 
-      subjectIds: [],
-      classIds: [],
+  isActive: true,
+  status: "active",
+  password: "",
 
-      gender: "male",
-      address: "",
 
-      isActive: true,
-      status: "active",
-
-      password: "",
     },
   ]);
 
@@ -110,30 +142,59 @@ export default function TeacherBulkEntryPage() {
   ========================= */
 
   function addRow() {
-    setRows((prev) => [
-      ...prev,
-      {
-        firstName: "",
-        lastName: "",
-        email: "",
-        phone: "",
-        employeeId: "",
-        qualification: "",
+  setRows((prev) => [
+    ...prev,
+    {
+      // PERSONAL
+      firstName: "",
+      middleName: "",
+      lastName: "",
 
-        subjectIds: [],
-        classIds: [],
+      gender: "male",
+      dateOfBirth: "",
+      maritalStatus: "",
 
-        gender: "male",
-        address: "",
+      // CONTACT
+      email: "",
+      phone: "",
+      address: "",
 
-        isActive: true,
-        status: "active",
+      // EMPLOYMENT
+      employeeId: "",
+      qualification: "",
+      designation: "",
 
-        password: "",
-      },
-    ]);
-  }
+      employmentDate: "",
+      employmentType: "full_time",
 
+      // LOCATION
+      stateOfOrigin: "",
+      lga: "",
+      nationality: "Nigerian",
+
+      // HEALTH
+      bloodGroup: "",
+      genotype: "",
+
+      // EMERGENCY
+      emergencyName: "",
+      emergencyPhone: "",
+
+      // IDENTIFICATION
+      nin: "",
+
+      // ASSIGNMENTS
+      subjectIds: [],
+      classIds: [],
+
+      // ACCOUNT
+      isActive: true,
+      status: "active",
+
+      password: "",
+    },
+  ]);
+}
   function removeRow(index: number) {
     setRows((prev) => prev.filter((_, i) => i !== index));
   }
@@ -189,29 +250,62 @@ export default function TeacherBulkEntryPage() {
      CLEAN PAYLOAD
   ========================= */
 
-  function cleanRow(row: Row) {
-    return {
-      firstName: row.firstName.trim(),
-      lastName: row.lastName.trim(),
+ function cleanRow(row: Row) {
+  return {
+    firstName: row.firstName.trim(),
+    middleName: row.middleName.trim(),
+    lastName: row.lastName.trim(),
 
-      email: row.email.trim(),
-      phone: row.phone.trim(),
+    email: row.email.trim(),
+    phone: row.phone.trim(),
 
-      employeeId: row.employeeId.trim(),
-      qualification: row.qualification.trim(),
+    employeeId: row.employeeId.trim(),
+    qualification: row.qualification.trim(),
 
-      subjectIds: row.subjectIds,
-      classIds: row.classIds,
+    subjectIds: row.subjectIds,
+    classIds: row.classIds,
 
-      gender: row.gender,
-      address: row.address.trim(),
+    gender: row.gender,
 
-      isActive: row.isActive,
-      status: row.status,
+    address: row.address.trim(),
 
-      password: row.password.trim(),
-    };
-  }
+    dateOfBirth: row.dateOfBirth || null,
+    maritalStatus: row.maritalStatus,
+
+    stateOfOrigin: row.stateOfOrigin.trim(),
+    lga: row.lga.trim(),
+    nationality: row.nationality,
+
+    employmentDate:
+      row.employmentDate || null,
+
+    employmentType:
+      row.employmentType,
+
+    designation:
+      row.designation.trim(),
+
+    emergencyName:
+      row.emergencyName.trim(),
+
+    emergencyPhone:
+      row.emergencyPhone.trim(),
+
+    bloodGroup:
+      row.bloodGroup,
+
+    genotype:
+      row.genotype,
+
+    nin:
+      row.nin.trim(),
+
+    isActive: row.isActive,
+    status: row.status,
+
+    password: row.password.trim(),
+  };
+}
 
   /* =========================
      SAVE BULK
@@ -239,26 +333,57 @@ export default function TeacherBulkEntryPage() {
       );
 
       setRows([
-        {
-          firstName: "",
-          lastName: "",
-          email: "",
-          phone: "",
-          employeeId: "",
-          qualification: "",
+  {
+    // PERSONAL
+    firstName: "",
+    middleName: "",
+    lastName: "",
 
-          subjectIds: [],
-          classIds: [],
+    gender: "male",
+    dateOfBirth: "",
 
-          gender: "male",
-          address: "",
+    maritalStatus: "",
 
-          isActive: true,
-          status: "active",
+    // CONTACT
+    email: "",
+    phone: "",
+    address: "",
 
-          password: "",
-        },
-      ]);
+    // EMPLOYMENT
+    employeeId: "",
+    qualification: "",
+    designation: "",
+
+    employmentDate: "",
+    employmentType: "full_time",
+
+    // LOCATION
+    stateOfOrigin: "",
+    lga: "",
+    nationality: "Nigerian",
+
+    // HEALTH
+    bloodGroup: "",
+    genotype: "",
+
+    // EMERGENCY
+    emergencyName: "",
+    emergencyPhone: "",
+
+    // IDENTIFICATION
+    nin: "",
+
+    // ASSIGNMENTS
+    subjectIds: [],
+    classIds: [],
+
+    // ACCOUNT
+    isActive: true,
+    status: "active",
+
+    password: "",
+  },
+]);
     } catch (e: any) {
       setError(e?.response?.data?.message || "Bulk import failed");
     } finally {
@@ -297,15 +422,21 @@ export default function TeacherBulkEntryPage() {
         <table className="w-full min-w-[1200px] text-sm">
           <thead className="bg-white/5">
             <tr>
-              <th className="p-3">First</th>
-              <th className="p-3">Last</th>
-              <th className="p-3">Email</th>
-              <th className="p-3">Employee ID</th>
-              <th className="p-3">Password</th>
-              <th className="p-3">Subjects</th>
-              <th className="p-3">Classes</th>
-              <th className="p-3">Status</th>
-              <th />
+              <th>First</th>
+<th>Middle</th>
+<th>Last</th>
+<th>Email</th>
+<th>Phone</th>
+<th>Employee ID</th>
+<th>Designation</th>
+<th>Qualification</th>
+<th>DOB</th>
+<th>State</th>
+<th>Subjects</th>
+<th>Classes</th>
+<th>Status</th>
+<th>Password</th>
+<th />
             </tr>
           </thead>
 
@@ -321,6 +452,15 @@ export default function TeacherBulkEntryPage() {
                     }
                   />
                 </td>
+                       <td>
+  <input
+    className="input"
+    value={row.middleName}
+    onChange={(e) =>
+      updateRow(i, "middleName", e.target.value)
+    }
+  />
+</td>
 
                 <td className="p-2">
                   <input
@@ -408,6 +548,49 @@ export default function TeacherBulkEntryPage() {
                     ))}
                   </div>
                 </td>
+
+         
+
+<td>
+  <input
+    className="input"
+    value={row.phone}
+    onChange={(e) =>
+      updateRow(i, "phone", e.target.value)
+    }
+  />
+</td>
+
+<td>
+  <input
+    className="input"
+    value={row.designation}
+    onChange={(e) =>
+      updateRow(i, "designation", e.target.value)
+    }
+  />
+</td>
+
+<td>
+  <input
+    className="input"
+    type="date"
+    value={row.dateOfBirth}
+    onChange={(e) =>
+      updateRow(i, "dateOfBirth", e.target.value)
+    }
+  />
+</td>
+
+<td>
+  <input
+    className="input"
+    value={row.stateOfOrigin}
+    onChange={(e) =>
+      updateRow(i, "stateOfOrigin", e.target.value)
+    }
+  />
+</td>
 
                 <td className="p-2">
                   <select

@@ -22,26 +22,58 @@ export interface TeacherSubjectRef {
 
 export interface Teacher {
   _id: string;
+
   schoolId?: string;
+
   userId?: TeacherUserRef | null;
 
   firstName?: string;
+  middleName?: string;
   lastName?: string;
+
   email?: string;
   phone?: string;
 
   employeeId: string;
+
   qualification?: string;
+  designation?: string;
+
+  dateOfBirth?: string;
+
+  maritalStatus?: string;
+
+  stateOfOrigin?: string;
+  lga?: string;
+  nationality?: string;
+
+  employmentType?: string;
+  employmentDate?: string;
+
+  staffCategory?: string;
+
+  emergencyName?: string;
+  emergencyPhone?: string;
+
+  bloodGroup?: string;
+  genotype?: string;
+
+  nin?: string;
+
+  photo?: string;
 
   subjectIds: string[] | TeacherSubjectRef[];
+
   classIds: string[] | TeacherClassRef[];
 
   classNames?: string[];
 
   status?: "active" | "inactive";
+
   isActive?: boolean;
 
   gender?: "male" | "female";
+
   address?: string;
 
   createdAt?: string;
@@ -49,10 +81,21 @@ export interface Teacher {
 
 export interface TeacherFormValues {
   firstName: string;
+  middleName?: string;
   lastName: string;
+
   email: string;
   phone: string;
+
   employeeId: string;
+
+  qualification?: string;
+  designation?: string;
+
+  dateOfBirth?: string;
+
+  employmentDate?: string;
+  employmentType?: string;
 
   subjectIds: string[];
   classIds: string[];
@@ -61,8 +104,26 @@ export interface TeacherFormValues {
 
   address: string;
 
-  // 🔥 FIX HERE
   isActive: boolean;
+  status?: "active" | "inactive";
 
   password: string;
+
+  maritalStatus?: string;
+
+  stateOfOrigin?: string;
+  lga?: string;
+  nationality?: string;
+
+  staffCategory?: string;
+
+  emergencyName?: string;
+  emergencyPhone?: string;
+
+  bloodGroup?: string;
+  genotype?: string;
+
+  nin?: string;
+
+  photo?: string;
 }

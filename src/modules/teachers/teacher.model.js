@@ -27,6 +27,85 @@ const teacherAssignmentSchema =
         required: true,
       },
 
+      middleName: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+gender: {
+  type: String,
+  enum: ["male", "female"],
+  default: "male",
+},
+
+dateOfBirth: {
+  type: Date,
+  default: null,
+},
+address: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+phone: {
+  type: String,
+  default: "",
+  trim: true,
+},
+designation: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+employmentDate: {
+  type: Date,
+  default: null,
+},
+
+employmentType: {
+  type: String,
+  enum: [
+    "full_time",
+    "part_time",
+    "contract",
+    "visiting",
+  ],
+  default: "full_time",
+},
+emergencyName: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+emergencyPhone: {
+  type: String,
+  default: "",
+  trim: true,
+},
+bloodGroup: {
+  type: String,
+  default: "",
+},
+
+genotype: {
+  type: String,
+  default: "",
+},
+nin: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+photo: {
+  type: String,
+  default: "",
+},
+
       /**
        * =========================================
        * OPTIONAL TIMETABLE SUPPORT
