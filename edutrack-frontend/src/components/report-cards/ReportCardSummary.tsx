@@ -9,64 +9,52 @@ import type {
 
 type Props = {
   summary: ReportCardSummaryType;
-  student?: RankingStudent;
+  brandColor?: string;
 };
 
 export default function ReportCardSummary({
   summary,
-  student,
+  brandColor = "#0f766e",
 }: Props) {
+  const cards = [
+    {
+      title: "Subjects",
+      value: summary.subjectsCount,
+    },
+    {
+      title: "Total",
+      value: summary.totalScore,
+    },
+    {
+      title: "Average",
+      value: summary.averageScore,
+    },
+    {
+      title: "Position",
+      value: summary.positionLabel,
+    },
+  ];
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-
-      {/* TOTAL SUBJECTS */}
-      <div className="p-3 border rounded-md bg-white print:border-black">
-        <p className="text-xs text-gray-500">Subjects</p>
-        <p className="text-lg font-semibold">
-          {summary.subjectsCount}
-        </p>
-      </div>
-
-      {/* TOTAL SCORE */}
-      <div className="p-3 border rounded-md bg-white print:border-black">
-        <p className="text-xs text-gray-500">Total Score</p>
-        <p className="text-lg font-semibold">
-          {summary.totalScore}
-        </p>
-      </div>
-
-      {/* AVERAGE SCORE */}
-      <div className="p-3 border rounded-md bg-white print:border-black">
-        <p className="text-xs text-gray-500">Average</p>
-        <p className="text-lg font-semibold">
-          {summary.averageScore}
-        </p>
-      </div>
-
-      {/* POSITION */}
-      <div className="p-3 border rounded-md bg-white print:border-black">
-        <p className="text-xs text-gray-500">Position</p>
-
-        <div className="flex items-center gap-2">
-          <p className="text-lg font-bold">
-            {summary.positionLabel || "N/A"}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {cards.map((card) => (
+        <div
+          key={card.title}
+          className="rounded-xl p-4 text-white shadow"
+          style={{
+            backgroundColor:
+              brandColor,
+          }}
+        >
+          <p className="text-sm opacity-80">
+            {card.title}
           </p>
 
-          {summary.position && summary.position <= 3 && (
-            <span
-              className={`text-xs px-2 py-1 rounded ${
-                summary.position === 1
-                  ? "bg-yellow-400 text-black"
-                  : summary.position === 2
-                  ? "bg-gray-300 text-black"
-                  : "bg-orange-300 text-black"
-              }`}
-            >
-              Top {summary.position}
-            </span>
-          )}
+          <p className="text-2xl font-bold">
+            {card.value}
+          </p>
         </div>
-      </div>
+      ))}
     </div>
   );
 }

@@ -5,10 +5,12 @@ import { AttendanceSummary } from "../../types/report-card";
 
 type Props = {
   attendance: AttendanceSummary;
+    brandColor?: string;
 };
 
 export default function ReportCardAttendance({
   attendance,
+   brandColor = "#0f766e",
 }: Props) {
   const percentage =
     attendance.total > 0
@@ -20,10 +22,14 @@ export default function ReportCardAttendance({
   return (
     <div className="border rounded-md p-4 bg-white print:border-black">
       {/* ================= HEADER ================= */}
-      <h3 className="text-sm font-semibold mb-3">
-        Attendance Summary
-      </h3>
-
+      <h3
+  className="font-bold mb-4"
+  style={{
+    color: brandColor,
+  }}
+>
+  Attendance
+</h3>
       {/* ================= GRID ================= */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
         {/* TOTAL DAYS */}

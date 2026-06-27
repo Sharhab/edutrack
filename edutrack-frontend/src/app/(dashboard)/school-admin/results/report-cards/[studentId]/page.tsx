@@ -2,13 +2,9 @@
 
 import { useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-
 import { useReportCard } from "../../../../../../hooks/useReportCard";
-
 import { generateStudentPdf } from "../../../../../../lib/report-card/generateStudentPdf";
-
 import ReportCardTemplate from "../../../../../../components/report-cards/ReportCardTemplate";
-
 import DownloadPdfButton from "../../../../../../components/report-cards/DownloadpdfButton";
 import PrintButton from "../../../../../../components/report-cards/PrintButton";
 

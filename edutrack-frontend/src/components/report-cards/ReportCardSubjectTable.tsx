@@ -5,10 +5,12 @@ import { ReportCardSubject } from "../../types/report-card";
 
 type Props = {
   subjects?: ReportCardSubject[];
+  brandColor?: string;
 };
 
 export default function ReportCardSubjectTable({
   subjects = [],
+  brandColor = "#0f766e",
 }: Props) {
   const safeSubjects = useMemo(() => {
     return subjects.map((sub) => ({
@@ -28,7 +30,12 @@ export default function ReportCardSubjectTable({
       <table className="w-full text-sm border-collapse">
 
         {/* ================= HEADER ================= */}
-        <thead className="bg-gray-100 text-left print:bg-white">
+        <thead
+  className="text-white"
+  style={{
+    backgroundColor: brandColor,
+  }}
+>
           <tr>
             <th className="p-2 border">Subject</th>
             <th className="p-2 border text-center">CA1</th>

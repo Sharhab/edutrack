@@ -3,89 +3,94 @@
 import React from "react";
 import { ReportCardStudent, SessionInfo, TermInfo } from "../../types/report-card";
 
+
 type Props = {
   student: ReportCardStudent;
   session: SessionInfo;
   term: TermInfo;
-
   schoolName?: string;
   schoolLogo?: string;
+  brandColor?: string;
 };
 
 export default function ReportCardHeader({
   student,
   session,
   term,
-  schoolName = "School Name",
+  schoolName,
   schoolLogo,
+  brandColor = "#0f766e",
 }: Props) {
   return (
-    <div className="w-full border-b pb-4 mb-4 print:border-black">
-      {/* ================= SCHOOL BRANDING ================= */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {schoolLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
+    <div
+      className="text-white p-6"
+      style={{
+        backgroundColor: brandColor,
+      }}
+    >
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          {schoolLogo && (
             <img
               src={schoolLogo}
-              alt="School Logo"
-              className="w-14 h-14 object-contain"
+              alt="logo"
+              className="w-20 h-20 rounded-full bg-white p-2 object-contain"
             />
-          ) : (
-            <div className="w-14 h-14 bg-gray-200 rounded" />
           )}
 
           <div>
-            <h1 className="text-xl font-bold uppercase">
+            <h1 className="text-3xl font-bold uppercase">
               {schoolName}
             </h1>
 
-            <p className="text-xs text-gray-500">
-              Academic Report Card
+            <p className="opacity-90">
+              Student Academic Report Card
             </p>
           </div>
         </div>
 
-        {/* SESSION + TERM */}
-        <div className="text-right text-sm">
-          <p>
-            <span className="font-semibold">Session:</span>{" "}
-            {session.name}
-          </p>
-
-          <p>
-            <span className="font-semibold">Term:</span>{" "}
-            {term.name}
-          </p>
+        <div className="text-right">
+          <p>{session.name}</p>
+          <p>{term.name}</p>
         </div>
       </div>
 
-      {/* ================= STUDENT INFO ================= */}
-      <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 text-sm">
         <div>
-          <p>
-            <span className="font-semibold">Name:</span>{" "}
-            {student.firstName} {student.lastName}
+          <p className="opacity-80">
+            Student Name
           </p>
+          <p className="font-semibold">
+            {student.firstName}{" "}
+            {student.lastName}
+          </p>
+        </div>
 
-          <p>
-            <span className="font-semibold">Admission No:</span>{" "}
+        <div>
+          <p className="opacity-80">
+            Admission No
+          </p>
+          <p className="font-semibold">
             {student.admissionNumber}
           </p>
         </div>
 
         <div>
-          <p>
-            <span className="font-semibold">Class:</span>{" "}
+          <p className="opacity-80">
+            Class
+          </p>
+          <p className="font-semibold">
             {student.className}
           </p>
+        </div>
 
-          {student.classLevel && (
-            <p>
-              <span className="font-semibold">Level:</span>{" "}
-              {student.classLevel}
-            </p>
-          )}
+        <div>
+          <p className="opacity-80">
+            Position
+          </p>
+          <p className="font-bold text-xl">
+            {student.positionLabel}
+          </p>
         </div>
       </div>
     </div>

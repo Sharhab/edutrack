@@ -51,16 +51,14 @@ export type ReportCardSummary = {
 
 export type ReportCardStudent = {
   _id: string;
-
   admissionNumber: string;
-
   firstName: string;
   lastName: string;
-
   gender?: string;
-
   className: string;
   classLevel?: string;
+
+  positionLabel?: string; // 👈 ADD THIS
 };
 
 /* =========================================

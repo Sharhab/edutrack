@@ -8,14 +8,19 @@ import ReportCardSummary from "./ReportCardSummary";
 import ReportCardSubjectTable from "./ReportCardSubjectTable";
 import ReportCardAttendance from "./ReportCardAttendance";
 import ReportCardFooter from "./ReportCardFooter";
-import StudentRankBadge from "./StudentRankBadge";
 
 type Props = {
   data: StudentReportCard;
+  schoolName?: string;
+  schoolLogo?: string;
+  brandColor?: string;
 };
 
 export default function ReportCardTemplate({
   data,
+  schoolName,
+  schoolLogo,
+  brandColor = "#0f766e",
 }: Props) {
   const {
     student,
@@ -27,60 +32,32 @@ export default function ReportCardTemplate({
   } = data;
 
   return (
-    <div
-      className="
-        w-full
-        bg-white
-        text-gray-800
+    <div className="bg-white max-w-5xl mx-auto rounded-2xl shadow-lg overflow-hidden print:shadow-none">
+      <ReportCardHeader
+        student={student}
+        session={session}
+        term={term}
+        schoolName={schoolName}
+        schoolLogo={schoolLogo}
+        brandColor={brandColor}
+      />
 
-        print:bg-white
-        print:shadow-none
-        print:rounded-none
-
-        break-inside-avoid-page
-        print:break-inside-avoid
-      "
-    >
-      {/* HEADER */}
-      <div className="print:break-inside-avoid">
-        <ReportCardHeader
-          student={student}
-          session={session}
-          term={term}
-        />
-      </div>
-
-      {/* POSITION */}
-      <div className="flex justify-end px-4 mb-4 print:break-inside-avoid">
-        <StudentRankBadge
-          position={summary.position}
-          positionLabel={summary.positionLabel}
-        />
-      </div>
-
-      {/* SUMMARY */}
-      <div className="px-4 print:break-inside-avoid">
+      <div className="p-6 space-y-6">
         <ReportCardSummary
           summary={summary}
+          brandColor={brandColor}
         />
-      </div>
 
-      {/* SUBJECT RESULTS */}
-      <div className="px-4 mt-4 print:break-inside-avoid">
         <ReportCardSubjectTable
           subjects={results}
+          brandColor={brandColor}
         />
-      </div>
 
-      {/* ATTENDANCE */}
-      <div className="px-4 mt-4 print:break-inside-avoid">
         <ReportCardAttendance
           attendance={attendance}
+          brandColor={brandColor}
         />
-      </div>
 
-      {/* FOOTER */}
-      <div className="px-4 pb-4 print:break-inside-avoid">
         <ReportCardFooter />
       </div>
     </div>
