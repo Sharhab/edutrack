@@ -417,25 +417,60 @@ export default function TeacherBulkEntryPage() {
           {error}
         </div>
       )}
-
-      <div className="rounded-2xl border border-white/10 overflow-x-auto">
-        <table className="w-full min-w-[1200px] text-sm">
-         <thead className="bg-white/5">
+         <div className="overflow-x-auto">
+        <table className="min-w-[2800px] text-sm border-collapse">
+        <thead className="bg-white/5 text-slate-300">
   <tr>
-    <th className="p-2">First</th>
-    <th className="p-2">Middle</th>
-    <th className="p-2">Last</th>
-    <th className="p-2">Email</th>
-    <th className="p-2">Phone</th>
-    <th className="p-2">Employee ID</th>
-    <th className="p-2">Password</th>
-    <th className="p-2">Designation</th>
-    <th className="p-2">DOB</th>
-    <th className="p-2">State</th>
-    <th className="p-2">Subjects</th>
-    <th className="p-2">Classes</th>
-    <th className="p-2">Status</th>
-    <th className="p-2 text-center">Action</th>
+    <th className="p-2 min-w-[140px]">First</th>
+    <th className="p-2 min-w-[140px]">Middle</th>
+    <th className="p-2 min-w-[140px]">Last</th>
+
+    <th className="p-2 min-w-[220px]">Email</th>
+    <th className="p-2 min-w-[140px]">Phone</th>
+
+    <th className="p-2 min-w-[140px]">
+      Employee ID
+    </th>
+
+    <th className="p-2 min-w-[160px]">
+      Qualification
+    </th>
+
+    <th className="p-2 min-w-[160px]">
+      Designation
+    </th>
+
+    <th className="p-2 min-w-[120px]">
+      Gender
+    </th>
+
+    <th className="p-2 min-w-[140px]">
+      DOB
+    </th>
+
+    <th className="p-2 min-w-[180px]">
+      State
+    </th>
+
+    <th className="p-2 min-w-[320px]">
+      Subjects
+    </th>
+
+    <th className="p-2 min-w-[320px]">
+      Classes
+    </th>
+
+    <th className="p-2 min-w-[120px]">
+      Status
+    </th>
+
+    <th className="p-2 min-w-[160px]">
+      Password
+    </th>
+
+    <th className="p-2 min-w-[80px] text-center">
+      Action
+    </th>
   </tr>
 </thead>
 
@@ -443,12 +478,12 @@ export default function TeacherBulkEntryPage() {
   {rows.map((row, i) => (
     <tr
       key={i}
-      className="border-t border-white/10"
+      className="border-t border-white/10 align-top"
     >
       {/* FIRST */}
-      <td className="p-2">
+      <td className="p-2 min-w-[140px] align-top">
         <input
-          className="input"
+          className="input w-full"
           value={row.firstName}
           onChange={(e) =>
             updateRow(
@@ -461,9 +496,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* MIDDLE */}
-      <td className="p-2">
+      <td className="p-2 min-w-[140px] align-top">
         <input
-          className="input"
+          className="input w-full"
           value={row.middleName}
           onChange={(e) =>
             updateRow(
@@ -476,9 +511,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* LAST */}
-      <td className="p-2">
+      <td className="p-2 min-w-[140px] align-top">
         <input
-          className="input"
+          className="input w-full"
           value={row.lastName}
           onChange={(e) =>
             updateRow(
@@ -491,10 +526,10 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* EMAIL */}
-      <td className="p-2">
+      <td className="p-2 min-w-[240px] align-top">
         <input
-          className="input"
           type="email"
+          className="input w-full"
           value={row.email}
           onChange={(e) =>
             updateRow(
@@ -507,9 +542,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* PHONE */}
-      <td className="p-2">
+      <td className="p-2 min-w-[150px] align-top">
         <input
-          className="input"
+          className="input w-full"
           value={row.phone}
           onChange={(e) =>
             updateRow(
@@ -522,9 +557,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* EMPLOYEE ID */}
-      <td className="p-2">
+      <td className="p-2 min-w-[150px] align-top">
         <input
-          className="input"
+          className="input w-full"
           value={row.employeeId}
           onChange={(e) =>
             updateRow(
@@ -537,9 +572,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* QUALIFICATION */}
-      <td className="p-2">
+      <td className="p-2 min-w-[180px] align-top">
         <input
-          className="input"
+          className="input w-full"
           value={row.qualification}
           onChange={(e) =>
             updateRow(
@@ -552,9 +587,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* DESIGNATION */}
-      <td className="p-2">
+      <td className="p-2 min-w-[180px] align-top">
         <input
-          className="input"
+          className="input w-full"
           value={row.designation}
           onChange={(e) =>
             updateRow(
@@ -567,9 +602,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* GENDER */}
-      <td className="p-2">
+      <td className="p-2 min-w-[130px] align-top">
         <select
-          className="input"
+          className="input w-full"
           value={row.gender}
           onChange={(e) =>
             updateRow(
@@ -589,10 +624,10 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* DOB */}
-      <td className="p-2">
+      <td className="p-2 min-w-[150px] align-top">
         <input
-          className="input"
           type="date"
+          className="input w-full"
           value={row.dateOfBirth}
           onChange={(e) =>
             updateRow(
@@ -605,9 +640,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* STATE */}
-      <td className="p-2">
+      <td className="p-2 min-w-[180px] align-top">
         <input
-          className="input"
+          className="input w-full"
           value={row.stateOfOrigin}
           onChange={(e) =>
             updateRow(
@@ -620,7 +655,7 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* SUBJECTS */}
-      <td className="p-2 min-w-[220px]">
+      <td className="p-2 min-w-[320px] align-top">
         <div className="flex flex-wrap gap-1">
           {subjects.map((s) => (
             <button
@@ -633,11 +668,11 @@ export default function TeacherBulkEntryPage() {
                   s._id
                 )
               }
-              className={`text-xs px-2 py-1 rounded-lg border ${
+              className={`rounded-lg border px-2 py-1 text-xs ${
                 row.subjectIds.includes(
                   s._id
                 )
-                  ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
+                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-300"
                   : "border-white/10 text-slate-300"
               }`}
             >
@@ -648,7 +683,7 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* CLASSES */}
-      <td className="p-2 min-w-[220px]">
+      <td className="p-2 min-w-[320px] align-top">
         <div className="flex flex-wrap gap-1">
           {classes.map((c) => (
             <button
@@ -661,11 +696,11 @@ export default function TeacherBulkEntryPage() {
                   c._id
                 )
               }
-              className={`text-xs px-2 py-1 rounded-lg border ${
+              className={`rounded-lg border px-2 py-1 text-xs ${
                 row.classIds.includes(
                   c._id
                 )
-                  ? "bg-purple-500/20 border-purple-400 text-purple-300"
+                  ? "border-purple-400 bg-purple-500/20 text-purple-300"
                   : "border-white/10 text-slate-300"
               }`}
             >
@@ -676,9 +711,9 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* STATUS */}
-      <td className="p-2">
+      <td className="p-2 min-w-[130px] align-top">
         <select
-          className="input"
+          className="input w-full"
           value={row.status}
           onChange={(e) =>
             updateRow(
@@ -698,10 +733,10 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* PASSWORD */}
-      <td className="p-2">
+      <td className="p-2 min-w-[160px] align-top">
         <input
-          className="input"
           type="password"
+          className="input w-full"
           value={row.password}
           onChange={(e) =>
             updateRow(
@@ -714,13 +749,13 @@ export default function TeacherBulkEntryPage() {
       </td>
 
       {/* DELETE */}
-      <td className="p-2 text-center">
+      <td className="p-2 min-w-[80px] text-center align-top">
         <button
           type="button"
           onClick={() =>
             removeRow(i)
           }
-          className="text-red-400 hover:text-red-300"
+          className="mt-2 text-red-400 hover:text-red-300"
         >
           <Trash2 size={18} />
         </button>
