@@ -284,84 +284,151 @@ export default function TeachersPage() {
           <div className="overflow-x-auto rounded-2xl border border-white/10">
             <table className="w-full text-sm">
               <thead className="bg-white/5 text-slate-300">
-                <tr>
-                  <th className="p-3 text-left">Teacher</th>
-                  <th className="p-3 text-left">Employee ID</th>
-                  <th className="p-3 text-left">Phone</th>
-                  <th className="p-3 text-left">Qualification</th>
-                  <th className="p-3 text-left">Designation</th>
-                  <th className="p-3 text-left">Subjects</th>
-                  <th className="p-3 text-left">Classes</th>
-                  <th className="p-3 text-left">Status</th>
-                  <th className="p-3 text-right">Actions</th>
-                </tr>
-              </thead>
+  <tr>
+    <th className="p-3 text-left">Teacher</th>
+    <th className="p-3 text-left">Employee ID</th>
+    <th className="p-3 text-left">Phone</th>
+    <th className="p-3 text-left">Gender</th>
+    <th className="p-3 text-left">Qualification</th>
+    <th className="p-3 text-left">Designation</th>
+    <th className="p-3 text-left">Category</th>
+    <th className="p-3 text-left">Subjects</th>
+    <th className="p-3 text-left">Classes</th>
+    <th className="p-3 text-left">Status</th>
+    <th className="p-3 text-right">Actions</th>
+  </tr>
+</thead>
 
-              <tbody>
-                {filtered.map((t) => {
-                  const user = (t.userId || {}) as any;
+            <tbody>
+  {filtered.map((t) => {
+    const user = (t.userId || {}) as any;
 
-                  const active =
-                    t.status === "inactive"
-                      ? false
-                      : Boolean(user?.isActive ?? t.isActive ?? true);
+    const active =
+      t.status === "inactive"
+        ? false
+        : Boolean(
+            user?.isActive ??
+            t.isActive ??
+            true
+          );
 
-                  return (
-                    <tr key={t._id} className="border-t border-white/10 hover:bg-white/5">
-                      <td className="p-3">
-                        <p className="font-medium text-white">
-                          {user?.firstName || t.firstName} {t.middleName || ""}{" "}
-                          {user?.lastName || t.lastName}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {user?.email || t.email}
-                        </p>
-                      </td>
+    return (
+      <tr
+        key={t._id}
+        className="border-t border-white/10 hover:bg-white/5"
+      >
+        {/* Teacher */}
+        <td className="p-3">
+          <div>
+            <p className="font-medium text-white">
+              {user?.firstName || t.firstName}{" "}
+              {t.middleName || ""}{" "}
+              {user?.lastName || t.lastName}
+            </p>
 
-                      <td className="p-3">{t.employeeId || "-"}</td>
-                      <td className="p-3">{user?.phone || t.phone || "-"}</td>
-                      <td className="p-3">{t.qualification || "-"}</td>
-                      <td className="p-3">{t.designation || "-"}</td>
+            <p className="text-xs text-slate-400">
+              {user?.email || t.email}
+            </p>
+          </div>
+        </td>
 
-                      <td className="p-3">
-                        {(t.subjectIds || []).slice(0, 2).map((s: any) => (
-                          <span key={s._id || s} className="mr-1 text-xs text-cyan-300">
-                            {s.name || s}
-                          </span>
-                        ))}
-                      </td>
+        {/* Employee ID */}
+        <td className="p-3">
+          {t.employeeId || "-"}
+        </td>
 
-                      <td className="p-3">
-                        {(t.classIds || []).slice(0, 2).map((c: any) => (
-                          <span key={c._id || c} className="mr-1 text-xs text-purple-300">
-                            {c.name || c}
-                          </span>
-                        ))}
-                      </td>
+        {/* Phone */}
+        <td className="p-3">
+          {user?.phone || t.phone || "-"}
+        </td>
 
-                      <td className="p-3">
-                        <span
-                          className={`text-xs px-2 py-1 rounded ${
-                            active ? "text-green-300" : "text-red-300"
-                          }`}
-                        >
-                          {active ? "Active" : "Inactive"}
-                        </span>
-                      </td>
+        {/* Gender */}
+        <td className="p-3 capitalize">
+          {t.gender || "-"}
+        </td>
 
-                      <td className="p-3 text-right">
-                        <button onClick={() => openEdit(t)} className="mr-2 text-blue-400">
-                          <Pencil size={16} />
-                        </button>
+        {/* Qualification */}
+        <td className="p-3">
+          {t.qualification || "-"}
+        </td>
 
-                        <button onClick={() => handleDelete(t._id)} className="text-red-400">
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
+        {/* Designation */}
+        <td className="p-3">
+          {t.designation || "-"}
+        </td>
+
+        {/* Staff Category */}
+        <td className="p-3">
+          {t.staffCategory || "-"}
+        </td>
+
+        {/* Subjects */}
+        <td className="p-3">
+          <div className="flex flex-wrap gap-1">
+            {(t.subjectIds || [])
+              .slice(0, 2)
+              .map((s: any) => (
+                <span
+                  key={s._id || s}
+                  className="rounded bg-cyan-500/10 px-2 py-1 text-xs text-cyan-300"
+                >
+                  {s.name || s}
+                </span>
+              ))}
+          </div>
+        </td>
+
+        {/* Classes */}
+        <td className="p-3">
+          <div className="flex flex-wrap gap-1">
+            {(t.classIds || [])
+              .slice(0, 2)
+              .map((c: any) => (
+                <span
+                  key={c._id || c}
+                  className="rounded bg-purple-500/10 px-2 py-1 text-xs text-purple-300"
+                >
+                  {c.name || c}
+                </span>
+              ))}
+          </div>
+        </td>
+
+        {/* Status */}
+        <td className="p-3">
+          <span
+            className={`rounded-full px-2 py-1 text-xs ${
+              active
+                ? "bg-green-500/10 text-green-300"
+                : "bg-red-500/10 text-red-300"
+            }`}
+          >
+            {active ? "Active" : "Inactive"}
+          </span>
+        </td>
+
+        {/* Actions */}
+        <td className="p-3">
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => openEdit(t)}
+              className="rounded-lg p-2 text-blue-400 hover:bg-blue-500/10"
+            >
+              <Pencil size={16} />
+            </button>
+
+            <button
+              onClick={() => handleDelete(t._id)}
+              className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
             </table>
           </div>
         )}

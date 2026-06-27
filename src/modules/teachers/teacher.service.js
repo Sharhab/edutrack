@@ -307,166 +307,284 @@ function teacherPopulate(query) {
 * UPDATE
 * ==================================================
   */
-  export async function updateTeacher(
+export async function updateTeacher(
   id,
   payload,
   schoolId
+) {
+  const teacher = await Teacher.findOne({
+    _id: id,
+    schoolId,
+  });
+
+  if (!teacher) {
+    throw new ApiError(
+      404,
+      "Teacher not found"
+    );
+  }
+
+  const user = await User.findOne({
+    _id: teacher.userId,
+    schoolId,
+  });
+
+  if (!user) {
+    throw new ApiError(
+      404,
+      "Teacher user not found"
+    );
+  }
+
+  /* =========================
+     EMPLOYEE ID VALIDATION
+  ========================= */
+  if (
+    payload.employeeId &&
+    payload.employeeId !== teacher.employeeId
   ) {
-  const teacher =
-  await Teacher.findOne({
-  _id: id,
-  schoolId,
-  });
+    const exists = await Teacher.findOne({
+      schoolId,
+      employeeId: payload.employeeId,
+      _id: {
+        $ne: id,
+      },
+    });
 
-if (!teacher) {
-throw new ApiError(
-404,
-"Teacher not found"
-);
-}
+    if (exists) {
+      throw new ApiError(
+        400,
+        "Another teacher already uses this employee ID"
+      );
+    }
+  }
 
-const user =
-await User.findOne({
-_id: teacher.userId,
-schoolId,
-});
+  /* =========================
+     SUBJECTS
+  ========================= */
+  if (
+    payload.subjectIds !== undefined
+  ) {
+    await validateSubjectIds(
+      payload.subjectIds,
+      schoolId
+    );
 
-if (!user) {
-throw new ApiError(
-404,
-"Teacher user not found"
-);
-}
+    teacher.subjectIds =
+      payload.subjectIds;
+  }
 
-if (
-payload.employeeId &&
-payload.employeeId !==
-teacher.employeeId
-) {
-const exists =
-await Teacher.findOne({
-schoolId,
+  /* =========================
+     CLASSES
+  ========================= */
+  if (
+    payload.classIds !== undefined
+  ) {
+    await validateClassIds(
+      payload.classIds,
+      schoolId
+    );
 
-    employeeId:
-      payload.employeeId,
+    teacher.classIds =
+      payload.classIds;
+  }
 
-    _id: {
-      $ne: id,
-    },
-  });
+  /* =========================
+     USER FIELDS
+  ========================= */
+  if (
+    payload.firstName !== undefined
+  ) {
+    user.firstName =
+      payload.firstName;
+  }
 
-if (exists) {
-  throw new ApiError(
-    400,
-    "Another teacher already uses this employee ID"
+  if (
+    payload.lastName !== undefined
+  ) {
+    user.lastName =
+      payload.lastName;
+  }
+
+  if (
+    payload.email !== undefined
+  ) {
+    user.email =
+      payload.email;
+  }
+
+  if (
+    payload.phone !== undefined
+  ) {
+    user.phone =
+      payload.phone;
+  }
+
+  if (
+    payload.isActive !== undefined
+  ) {
+    user.isActive =
+      payload.isActive;
+  }
+
+  /* =========================
+     TEACHER FIELDS
+  ========================= */
+  if (
+    payload.employeeId !== undefined
+  ) {
+    teacher.employeeId =
+      payload.employeeId;
+  }
+
+  if (
+    payload.qualification !== undefined
+  ) {
+    teacher.qualification =
+      payload.qualification;
+  }
+
+  if (
+    payload.designation !== undefined
+  ) {
+    teacher.designation =
+      payload.designation;
+  }
+
+  if (
+    payload.gender !== undefined
+  ) {
+    teacher.gender =
+      payload.gender;
+  }
+
+  if (
+    payload.address !== undefined
+  ) {
+    teacher.address =
+      payload.address;
+  }
+
+  if (
+    payload.dateOfBirth !== undefined
+  ) {
+    teacher.dateOfBirth =
+      payload.dateOfBirth;
+  }
+
+  if (
+    payload.employmentDate !== undefined
+  ) {
+    teacher.employmentDate =
+      payload.employmentDate;
+  }
+
+  if (
+    payload.employmentType !== undefined
+  ) {
+    teacher.employmentType =
+      payload.employmentType;
+  }
+
+  if (
+    payload.maritalStatus !== undefined
+  ) {
+    teacher.maritalStatus =
+      payload.maritalStatus;
+  }
+
+  if (
+    payload.stateOfOrigin !== undefined
+  ) {
+    teacher.stateOfOrigin =
+      payload.stateOfOrigin;
+  }
+
+  if (
+    payload.lga !== undefined
+  ) {
+    teacher.lga =
+      payload.lga;
+  }
+
+  if (
+    payload.nationality !== undefined
+  ) {
+    teacher.nationality =
+      payload.nationality;
+  }
+
+  if (
+    payload.staffCategory !== undefined
+  ) {
+    teacher.staffCategory =
+      payload.staffCategory;
+  }
+
+  if (
+    payload.emergencyName !== undefined
+  ) {
+    teacher.emergencyName =
+      payload.emergencyName;
+  }
+
+  if (
+    payload.emergencyPhone !== undefined
+  ) {
+    teacher.emergencyPhone =
+      payload.emergencyPhone;
+  }
+
+  if (
+    payload.bloodGroup !== undefined
+  ) {
+    teacher.bloodGroup =
+      payload.bloodGroup;
+  }
+
+  if (
+    payload.genotype !== undefined
+  ) {
+    teacher.genotype =
+      payload.genotype;
+  }
+
+  if (
+    payload.nin !== undefined
+  ) {
+    teacher.nin =
+      payload.nin;
+  }
+
+  if (
+    payload.photo !== undefined
+  ) {
+    teacher.photo =
+      payload.photo;
+  }
+
+  /* =========================
+     STATUS
+  ========================= */
+  if (
+    payload.status !== undefined
+  ) {
+    teacher.status =
+      payload.status;
+
+    user.isActive =
+      payload.status ===
+      "active";
+  }
+
+  await user.save();
+  await teacher.save();
+
+  return teacherPopulate(
+    Teacher.findById(
+      teacher._id
+    )
   );
-}
-
-}
-
-if (
-payload.subjectIds !==
-undefined
-) {
-await validateSubjectIds(
-payload.subjectIds,
-schoolId
-);
-
-```
-teacher.subjectIds =
-  payload.subjectIds;
-```
-
-}
-
-if (
-payload.classIds !==
-undefined
-) {
-await validateClassIds(
-payload.classIds,
-schoolId
-);
-
-```
-teacher.classIds =
-  payload.classIds;
-```
-
-}
-
-if (
-payload.firstName !==
-undefined
-) {
-user.firstName =
-payload.firstName;
-}
-
-if (
-payload.lastName !==
-undefined
-) {
-user.lastName =
-payload.lastName;
-}
-
-if (
-payload.phone !==
-undefined
-) {
-user.phone =
-payload.phone;
-}
-
-if (
-payload.isActive !==
-undefined
-) {
-user.isActive =
-payload.isActive;
-}
-
-if (
-payload.employeeId !==
-undefined
-) {
-teacher.employeeId =
-payload.employeeId;
-}
-
-if (
-payload.qualification !==
-undefined
-) {
-teacher.qualification =
-payload.qualification;
-}
-
-if (
-payload.status !==
-undefined
-) {
-teacher.status =
-payload.status;
-
-
-user.isActive =
-  payload.status ===
-  "active";
-
-
-}
-
-await user.save();
-await teacher.save();
-
-return teacherPopulate(
-Teacher.findById(
-teacher._id
-)
-);
 }
 
 /**
@@ -512,7 +630,10 @@ deleted: true,
 * BULK UPSERT
 * ==================================================
   */
-export async function bulkUpsertTeachers(rows = [], schoolId) {
+export async function bulkUpsertTeachers(
+  rows = [],
+  schoolId
+) {
   let created = 0;
   let updated = 0;
   let failed = 0;
@@ -521,39 +642,158 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
 
   for (const row of rows) {
     try {
-      const email = (row.email || "").toLowerCase().trim();
+      const email = (
+        row.email || ""
+      )
+        .toLowerCase()
+        .trim();
 
-      if (!email) throw new Error("Email missing");
+      if (!email) {
+        throw new Error(
+          "Email missing"
+        );
+      }
 
-      const user = await User.findOne({ email, schoolId });
-
-      // =========================
-      // UPDATE FLOW
-      // =========================
-      if (user) {
-        user.firstName = row.firstName || user.firstName;
-        user.lastName = row.lastName || user.lastName;
-        user.phone = row.phone || user.phone;
-
-        await user.save();
-
-        const teacher = await Teacher.findOne({
-          userId: user._id,
+      const user =
+        await User.findOne({
+          email,
           schoolId,
         });
 
-        if (teacher) {
-          teacher.employeeId = row.employeeId || teacher.employeeId;
-          teacher.qualification = row.qualification || teacher.qualification;
-          teacher.status = row.status || teacher.status;
+      /* =========================
+         UPDATE FLOW
+      ========================= */
+      if (user) {
+        user.firstName =
+          row.firstName ||
+          user.firstName;
 
-          // SAFE ARRAY HANDLING
-          if (Array.isArray(row.subjectIds)) {
-            teacher.subjectIds = row.subjectIds;
+        user.lastName =
+          row.lastName ||
+          user.lastName;
+
+        user.phone =
+          row.phone ||
+          user.phone;
+
+        if (row.isActive !== undefined) {
+          user.isActive =
+            row.isActive;
+        }
+
+        if (row.status) {
+          user.isActive =
+            row.status ===
+            "active";
+        }
+
+        await user.save();
+
+        const teacher =
+          await Teacher.findOne({
+            userId: user._id,
+            schoolId,
+          });
+
+        if (teacher) {
+          teacher.employeeId =
+            row.employeeId ||
+            teacher.employeeId;
+
+          teacher.qualification =
+            row.qualification ||
+            teacher.qualification;
+
+          teacher.designation =
+            row.designation ||
+            teacher.designation;
+
+          teacher.gender =
+            row.gender ||
+            teacher.gender;
+
+          teacher.address =
+            row.address ||
+            teacher.address;
+
+          teacher.dateOfBirth =
+            row.dateOfBirth ||
+            teacher.dateOfBirth;
+
+          teacher.employmentDate =
+            row.employmentDate ||
+            teacher.employmentDate;
+
+          teacher.employmentType =
+            row.employmentType ||
+            teacher.employmentType;
+
+          teacher.maritalStatus =
+            row.maritalStatus ||
+            teacher.maritalStatus;
+
+          teacher.stateOfOrigin =
+            row.stateOfOrigin ||
+            teacher.stateOfOrigin;
+
+          teacher.lga =
+            row.lga ||
+            teacher.lga;
+
+          teacher.nationality =
+            row.nationality ||
+            teacher.nationality;
+
+          teacher.staffCategory =
+            row.staffCategory ||
+            teacher.staffCategory;
+
+          teacher.emergencyName =
+            row.emergencyName ||
+            teacher.emergencyName;
+
+          teacher.emergencyPhone =
+            row.emergencyPhone ||
+            teacher.emergencyPhone;
+
+          teacher.bloodGroup =
+            row.bloodGroup ||
+            teacher.bloodGroup;
+
+          teacher.genotype =
+            row.genotype ||
+            teacher.genotype;
+
+          teacher.nin =
+            row.nin ||
+            teacher.nin;
+
+          teacher.photo =
+            row.photo ||
+            teacher.photo;
+
+          teacher.status =
+            row.status ||
+            teacher.status;
+
+          /* SUBJECTS */
+          if (
+            Array.isArray(
+              row.subjectIds
+            )
+          ) {
+            teacher.subjectIds =
+              row.subjectIds;
           }
 
-          if (Array.isArray(row.classIds)) {
-            teacher.classIds = row.classIds;
+          /* CLASSES */
+          if (
+            Array.isArray(
+              row.classIds
+            )
+          ) {
+            teacher.classIds =
+              row.classIds;
           }
 
           await teacher.save();
@@ -567,37 +807,121 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         });
       }
 
-      // =========================
-      // CREATE FLOW
-      // =========================
+      /* =========================
+         CREATE FLOW
+      ========================= */
       else {
-        const passwordHash = await hashPassword(
-          row.password || "teacher123"
-        );
+        const passwordHash =
+          await hashPassword(
+            row.password ||
+              "teacher123"
+          );
 
-        const newUser = await User.create({
-          schoolId,
-          role: "teacher",
-          firstName: row.firstName || "",
-          lastName: row.lastName || "",
-          email,
-          phone: row.phone || "",
-          passwordHash,
-          isActive: row.status !== "inactive",
-        });
+        const newUser =
+          await User.create({
+            schoolId,
+            role: "teacher",
+            firstName:
+              row.firstName || "",
+            lastName:
+              row.lastName || "",
+            email,
+            phone:
+              row.phone || "",
+            passwordHash,
+            isActive:
+              row.status !==
+              "inactive",
+          });
 
         await Teacher.create({
           schoolId,
           userId: newUser._id,
-          employeeId: row.employeeId || "",
-          qualification: row.qualification || "",
-          subjectIds: Array.isArray(row.subjectIds)
-            ? row.subjectIds
-            : [],
-          classIds: Array.isArray(row.classIds)
-            ? row.classIds
-            : [],
-          status: row.status || "active",
+
+          employeeId:
+            row.employeeId || "",
+
+          qualification:
+            row.qualification || "",
+
+          designation:
+            row.designation || "",
+
+          gender:
+            row.gender || "male",
+
+          address:
+            row.address || "",
+
+          dateOfBirth:
+            row.dateOfBirth || null,
+
+          employmentDate:
+            row.employmentDate ||
+            null,
+
+          employmentType:
+            row.employmentType ||
+            "full_time",
+
+          maritalStatus:
+            row.maritalStatus ||
+            "",
+
+          stateOfOrigin:
+            row.stateOfOrigin ||
+            "",
+
+          lga:
+            row.lga || "",
+
+          nationality:
+            row.nationality ||
+            "Nigerian",
+
+          staffCategory:
+            row.staffCategory ||
+            "",
+
+          emergencyName:
+            row.emergencyName ||
+            "",
+
+          emergencyPhone:
+            row.emergencyPhone ||
+            "",
+
+          bloodGroup:
+            row.bloodGroup ||
+            "",
+
+          genotype:
+            row.genotype ||
+            "",
+
+          nin:
+            row.nin || "",
+
+          photo:
+            row.photo || "",
+
+          subjectIds:
+            Array.isArray(
+              row.subjectIds
+            )
+              ? row.subjectIds
+              : [],
+
+          classIds:
+            Array.isArray(
+              row.classIds
+            )
+              ? row.classIds
+              : [],
+
+          status:
+            row.status ||
+            "active",
         });
 
         created++;
@@ -611,9 +935,12 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
       failed++;
 
       results.push({
-        email: row.email || "unknown",
+        email:
+          row.email ||
+          "unknown",
         action: "failed",
-        error: error.message,
+        error:
+          error.message,
       });
     }
   }
