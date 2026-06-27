@@ -420,202 +420,314 @@ export default function TeacherBulkEntryPage() {
 
       <div className="rounded-2xl border border-white/10 overflow-x-auto">
         <table className="w-full min-w-[1200px] text-sm">
-          <thead className="bg-white/5">
-            <tr>
-              <th>First</th>
-<th>Middle</th>
-<th>Last</th>
-<th>Email</th>
-<th>Phone</th>
-<th>Employee ID</th>
-<th>Designation</th>
-<th>Qualification</th>
-<th>DOB</th>
-<th>State</th>
-<th>Subjects</th>
-<th>Classes</th>
-<th>Status</th>
-<th>Password</th>
-<th />
-            </tr>
-          </thead>
+         <thead className="bg-white/5">
+  <tr>
+    <th className="p-2">First</th>
+    <th className="p-2">Middle</th>
+    <th className="p-2">Last</th>
+    <th className="p-2">Email</th>
+    <th className="p-2">Phone</th>
+    <th className="p-2">Employee ID</th>
+    <th className="p-2">Password</th>
+    <th className="p-2">Designation</th>
+    <th className="p-2">DOB</th>
+    <th className="p-2">State</th>
+    <th className="p-2">Subjects</th>
+    <th className="p-2">Classes</th>
+    <th className="p-2">Status</th>
+    <th className="p-2 text-center">Action</th>
+  </tr>
+</thead>
 
           <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className="border-t border-white/10">
-                <td className="p-2">
-                  <input
-                    className="input"
-                    value={row.firstName}
-                    onChange={(e) =>
-                      updateRow(i, "firstName", e.target.value)
-                    }
-                  />
-                </td>
-                       <td>
-  <input
-    className="input"
-    value={row.middleName}
-    onChange={(e) =>
-      updateRow(i, "middleName", e.target.value)
-    }
-  />
-</td>
+  {rows.map((row, i) => (
+    <tr
+      key={i}
+      className="border-t border-white/10"
+    >
+      {/* FIRST */}
+      <td className="p-2">
+        <input
+          className="input"
+          value={row.firstName}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "firstName",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-                <td className="p-2">
-                  <input
-                    className="input"
-                    value={row.lastName}
-                    onChange={(e) =>
-                      updateRow(i, "lastName", e.target.value)
-                    }
-                  />
-                </td>
+      {/* MIDDLE */}
+      <td className="p-2">
+        <input
+          className="input"
+          value={row.middleName}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "middleName",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-                <td className="p-2">
-                  <input
-                    className="input"
-                    value={row.email}
-                    onChange={(e) =>
-                      updateRow(i, "email", e.target.value)
-                    }
-                  />
-                </td>
+      {/* LAST */}
+      <td className="p-2">
+        <input
+          className="input"
+          value={row.lastName}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "lastName",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-                <td className="p-2">
-                  <input
-                    className="input"
-                    value={row.employeeId}
-                    onChange={(e) =>
-                      updateRow(i, "employeeId", e.target.value)
-                    }
-                  />
-                </td>
+      {/* EMAIL */}
+      <td className="p-2">
+        <input
+          className="input"
+          type="email"
+          value={row.email}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "email",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-                {/* PASSWORD */}
-                <td className="p-2">
-                  <input
-                    className="input"
-                    type="password"
-                    value={row.password}
-                    onChange={(e) =>
-                      updateRow(i, "password", e.target.value)
-                    }
-                    placeholder="••••••••"
-                  />
-                </td>
+      {/* PHONE */}
+      <td className="p-2">
+        <input
+          className="input"
+          value={row.phone}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "phone",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-                {/* SUBJECTS */}
-                <td className="p-2">
-                  <div className="flex flex-wrap gap-1">
-                    {subjects.map((s) => (
-                      <button
-                        key={s._id}
-                        type="button"
-                        onClick={() =>
-                          toggleMultiSelect(i, "subjectIds", s._id)
-                        }
-                        className={`text-xs px-2 py-1 rounded-lg border ${
-                          row.subjectIds.includes(s._id)
-                            ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
-                            : "border-white/10 text-slate-300"
-                        }`}
-                      >
-                        {s.name}
-                      </button>
-                    ))}
-                  </div>
-                </td>
+      {/* EMPLOYEE ID */}
+      <td className="p-2">
+        <input
+          className="input"
+          value={row.employeeId}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "employeeId",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-                {/* CLASSES */}
-                <td className="p-2">
-                  <div className="flex flex-wrap gap-1">
-                    {classes.map((c) => (
-                      <button
-                        key={c._id}
-                        type="button"
-                        onClick={() =>
-                          toggleMultiSelect(i, "classIds", c._id)
-                        }
-                        className={`text-xs px-2 py-1 rounded-lg border ${
-                          row.classIds.includes(c._id)
-                            ? "bg-purple-500/20 border-purple-400 text-purple-300"
-                            : "border-white/10 text-slate-300"
-                        }`}
-                      >
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </td>
+      {/* QUALIFICATION */}
+      <td className="p-2">
+        <input
+          className="input"
+          value={row.qualification}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "qualification",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-         
+      {/* DESIGNATION */}
+      <td className="p-2">
+        <input
+          className="input"
+          value={row.designation}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "designation",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-<td>
-  <input
-    className="input"
-    value={row.phone}
-    onChange={(e) =>
-      updateRow(i, "phone", e.target.value)
-    }
-  />
-</td>
+      {/* GENDER */}
+      <td className="p-2">
+        <select
+          className="input"
+          value={row.gender}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "gender",
+              e.target.value
+            )
+          }
+        >
+          <option value="male">
+            Male
+          </option>
+          <option value="female">
+            Female
+          </option>
+        </select>
+      </td>
 
-<td>
-  <input
-    className="input"
-    value={row.designation}
-    onChange={(e) =>
-      updateRow(i, "designation", e.target.value)
-    }
-  />
-</td>
+      {/* DOB */}
+      <td className="p-2">
+        <input
+          className="input"
+          type="date"
+          value={row.dateOfBirth}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "dateOfBirth",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-<td>
-  <input
-    className="input"
-    type="date"
-    value={row.dateOfBirth}
-    onChange={(e) =>
-      updateRow(i, "dateOfBirth", e.target.value)
-    }
-  />
-</td>
+      {/* STATE */}
+      <td className="p-2">
+        <input
+          className="input"
+          value={row.stateOfOrigin}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "stateOfOrigin",
+              e.target.value
+            )
+          }
+        />
+      </td>
 
-<td>
-  <input
-    className="input"
-    value={row.stateOfOrigin}
-    onChange={(e) =>
-      updateRow(i, "stateOfOrigin", e.target.value)
-    }
-  />
-</td>
+      {/* SUBJECTS */}
+      <td className="p-2 min-w-[220px]">
+        <div className="flex flex-wrap gap-1">
+          {subjects.map((s) => (
+            <button
+              key={s._id}
+              type="button"
+              onClick={() =>
+                toggleMultiSelect(
+                  i,
+                  "subjectIds",
+                  s._id
+                )
+              }
+              className={`text-xs px-2 py-1 rounded-lg border ${
+                row.subjectIds.includes(
+                  s._id
+                )
+                  ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
+                  : "border-white/10 text-slate-300"
+              }`}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+      </td>
 
-                <td className="p-2">
-                  <select
-                    className="input"
-                    value={row.status}
-                    onChange={(e) =>
-                      updateRow(i, "status", e.target.value as any)
-                    }
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </td>
+      {/* CLASSES */}
+      <td className="p-2 min-w-[220px]">
+        <div className="flex flex-wrap gap-1">
+          {classes.map((c) => (
+            <button
+              key={c._id}
+              type="button"
+              onClick={() =>
+                toggleMultiSelect(
+                  i,
+                  "classIds",
+                  c._id
+                )
+              }
+              className={`text-xs px-2 py-1 rounded-lg border ${
+                row.classIds.includes(
+                  c._id
+                )
+                  ? "bg-purple-500/20 border-purple-400 text-purple-300"
+                  : "border-white/10 text-slate-300"
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      </td>
 
-                <td className="p-2 text-center">
-                  <button
-                    onClick={() => removeRow(i)}
-                    className="text-red-400"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
+      {/* STATUS */}
+      <td className="p-2">
+        <select
+          className="input"
+          value={row.status}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "status",
+              e.target.value
+            )
+          }
+        >
+          <option value="active">
+            Active
+          </option>
+          <option value="inactive">
+            Inactive
+          </option>
+        </select>
+      </td>
+
+      {/* PASSWORD */}
+      <td className="p-2">
+        <input
+          className="input"
+          type="password"
+          value={row.password}
+          onChange={(e) =>
+            updateRow(
+              i,
+              "password",
+              e.target.value
+            )
+          }
+        />
+      </td>
+
+      {/* DELETE */}
+      <td className="p-2 text-center">
+        <button
+          type="button"
+          onClick={() =>
+            removeRow(i)
+          }
+          className="text-red-400 hover:text-red-300"
+        >
+          <Trash2 size={18} />
+        </button>
+      </td>
+    </tr>
+  ))}
+</tbody>
         </table>
       </div>
 
