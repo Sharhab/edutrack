@@ -241,33 +241,18 @@ export async function createTeacher(
 * GET
 * ==================================================
   */
-  export async function getTeacherById(
-  id,
-  schoolId
-  ) {
-  const teacher =
-  await teacherPopulate(
-  Teacher.findOne({
-  _id: id,
-  schoolId,
-  })
-  );
-
-if (!teacher) {
-throw new ApiError(
-404,
-"Teacher not found"
-);
-}
-
-return teacher;
-}
-
-function teacherPopulate(query) {
+ function teacherPopulate(query) {
   return query
     .populate(
       "userId",
-      "firstName lastName email phone isActive role"
+      `
+        firstName
+        lastName
+        email
+        phone
+        isActive
+        role
+      `
     )
     .populate(
       "subjectIds",
@@ -281,6 +266,123 @@ function teacherPopulate(query) {
       "classTeacherOf",
       "name level arm"
     );
+}
+
+/**
+ * ==================================================
+ * GET SINGLE TEACHER
+ * ==================================================
+ */
+export async function getTeacherById(
+  id,
+  schoolId
+) {
+  const teacher = await teacherPopulate(
+    Teacher.findOne({
+      _id: id,
+      schoolId,
+    })
+  );
+
+  if (!teacher) {
+    throw new ApiError(
+      404,
+      "Teacher not found"
+    );
+  }
+
+  const user = teacher.userId || {};
+
+  return {
+    _id: teacher._id,
+
+    schoolId: teacher.schoolId,
+
+    userId: teacher.userId,
+
+    // USER INFO
+    firstName:
+      user.firstName ||
+      teacher.firstName ||
+      "",
+
+    middleName:
+      teacher.middleName || "",
+
+    lastName:
+      user.lastName ||
+      teacher.lastName ||
+      "",
+
+    email:
+      user.email ||
+      teacher.email ||
+      "",
+
+    phone:
+      user.phone ||
+      teacher.phone ||
+      "",
+
+    // EMPLOYMENT
+    employeeId:
+      teacher.employeeId || "",
+
+    qualification:
+      teacher.qualification || "",
+
+    designation:
+      teacher.designation || "",
+
+    employmentType:
+      teacher.employmentType ||
+      "full_time",
+
+    employmentDate:
+      teacher.employmentDate,
+
+    // PERSONAL
+    gender:
+      teacher.gender ||
+      "male",
+
+    dateOfBirth:
+      teacher.dateOfBirth,
+
+    address:
+      teacher.address || "",
+
+    // ASSIGNMENTS
+    subjectIds:
+      teacher.subjectIds || [],
+
+    classIds:
+      teacher.classIds || [],
+
+    assignments:
+      teacher.assignments || [],
+
+    classTeacherOf:
+      teacher.classTeacherOf,
+
+    // STATUS
+    status:
+      teacher.status ||
+      "active",
+
+    isActive:
+      user.isActive ??
+      teacher.isActive ??
+      teacher.status ===
+        "active",
+
+    // TIMESTAMPS
+    createdAt:
+      teacher.createdAt,
+
+    updatedAt:
+      teacher.updatedAt,
+  };
 }
 /**
 
