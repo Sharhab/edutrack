@@ -45,25 +45,6 @@ throw new ApiError(
 }
 }
 
-function teacherPopulate(query) {
-return query
-.populate(
-"userId",
-"firstName lastName email phone isActive role"
-)
-.populate(
-"subjectIds",
-"name code"
-)
-.populate(
-"classIds",
-"name level"
-)
-.populate(
-"classTeacherOf",
-"name level"
-);
-}
 
 /**
  * ==================================================
