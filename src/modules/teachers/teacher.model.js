@@ -3,114 +3,18 @@ import mongoose from "mongoose";
 const teacherAssignmentSchema =
   new mongoose.Schema(
     {
-      /**
-       * =========================================
-       * CLASS
-       * =========================================
-       */
       classId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
+        type: mongoose.Schema.Types.ObjectId,
         ref: "Class",
         required: true,
       },
 
-      /**
-       * =========================================
-       * SUBJECT
-       * =========================================
-       */
       subjectId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
+        type: mongoose.Schema.Types.ObjectId,
         ref: "Subject",
         required: true,
       },
 
-      middleName: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-gender: {
-  type: String,
-  enum: ["male", "female"],
-  default: "male",
-},
-
-dateOfBirth: {
-  type: Date,
-  default: null,
-},
-address: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-phone: {
-  type: String,
-  default: "",
-  trim: true,
-},
-designation: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-employmentDate: {
-  type: Date,
-  default: null,
-},
-
-employmentType: {
-  type: String,
-  enum: [
-    "full_time",
-    "part_time",
-    "contract",
-    "visiting",
-  ],
-  default: "full_time",
-},
-emergencyName: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-emergencyPhone: {
-  type: String,
-  default: "",
-  trim: true,
-},
-bloodGroup: {
-  type: String,
-  default: "",
-},
-
-genotype: {
-  type: String,
-  default: "",
-},
-nin: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-photo: {
-  type: String,
-  default: "",
-},
-
-      /**
-       * =========================================
-       * OPTIONAL TIMETABLE SUPPORT
-       * =========================================
-       */
       periods: [
         {
           day: {
@@ -135,235 +39,268 @@ photo: {
     }
   );
 
-const teacherSchema =
-  new mongoose.Schema(
-    {
-      /**
-       * =========================================
-       * SCHOOL
-       * =========================================
-       */
-      schoolId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "School",
-
-        required: true,
-
-        index: true,
-      },
-
-      /**
-       * =========================================
-       * LINKED USER ACCOUNT
-       * =========================================
-       */
-      userId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref: "User",
-
-        required: true,
-
-        unique: true,
-      },
-
-      /**
-       * =========================================
-       * EMPLOYEE ID
-       * OPTIONAL FOR BULK IMPORTS
-       * =========================================
-       */
-      employeeId: {
-        type: String,
-
-        trim: true,
-
-        default: "",
-      },
-
-      /**
-       * =========================================
-       * PROFILE
-       * =========================================
-       */
-      qualification: {
-        type: String,
-
-        default: "",
-
-        trim: true,
-      },
-
-      /**
-       * =========================================
-       * ASSIGNED SUBJECTS
-       * =========================================
-       */
-      subjectIds: [
-        {
-          type:
-            mongoose.Schema.Types.ObjectId,
-
-          ref: "Subject",
-        },
-      ],
-
-      /**
-       * =========================================
-       * ASSIGNED CLASSES
-       * =========================================
-       */
-      classIds: [
-        {
-          type:
-            mongoose.Schema.Types.ObjectId,
-
-          ref: "Class",
-        },
-      ],
-
-      /**
-       * =========================================
-       * ADVANCED CLASS + SUBJECT MAPPING
-       * =========================================
-       */
-      assignments: [
-        teacherAssignmentSchema,
-      ],
-
-      /**
-       * =========================================
-       * OPTIONAL CLASS TEACHER
-       * =========================================
-       */
-      classTeacherOf: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref: "Class",
-
-        default: null,
-      },
-
-      /**
-       * =========================================
-       * EMPLOYMENT STATUS
-       * =========================================
-       */
-      status: {
-        type: String,
-
-        enum: [
-          "active",
-          "inactive",
-        ],
-
-        default: "active",
-      },
-    },
-    {
-      timestamps: true,
-    }
-  );
-
-/**
- * =========================================
- * UNIQUE EMPLOYEE ID
- * ONLY WHEN PROVIDED
- * =========================================
- */
-teacherSchema.index(
+const teacherSchema = new mongoose.Schema(
   {
-    schoolId: 1,
-    employeeId: 1,
+    /*
+    =========================================
+    SCHOOL
+    =========================================
+    */
+    schoolId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "School",
+      required: true,
+      index: true,
+    },
+
+    /*
+    =========================================
+    USER ACCOUNT
+    =========================================
+    */
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+    },
+
+    /*
+    =========================================
+    EMPLOYEE
+    =========================================
+    */
+    employeeId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    qualification: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    designation: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    staffCategory: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    /*
+    =========================================
+    PERSONAL INFORMATION
+    =========================================
+    */
+    middleName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    gender: {
+      type: String,
+      enum: ["male", "female"],
+      default: "male",
+    },
+
+    dateOfBirth: {
+      type: Date,
+      default: null,
+    },
+
+    maritalStatus: {
+      type: String,
+      default: "",
+    },
+
+    /*
+    =========================================
+    CONTACT
+    =========================================
+    */
+    phone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    address: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    /*
+    =========================================
+    LOCATION
+    =========================================
+    */
+    stateOfOrigin: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    lga: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    nationality: {
+      type: String,
+      default: "Nigerian",
+      trim: true,
+    },
+
+    /*
+    =========================================
+    EMPLOYMENT
+    =========================================
+    */
+    employmentDate: {
+      type: Date,
+      default: null,
+    },
+
+    employmentType: {
+      type: String,
+      enum: [
+        "full_time",
+        "part_time",
+        "contract",
+        "visiting",
+      ],
+      default: "full_time",
+    },
+
+    /*
+    =========================================
+    EMERGENCY
+    =========================================
+    */
+    emergencyName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    emergencyPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    /*
+    =========================================
+    HEALTH
+    =========================================
+    */
+    bloodGroup: {
+      type: String,
+      default: "",
+    },
+
+    genotype: {
+      type: String,
+      default: "",
+    },
+
+    /*
+    =========================================
+    IDENTIFICATION
+    =========================================
+    */
+    nin: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    /*
+    =========================================
+    PHOTO
+    =========================================
+    */
+    photo: {
+      type: String,
+      default: "",
+    },
+
+    /*
+    =========================================
+    SUBJECTS
+    =========================================
+    */
+    subjectIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Subject",
+      },
+    ],
+
+    /*
+    =========================================
+    CLASSES
+    =========================================
+    */
+    classIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Class",
+      },
+    ],
+
+    /*
+    =========================================
+    ADVANCED ASSIGNMENTS
+    =========================================
+    */
+    assignments: [
+      teacherAssignmentSchema,
+    ],
+
+    /*
+    =========================================
+    CLASS TEACHER
+    =========================================
+    */
+    classTeacherOf: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Class",
+      default: null,
+    },
+
+    /*
+    =========================================
+    ACTIVE FLAG
+    =========================================
+    */
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    /*
+    =========================================
+    STATUS
+    =========================================
+    */
+    status: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "active",
+    },
   },
   {
-    unique: true,
-
-    partialFilterExpression: {
-      employeeId: {
-        $exists: true,
-        $ne: "",
-      },
-    },
+    timestamps: true,
   }
 );
-
-/**
- * =========================================
- * FAST QUERY INDEXES
- * =========================================
- */
-teacherSchema.index({
-  schoolId: 1,
-  classIds: 1,
-});
-
-teacherSchema.index({
-  schoolId: 1,
-  subjectIds: 1,
-});
-
-teacherSchema.index({
-  "assignments.classId": 1,
-});
-
-teacherSchema.index({
-  "assignments.subjectId": 1,
-});
-
-/**
- * =========================================
- * VIRTUALS
- * =========================================
- */
-teacherSchema.virtual(
-  "assignedClasses",
-  {
-    ref: "Class",
-
-    localField: "classIds",
-
-    foreignField: "_id",
-  }
-);
-
-teacherSchema.virtual(
-  "assignedSubjects",
-  {
-    ref: "Subject",
-
-    localField: "subjectIds",
-
-    foreignField: "_id",
-  }
-);
-
-/**
- * =========================================
- * JSON SETTINGS
- * =========================================
- */
-teacherSchema.set(
-  "toJSON",
-  {
-    virtuals: true,
-  }
-);
-
-teacherSchema.set(
-  "toObject",
-  {
-    virtuals: true,
-  }
-);
-
-export const Teacher =
-  mongoose.model(
-    "Teacher",
-    teacherSchema
-  );
-
-export default Teacher;
