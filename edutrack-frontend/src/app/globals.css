@@ -52,6 +52,8 @@ body {
 
   font-feature-settings: "cv11", "ss01";
   text-rendering: optimizeLegibility;
+   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 *,
@@ -394,4 +396,19 @@ body {
   .print-hidden {
     display: none !important;
   }
+}
+
+.report-card .card {
+  backdrop-filter: blur(10px);
+}
+
+@media screen {
+  .report-card .card {
+    backdrop-filter: none;
+  }
+}
+
+.report-card {
+  font-size: 14px;
+  font-weight: 500;
 }
