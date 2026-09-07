@@ -1,3 +1,4 @@
+
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -25,7 +26,6 @@ import {
 
 type GenerateStudentPdfParams = {
   reportCard: StudentReportCard;
-
   branding?: SchoolBranding;
 };
 
@@ -39,9 +39,7 @@ export async function generateStudentPdf({
 }: GenerateStudentPdfParams) {
   const pdf = new jsPDF({
     orientation: "portrait",
-
     unit: "mm",
-
     format: "a4",
   });
 
@@ -50,16 +48,11 @@ export async function generateStudentPdf({
   ===================================== */
 
   pdf.setProperties({
-    title:
-      pdfDocumentMeta.title,
-    subject:
-      pdfDocumentMeta.subject,
-    author:
-      pdfDocumentMeta.author,
-    creator:
-      pdfDocumentMeta.creator,
-    keywords:
-      pdfDocumentMeta.keywords,
+    title: pdfDocumentMeta.title,
+    subject: pdfDocumentMeta.subject,
+    author: pdfDocumentMeta.author,
+    creator: pdfDocumentMeta.creator,
+    keywords: pdfDocumentMeta.keywords,
   });
 
   /* =====================================
@@ -101,12 +94,13 @@ export async function generateStudentPdf({
   });
 
   /* =====================================
-     SUMMARY
+     SUMMARY + ATTENDANCE
   ===================================== */
 
   renderSummary({
     pdf,
     reportCard,
+    primaryColor,
   });
 
   /* =====================================
@@ -139,7 +133,12 @@ function renderHeader({
   reportCard,
   branding,
   primaryColor,
-}: any) {
+}: {
+  pdf: jsPDF;
+  reportCard: StudentReportCard;
+  branding?: SchoolBranding;
+  primaryColor: string;
+}) {
   pdf.setFillColor(primaryColor);
 
   pdf.rect(
@@ -150,9 +149,7 @@ function renderHeader({
     "F"
   );
 
-  pdf.setTextColor(
-    "#FFFFFF"
-  );
+  pdf.setTextColor("#FFFFFF");
 
   pdf.setFont(
     pdfFonts.bold
@@ -193,7 +190,10 @@ function renderHeader({
 function renderStudentInfo({
   pdf,
   reportCard,
-}: any) {
+}: {
+  pdf: jsPDF;
+  reportCard: StudentReportCard;
+}) {
   const student =
     reportCard.student;
 
@@ -220,31 +220,25 @@ function renderStudentInfo({
       "Name",
       `${student.firstName} ${student.lastName}`,
     ],
-
     [
       "Admission No",
       student.admissionNumber,
     ],
-
     [
       "Class",
       student.className,
     ],
-
     [
       "Session",
       reportCard.session.name,
     ],
-
     [
       "Term",
       reportCard.term.name,
     ],
-
     [
       "Gender",
-      student.gender ||
-        "-",
+      student.gender || "-",
     ],
   ];
 
@@ -267,7 +261,7 @@ function renderStudentInfo({
       );
 
       pdf.text(
-        String(value),
+        String(value ?? "-"),
         48,
         y
       );
@@ -285,7 +279,11 @@ function renderSubjectTable({
   pdf,
   reportCard,
   primaryColor,
-}: any) {
+}: {
+  pdf: jsPDF;
+  reportCard: StudentReportCard;
+  primaryColor: string;
+}) {
   autoTable(pdf, {
     startY: 88,
 
@@ -304,21 +302,15 @@ function renderSubjectTable({
 
     body:
       reportCard.results.map(
-        (subject: any) => [
+        (subject) => [
           subject.subjectName,
-
-          subject.ca1,
-          subject.ca2,
-
-          subject.assignment,
-
-          subject.exam,
-
-          subject.total,
-
-          subject.grade,
-
-          subject.remark,
+          subject.ca1 ?? 0,
+          subject.ca2 ?? 0,
+          subject.assignment ?? 0,
+          subject.exam ?? 0,
+          subject.total ?? 0,
+          subject.grade ?? "-",
+          subject.remark ?? "-",
         ]
       ),
 
@@ -326,9 +318,7 @@ function renderSubjectTable({
 
     styles: {
       fontSize: 9,
-
       cellPadding: 3,
-
       lineColor:
         pdfTheme.colors.border,
     },
@@ -336,15 +326,18 @@ function renderSubjectTable({
     headStyles: {
       fillColor:
         primaryColor,
-
       textColor: "#FFFFFF",
-
       fontStyle: "bold",
     },
 
     alternateRowStyles: {
       fillColor:
         pdfTheme.colors.lightGray,
+    },
+
+    margin: {
+      left: 14,
+      right: 14,
     },
   });
 }
@@ -356,16 +349,36 @@ function renderSubjectTable({
 function renderSummary({
   pdf,
   reportCard,
-}: any) {
+  primaryColor,
+}: {
+  pdf: jsPDF;
+  reportCard: StudentReportCard;
+  primaryColor: string;
+}) {
+  const lastAutoTable =
+    (pdf as any).lastAutoTable;
+
   const finalY =
-    (
-      pdf as any
-    ).lastAutoTable.finalY + 10;
+    lastAutoTable?.finalY
+      ? lastAutoTable.finalY + 8
+      : 100;
+
+  const attendance =
+    reportCard.attendance || {
+      total: 0,
+      present: 0,
+      absent: 0,
+      late: 0,
+    };
 
   const attendancePercentage =
     calculateAttendancePercentage(
-      reportCard.attendance
+      attendance
     );
+
+  /* =====================================
+     PERFORMANCE SUMMARY
+  ===================================== */
 
   pdf.setFont(
     pdfFonts.bold
@@ -391,32 +404,25 @@ function renderSummary({
       reportCard.summary
         .subjectsCount,
     ],
-
     [
       "Total Score",
       reportCard.summary
         .totalScore,
     ],
-
     [
       "Average Score",
       reportCard.summary
         .averageScore,
     ],
-
     [
       "Class Position",
       reportCard.summary
         .positionLabel,
     ],
-
-    [
-      "Attendance %",
-      `${attendancePercentage}%`,
-    ],
   ];
 
-  let y = finalY + 8;
+  let summaryY =
+    finalY + 8;
 
   summary.forEach(
     ([label, value]) => {
@@ -427,7 +433,7 @@ function renderSummary({
       pdf.text(
         `${label}:`,
         14,
-        y
+        summaryY
       );
 
       pdf.setFont(
@@ -435,14 +441,223 @@ function renderSummary({
       );
 
       pdf.text(
-        String(value),
+        String(value ?? "-"),
         60,
-        y
+        summaryY
       );
 
-      y += 7;
+      summaryY += 7;
     }
   );
+
+  /* =====================================
+     ATTENDANCE SECTION
+  ===================================== */
+
+  const attendanceY =
+    summaryY + 4;
+
+  pdf.setFont(
+    pdfFonts.bold
+  );
+
+  pdf.setFontSize(11);
+
+  pdf.text(
+    "Attendance",
+    14,
+    attendanceY
+  );
+
+  /* =====================================
+     ATTENDANCE BOXES
+  ===================================== */
+
+  const boxY =
+    attendanceY + 5;
+
+  const boxHeight = 17;
+
+  const boxGap = 3;
+
+  const availableWidth = 182;
+
+  const boxWidth =
+    (availableWidth -
+      boxGap * 4) /
+    5;
+
+  const attendanceItems = [
+    {
+      label: "Total Days",
+      value: attendance.total,
+    },
+    {
+      label: "Present",
+      value: attendance.present,
+    },
+    {
+      label: "Absent",
+      value: attendance.absent,
+    },
+    {
+      label: "Late",
+      value: attendance.late,
+    },
+    {
+      label: "Attendance",
+      value: `${attendancePercentage}%`,
+    },
+  ];
+
+  attendanceItems.forEach(
+    (item, index) => {
+      const x =
+        14 +
+        index *
+          (boxWidth + boxGap);
+
+      /* Box */
+
+      pdf.setDrawColor(
+        pdfTheme.colors.border
+      );
+
+      pdf.setFillColor(
+        "#FFFFFF"
+      );
+
+      pdf.roundedRect(
+        x,
+        boxY,
+        boxWidth,
+        boxHeight,
+        2,
+        2,
+        "FD"
+      );
+
+      /* Label */
+
+      pdf.setFont(
+        pdfFonts.regular
+      );
+
+      pdf.setFontSize(7);
+
+      pdf.setTextColor(
+        pdfTheme.colors.mutedText
+      );
+
+      pdf.text(
+        item.label,
+        x + boxWidth / 2,
+        boxY + 5,
+        {
+          align: "center",
+        }
+      );
+
+      /* Value */
+
+      pdf.setFont(
+        pdfFonts.bold
+      );
+
+      pdf.setFontSize(10);
+
+      pdf.setTextColor(
+        pdfTheme.colors.text
+      );
+
+      pdf.text(
+        String(item.value ?? 0),
+        x + boxWidth / 2,
+        boxY + 12,
+        {
+          align: "center",
+        }
+      );
+    }
+  );
+
+  /* =====================================
+     ATTENDANCE PERFORMANCE BAR
+  ===================================== */
+
+  const barY =
+    boxY + boxHeight + 6;
+
+  pdf.setFont(
+    pdfFonts.regular
+  );
+
+  pdf.setFontSize(8);
+
+  pdf.setTextColor(
+    pdfTheme.colors.text
+  );
+
+  pdf.text(
+    "Attendance Performance",
+    14,
+    barY
+  );
+
+  pdf.setFont(
+    pdfFonts.bold
+  );
+
+  pdf.text(
+    `${attendancePercentage}%`,
+    196,
+    barY,
+    {
+      align: "right",
+    }
+  );
+
+  /* Background bar */
+
+  const barWidth = 182;
+  const barHeight = 3;
+
+  pdf.setFillColor(
+    "#E5E7EB"
+  );
+
+  pdf.roundedRect(
+    14,
+    barY + 3,
+    barWidth,
+    barHeight,
+    1.5,
+    1.5,
+    "F"
+  );
+
+  /* Progress */
+
+  const progressWidth =
+    (attendancePercentage /
+      100) *
+    barWidth;
+
+  if (progressWidth > 0) {
+    pdf.setFillColor(
+      primaryColor
+    );
+
+    pdf.roundedRect(
+      14,
+      barY + 3,
+      progressWidth,
+      barHeight,
+      1.5,
+      1.5,
+      "F"
+    );
+  }
 }
 
 /* =========================================
@@ -452,7 +667,10 @@ function renderSummary({
 function renderComments({
   pdf,
   reportCard,
-}: any) {
+}: {
+  pdf: jsPDF;
+  reportCard: StudentReportCard;
+}) {
   const average =
     reportCard.summary
       .averageScore;
@@ -497,7 +715,13 @@ function renderComments({
       defaultComments.poor;
   }
 
-  const y = 220;
+  /*
+   * Put comments below the attendance
+   * section instead of using a fixed
+   * position that could overlap content.
+   */
+
+  const commentsY = 218;
 
   pdf.setFont(
     pdfFonts.bold
@@ -505,10 +729,14 @@ function renderComments({
 
   pdf.setFontSize(11);
 
+  pdf.setTextColor(
+    pdfTheme.colors.text
+  );
+
   pdf.text(
     "Teacher's Comment",
     14,
-    y
+    commentsY
   );
 
   pdf.setFont(
@@ -517,10 +745,16 @@ function renderComments({
 
   pdf.setFontSize(10);
 
+  const commentLines =
+    pdf.splitTextToSize(
+      comment,
+      182
+    );
+
   pdf.text(
-    comment,
+    commentLines,
     14,
-    y + 10
+    commentsY + 8
   );
 }
 
@@ -531,8 +765,15 @@ function renderComments({
 function renderFooter({
   pdf,
   branding,
-}: any) {
+}: {
+  pdf: jsPDF;
+  branding?: SchoolBranding;
+}) {
   const footerY = 270;
+
+  pdf.setDrawColor(
+    pdfTheme.colors.border
+  );
 
   pdf.line(
     14,
@@ -548,7 +789,15 @@ function renderFooter({
     footerY
   );
 
+  pdf.setFont(
+    pdfFonts.regular
+  );
+
   pdf.setFontSize(9);
+
+  pdf.setTextColor(
+    pdfTheme.colors.text
+  );
 
   pdf.text(
     "Class Teacher",
@@ -569,7 +818,9 @@ function renderFooter({
   );
 
   pdf.text(
-    "Generated by EduTrack ERP",
+    branding?.schoolName
+      ? `${branding.schoolName} • Generated by EduTrack ERP`
+      : "Generated by EduTrack ERP",
     105,
     287,
     {
