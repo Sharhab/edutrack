@@ -1,3 +1,5 @@
+// modules/report-card/report-card.service.js
+
 import mongoose from "mongoose";
 
 import { Student } from "../students/student.model.js";
@@ -6,12 +8,13 @@ import { Attendance } from "../attendance/attendance.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
 import { ClassModel } from "../classes/class.model.js";
+
 import { ensureParentOwnsStudent } from "../parents/parent.guard.js";
 import { ApiError } from "../../utils/apiError.js";
 
-/* =========================================
+/* =========================================================
    HELPERS
-========================================= */
+========================================================= */
 
 function ordinal(n) {
   if (!n) return "";
@@ -28,34 +31,21 @@ function calculateAverage(total, count) {
   return Number((total / count).toFixed(2));
 }
 
-/**
- * Normalize attendance status.
- *
- * Supports existing values such as:
- * present
- * absent
- * late
- *
- * Also handles capitalized values safely.
- */
-function normalizeAttendanceStatus(status) {
-  return String(status || "").trim().toLowerCase();
-}
+/* =========================================================
+   ATTENDANCE SUMMARY
+========================================================= */
 
-/**
- * Build report-card attendance summary.
- */
 function buildAttendanceSummary(records = []) {
   const present = records.filter(
-    (x) => normalizeAttendanceStatus(x.status) === "present"
+    (x) => x.status === "present"
   ).length;
 
   const absent = records.filter(
-    (x) => normalizeAttendanceStatus(x.status) === "absent"
+    (x) => x.status === "absent"
   ).length;
 
   const late = records.filter(
-    (x) => normalizeAttendanceStatus(x.status) === "late"
+    (x) => x.status === "late"
   ).length;
 
   const total = records.length;
@@ -74,192 +64,14 @@ function buildAttendanceSummary(records = []) {
   };
 }
 
-/**
- * Get attendance for a student and selected term.
- *
- * First tries the exact academic relationship:
- * school + student + session + term
- *
- * If that produces no records, and the Term has dates,
- * it falls back to:
- * school + student + attendance date inside term dates.
- *
- * This is important for existing attendance records that
- * may not have sessionId/termId populated correctly.
- */
-async function getReportCardAttendance({
-  schoolId,
-  studentId,
-  studentClassId,
-  sessionId,
-  term,
-}) {
-  const baseQuery = {
-    schoolId,
-    studentId,
-  };
+/* =========================================================
+   RANKING
+========================================================= */
 
-  /*
-   * =========================================
-   * 1. EXACT ACADEMIC MATCH
-   * =========================================
-   */
-
-  let exactRecords = [];
-
-  try {
-    exactRecords = await Attendance.find({
-      ...baseQuery,
-      sessionId,
-      termId: term._id,
-    }).sort({ date: 1, createdAt: 1 });
-  } catch (error) {
-    console.error(
-      "REPORT CARD ATTENDANCE EXACT QUERY ERROR:",
-      error.message
-    );
-  }
-
-  if (exactRecords.length > 0) {
-    console.log("REPORT CARD ATTENDANCE:", {
-      method: "exact-session-term",
-      studentId: String(studentId),
-      sessionId: String(sessionId),
-      termId: String(term._id),
-      records: exactRecords.length,
-      statuses: exactRecords.map((x) => x.status),
-    });
-
-    return exactRecords;
-  }
-
-  /*
-   * =========================================
-   * 2. TERM DATE FALLBACK
-   * =========================================
-   *
-   * This allows the report card to work with
-   * attendance records created before termId/
-   * sessionId was attached to Attendance.
-   */
-
-  if (term.startDate && term.endDate) {
-    const startDate = new Date(term.startDate);
-    const endDate = new Date(term.endDate);
-
-    /*
-     * Include the entire end date.
-     */
-    endDate.setHours(23, 59, 59, 999);
-
-    const dateQueries = [
-      {
-        ...baseQuery,
-        date: {
-          $gte: startDate,
-          $lte: endDate,
-        },
-      },
-      {
-        ...baseQuery,
-        attendanceDate: {
-          $gte: startDate,
-          $lte: endDate,
-        },
-      },
-    ];
-
-    /*
-     * Try `date` first.
-     */
-    try {
-      const dateRecords = await Attendance.find(
-        dateQueries[0]
-      ).sort({ date: 1, createdAt: 1 });
-
-      if (dateRecords.length > 0) {
-        console.log("REPORT CARD ATTENDANCE:", {
-          method: "term-date",
-          studentId: String(studentId),
-          termId: String(term._id),
-          startDate,
-          endDate,
-          records: dateRecords.length,
-          statuses: dateRecords.map((x) => x.status),
-        });
-
-        return dateRecords;
-      }
-    } catch (error) {
-      console.log(
-        "Attendance date fallback skipped:",
-        error.message
-      );
-    }
-
-    /*
-     * Try attendanceDate if the schema uses that name.
-     */
-    try {
-      const attendanceDateRecords =
-        await Attendance.find(dateQueries[1]).sort({
-          attendanceDate: 1,
-          createdAt: 1,
-        });
-
-      if (attendanceDateRecords.length > 0) {
-        console.log("REPORT CARD ATTENDANCE:", {
-          method: "term-attendanceDate",
-          studentId: String(studentId),
-          termId: String(term._id),
-          startDate,
-          endDate,
-          records: attendanceDateRecords.length,
-          statuses: attendanceDateRecords.map(
-            (x) => x.status
-          ),
-        });
-
-        return attendanceDateRecords;
-      }
-    } catch (error) {
-      console.log(
-        "Attendance attendanceDate fallback skipped:",
-        error.message
-      );
-    }
-  }
-
-  /*
-   * =========================================
-   * 3. LAST FALLBACK
-   * =========================================
-   *
-   * If existing attendance has neither correct
-   * academic IDs nor usable term dates, return
-   * an empty result rather than accidentally
-   * mixing attendance from another term.
-   */
-
-  console.warn("REPORT CARD ATTENDANCE NOT FOUND:", {
-    studentId: String(studentId),
-    classId: studentClassId
-      ? String(studentClassId)
-      : null,
-    sessionId: String(sessionId),
-    termId: String(term._id),
-    termStartDate: term.startDate,
-    termEndDate: term.endDate,
-  });
-
-  return [];
-}
-
-/* =========================================
-   RANKING ENGINE
-========================================= */
-
-function computePosition(sortedStudents, targetStudentId) {
+function computePosition(
+  sortedStudents,
+  targetStudentId
+) {
   const index = sortedStudents.findIndex(
     (s) =>
       String(s.studentId) ===
@@ -269,9 +81,202 @@ function computePosition(sortedStudents, targetStudentId) {
   return index >= 0 ? index + 1 : null;
 }
 
-/* =========================================
-   STUDENT REPORT CARD ENGINE
-========================================= */
+/* =========================================================
+   GET STUDENT ATTENDANCE
+========================================================= */
+
+/**
+ * IMPORTANT
+ *
+ * Attendance is stored with:
+ *
+ * schoolId
+ * studentId
+ * classId
+ * sessionId
+ * termId
+ * date
+ * status
+ *
+ * Therefore report cards should use the same
+ * academic references instead of relying on
+ * Term.startDate / Term.endDate.
+ */
+async function getReportCardAttendance({
+  schoolId,
+  studentId,
+  classId,
+  sessionId,
+  termId,
+}) {
+  /* -------------------------------------------------------
+     EXACT ATTENDANCE QUERY
+  ------------------------------------------------------- */
+
+  const attendanceRecords =
+    await Attendance.find({
+      schoolId,
+      studentId,
+      classId,
+      sessionId,
+      termId,
+    })
+      .select(
+        "_id studentId classId sessionId termId date status"
+      )
+      .sort({
+        date: 1,
+        createdAt: 1,
+      })
+      .lean();
+
+  /* -------------------------------------------------------
+     DEBUG
+  ------------------------------------------------------- */
+
+  console.log(
+    "REPORT CARD ATTENDANCE DEBUG",
+    {
+      studentId: String(studentId),
+      classId: String(classId),
+      sessionId: String(sessionId),
+      termId: String(termId),
+
+      attendanceCount:
+        attendanceRecords.length,
+
+      attendance:
+        attendanceRecords.map((record) => ({
+          _id: String(record._id),
+          studentId:
+            record.studentId
+              ? String(record.studentId)
+              : null,
+          classId:
+            record.classId
+              ? String(record.classId)
+              : null,
+          sessionId:
+            record.sessionId
+              ? String(record.sessionId)
+              : null,
+          termId:
+            record.termId
+              ? String(record.termId)
+              : null,
+          date: record.date,
+          status: record.status,
+        })),
+    }
+  );
+
+  /* -------------------------------------------------------
+     IF FOUND
+  ------------------------------------------------------- */
+
+  if (attendanceRecords.length > 0) {
+    const summary =
+      buildAttendanceSummary(
+        attendanceRecords
+      );
+
+    console.log(
+      "REPORT CARD ATTENDANCE SUMMARY",
+      summary
+    );
+
+    return summary;
+  }
+
+  /* -------------------------------------------------------
+     DIAGNOSTIC:
+     CHECK ALL ATTENDANCE FOR THIS STUDENT
+     
+     This does NOT use the result.
+     It only helps us identify mismatched academic IDs.
+  ------------------------------------------------------- */
+
+  const allStudentAttendance =
+    await Attendance.find({
+      schoolId,
+      studentId,
+    })
+      .select(
+        "_id studentId classId sessionId termId date status"
+      )
+      .sort({
+        date: 1,
+        createdAt: 1,
+      })
+      .lean();
+
+  console.log(
+    "ALL STUDENT ATTENDANCE DEBUG",
+    {
+      studentId: String(studentId),
+
+      totalRecords:
+        allStudentAttendance.length,
+
+      attendance:
+        allStudentAttendance.map((record) => ({
+          _id: String(record._id),
+
+          studentId:
+            record.studentId
+              ? String(record.studentId)
+              : null,
+
+          classId:
+            record.classId
+              ? String(record.classId)
+              : null,
+
+          sessionId:
+            record.sessionId
+              ? String(record.sessionId)
+              : null,
+
+          termId:
+            record.termId
+              ? String(record.termId)
+              : null,
+
+          date: record.date,
+          status: record.status,
+        })),
+    }
+  );
+
+  /* -------------------------------------------------------
+     NOT FOUND
+  ------------------------------------------------------- */
+
+  console.log(
+    "REPORT CARD ATTENDANCE NOT FOUND:",
+    {
+      studentId: String(studentId),
+      classId: String(classId),
+      sessionId: String(sessionId),
+      termId: String(termId),
+
+      totalStudentAttendance:
+        allStudentAttendance.length,
+    }
+  );
+
+  return {
+    total: 0,
+    present: 0,
+    absent: 0,
+    late: 0,
+    percentage: 0,
+  };
+}
+
+/* =========================================================
+   STUDENT REPORT CARD
+========================================================= */
 
 export async function generateStudentReportCard({
   user,
@@ -279,11 +284,9 @@ export async function generateStudentReportCard({
   sessionId,
   termId,
 }) {
-  /*
-   * =========================================
-   * AUTH
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     PARENT AUTHORIZATION
+  ------------------------------------------------------- */
 
   if (user.role === "parent") {
     await ensureParentOwnsStudent(
@@ -292,62 +295,79 @@ export async function generateStudentReportCard({
     );
   }
 
-  /*
-   * =========================================
-   * VALIDATE IDS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     VALIDATE IDS
+  ------------------------------------------------------- */
 
   if (
-    !mongoose.Types.ObjectId.isValid(studentId)
+    !mongoose.Types.ObjectId.isValid(
+      studentId
+    )
   ) {
     throw new ApiError(
       400,
-      "studentId is invalid"
+      "Invalid student ID"
     );
   }
 
   if (
-    !mongoose.Types.ObjectId.isValid(sessionId)
+    !mongoose.Types.ObjectId.isValid(
+      sessionId
+    )
   ) {
     throw new ApiError(
       400,
-      "sessionId is invalid"
+      "Invalid session ID"
     );
   }
 
   if (
-    !mongoose.Types.ObjectId.isValid(termId)
+    !mongoose.Types.ObjectId.isValid(
+      termId
+    )
   ) {
     throw new ApiError(
       400,
-      "termId is invalid"
+      "Invalid term ID"
     );
   }
 
-  const schoolId = new mongoose.Types.ObjectId(
-    user.schoolId
-  );
+  /* -------------------------------------------------------
+     SCHOOL ID
+  ------------------------------------------------------- */
+
+  const schoolId =
+    new mongoose.Types.ObjectId(
+      user.schoolId
+    );
 
   const studentObjectId =
-    new mongoose.Types.ObjectId(studentId);
+    new mongoose.Types.ObjectId(
+      studentId
+    );
 
   const sessionObjectId =
-    new mongoose.Types.ObjectId(sessionId);
+    new mongoose.Types.ObjectId(
+      sessionId
+    );
 
   const termObjectId =
-    new mongoose.Types.ObjectId(termId);
+    new mongoose.Types.ObjectId(
+      termId
+    );
 
-  /*
-   * =========================================
-   * STUDENT
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     STUDENT
+  ------------------------------------------------------- */
 
-  const student = await Student.findOne({
-    _id: studentObjectId,
-    schoolId,
-  }).populate("classId", "name level");
+  const student =
+    await Student.findOne({
+      _id: studentObjectId,
+      schoolId,
+    }).populate(
+      "classId",
+      "name level"
+    );
 
   if (!student) {
     throw new ApiError(
@@ -356,11 +376,16 @@ export async function generateStudentReportCard({
     );
   }
 
-  /*
-   * =========================================
-   * SESSION + TERM
-   * =========================================
-   */
+  if (!student.classId) {
+    throw new ApiError(
+      400,
+      "Student is not assigned to a class"
+    );
+  }
+
+  /* -------------------------------------------------------
+     SESSION + TERM
+  ------------------------------------------------------- */
 
   const [session, term] =
     await Promise.all([
@@ -389,52 +414,48 @@ export async function generateStudentReportCard({
     );
   }
 
-  /*
-   * =========================================
-   * RESULTS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     RESULTS
+  ------------------------------------------------------- */
 
-  const results = await Result.find({
-    schoolId,
-    studentId: studentObjectId,
-    sessionId: sessionObjectId,
-    termId: termObjectId,
-  })
-    .populate("subjectId", "name code")
-    .sort({ createdAt: 1 });
+  const results =
+    await Result.find({
+      schoolId,
+      studentId: studentObjectId,
+      sessionId: sessionObjectId,
+      termId: termObjectId,
+    })
+      .populate(
+        "subjectId",
+        "name code"
+      )
+      .sort({
+        createdAt: 1,
+      });
 
-  /*
-   * =========================================
-   * ATTENDANCE
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     ATTENDANCE
+  ------------------------------------------------------- */
 
-  const attendanceRecords =
+  const attendance =
     await getReportCardAttendance({
       schoolId,
       studentId: studentObjectId,
-      studentClassId: student.classId?._id,
+      classId: student.classId._id,
       sessionId: sessionObjectId,
-      term,
+      termId: termObjectId,
     });
 
-  const attendance =
-    buildAttendanceSummary(
-      attendanceRecords
+  /* -------------------------------------------------------
+     SCORES
+  ------------------------------------------------------- */
+
+  const totalScore =
+    results.reduce(
+      (sum, result) =>
+        sum + (result.total || 0),
+      0
     );
-
-  /*
-   * =========================================
-   * SCORES
-   * =========================================
-   */
-
-  const totalScore = results.reduce(
-    (sum, r) =>
-      sum + Number(r.total || 0),
-    0
-  );
 
   const averageScore =
     calculateAverage(
@@ -442,20 +463,25 @@ export async function generateStudentReportCard({
       results.length
     );
 
-  /*
-   * =========================================
-   * CLASS RANKING
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     CLASSMATES
+  ------------------------------------------------------- */
 
-  const classmates = await Student.find({
-    schoolId,
-    classId: student.classId?._id,
-    status: "active",
-  }).select("_id");
+  const classmates =
+    await Student.find({
+      schoolId,
+      classId: student.classId._id,
+      status: "active",
+    }).select("_id");
 
   const classmateIds =
-    classmates.map((s) => s._id);
+    classmates.map(
+      (s) => s._id
+    );
+
+  /* -------------------------------------------------------
+     CLASS RESULTS
+  ------------------------------------------------------- */
 
   const classResults =
     await Result.find({
@@ -469,72 +495,65 @@ export async function generateStudentReportCard({
       "studentId total"
     );
 
-  const map = new Map();
+  /* -------------------------------------------------------
+     RANKING MAP
+  ------------------------------------------------------- */
 
-  classResults.forEach((r) => {
-    const key = String(
-      r.studentId
-    );
+  const scoreMap = new Map();
 
-    map.set(
-      key,
-      (map.get(key) || 0) +
-        Number(r.total || 0)
-    );
-  });
+  classResults.forEach(
+    (result) => {
+      const key =
+        String(result.studentId);
 
-  const ranked = classmateIds
-    .map((id) => ({
-      studentId: id,
-      total:
-        map.get(String(id)) || 0,
-    }))
-    .sort(
-      (a, b) => b.total - a.total
-    );
-
-  const position = computePosition(
-    ranked,
-    studentObjectId
+      scoreMap.set(
+        key,
+        (scoreMap.get(key) || 0) +
+          (result.total || 0)
+      );
+    }
   );
 
-  /*
-   * =========================================
-   * RESPONSE
-   * =========================================
-   */
+  const ranked =
+    classmateIds
+      .map((id) => ({
+        studentId: id,
+        total:
+          scoreMap.get(
+            String(id)
+          ) || 0,
+      }))
+      .sort(
+        (a, b) =>
+          b.total - a.total
+      );
+
+  const position =
+    computePosition(
+      ranked,
+      studentObjectId
+    );
+
+  /* -------------------------------------------------------
+     FINAL RESPONSE
+  ------------------------------------------------------- */
 
   return {
     reportCard: {
-      /*
-       * SCHOOL INFORMATION
-       *
-       * These are returned when available.
-       * The actual School model can be populated
-       * later if your project stores these fields
-       * differently.
-       */
-      school: {
-        _id: schoolId,
-      },
-
-      /*
-       * STUDENT
-       */
-
       student: {
         _id: student._id,
+
         admissionNumber:
-          student.admissionNumber || "",
+          student.admissionNumber,
 
         firstName:
-          student.firstName || "",
+          student.firstName,
 
         lastName:
-          student.lastName || "",
+          student.lastName,
 
         gender:
-          student.gender || "",
+          student.gender,
 
         photo:
           student.photo || "",
@@ -546,18 +565,10 @@ export async function generateStudentReportCard({
           student.classId?.level || "",
       },
 
-      /*
-       * SESSION
-       */
-
       session: {
         _id: session._id,
         name: session.name,
       },
-
-      /*
-       * TERM
-       */
 
       term: {
         _id: term._id,
@@ -568,42 +579,38 @@ export async function generateStudentReportCard({
           term.endDate || null,
       },
 
-      /*
-       * SUBJECT RESULTS
-       */
+      results: results.map(
+        (result) => ({
+          subjectName:
+            result.subjectId?.name ||
+            "",
 
-      results: results.map((r) => ({
-        subjectName:
-          r.subjectId?.name || "",
+          subjectCode:
+            result.subjectId?.code ||
+            "",
 
-        subjectCode:
-          r.subjectId?.code || "",
+          ca1:
+            result.ca1 || 0,
 
-        ca1:
-          Number(r.ca1 || 0),
+          ca2:
+            result.ca2 || 0,
 
-        ca2:
-          Number(r.ca2 || 0),
+          assignment:
+            result.assignment || 0,
 
-        assignment:
-          Number(r.assignment || 0),
+          exam:
+            result.exam || 0,
 
-        exam:
-          Number(r.exam || 0),
+          total:
+            result.total || 0,
 
-        total:
-          Number(r.total || 0),
+          grade:
+            result.grade || "",
 
-        grade:
-          r.grade || "",
-
-        remark:
-          r.remark || "",
-      })),
-
-      /*
-       * SUMMARY
-       */
+          remark:
+            result.remark || "",
+        })
+      ),
 
       summary: {
         subjectsCount:
@@ -619,36 +626,14 @@ export async function generateStudentReportCard({
           ordinal(position),
       },
 
-      /*
-       * ATTENDANCE
-       *
-       * This is now guaranteed to contain
-       * the complete report-card structure.
-       */
-
-      attendance: {
-        total:
-          attendance.total,
-
-        present:
-          attendance.present,
-
-        absent:
-          attendance.absent,
-
-        late:
-          attendance.late,
-
-        percentage:
-          attendance.percentage,
-      },
+      attendance,
     },
   };
 }
 
-/* =========================================
-   CLASS REPORT ENGINE
-========================================= */
+/* =========================================================
+   CLASS REPORT SHEET
+========================================================= */
 
 export async function generateClassReportSheet({
   user,
@@ -656,16 +641,15 @@ export async function generateClassReportSheet({
   sessionId,
   termId,
 }) {
-  /*
-   * =========================================
-   * AUTH
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     AUTH
+  ------------------------------------------------------- */
 
   if (
-    !["school_admin", "teacher"].includes(
-      user.role
-    )
+    ![
+      "school_admin",
+      "teacher",
+    ].includes(user.role)
   ) {
     throw new ApiError(
       403,
@@ -673,11 +657,9 @@ export async function generateClassReportSheet({
     );
   }
 
-  /*
-   * =========================================
-   * VALIDATE IDS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     VALIDATE IDS
+  ------------------------------------------------------- */
 
   if (
     !mongoose.Types.ObjectId.isValid(
@@ -732,11 +714,9 @@ export async function generateClassReportSheet({
       termId
     );
 
-  /*
-   * =========================================
-   * CLASS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     CLASS
+  ------------------------------------------------------- */
 
   const classDoc =
     await ClassModel.findOne({
@@ -751,11 +731,9 @@ export async function generateClassReportSheet({
     );
   }
 
-  /*
-   * =========================================
-   * SESSION + TERM
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     SESSION + TERM
+  ------------------------------------------------------- */
 
   const [session, term] =
     await Promise.all([
@@ -784,11 +762,9 @@ export async function generateClassReportSheet({
     );
   }
 
-  /*
-   * =========================================
-   * STUDENTS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     STUDENTS
+  ------------------------------------------------------- */
 
   const students =
     await Student.find({
@@ -799,14 +775,14 @@ export async function generateClassReportSheet({
       "_id firstName lastName admissionNumber"
     );
 
-  /*
-   * =========================================
-   * RESULTS
-   * =========================================
-   */
-
   const studentIds =
-    students.map((s) => s._id);
+    students.map(
+      (student) => student._id
+    );
+
+  /* -------------------------------------------------------
+     RESULTS
+  ------------------------------------------------------- */
 
   const results =
     await Result.find({
@@ -822,12 +798,6 @@ export async function generateClassReportSheet({
       "name code"
     );
 
-  /*
-   * =========================================
-   * DEBUG
-   * =========================================
-   */
-
   console.log(
     "CLASS REPORT DEBUG"
   );
@@ -836,138 +806,150 @@ export async function generateClassReportSheet({
     classId,
     sessionId,
     termId,
+
     totalStudents:
       students.length,
+
     totalResults:
       results.length,
   });
 
-  /*
-   * =========================================
-   * MAP
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     MAP STUDENTS
+  ------------------------------------------------------- */
 
   const map = new Map();
 
-  students.forEach((s) => {
-    map.set(String(s._id), {
-      studentId: s._id,
+  students.forEach(
+    (student) => {
+      map.set(
+        String(student._id),
+        {
+          studentId:
+            student._id,
 
-      admissionNumber:
-        s.admissionNumber || "",
+          admissionNumber:
+            student.admissionNumber,
 
-      firstName:
-        s.firstName || "",
+          firstName:
+            student.firstName,
 
-      lastName:
-        s.lastName || "",
+          lastName:
+            student.lastName,
 
-      subjects: [],
+          subjects: [],
 
-      totalScore: 0,
+          totalScore: 0,
 
-      subjectCount: 0,
+          subjectCount: 0,
 
-      averageScore: 0,
+          averageScore: 0,
 
-      position: 0,
+          position: 0,
 
-      positionLabel: "",
-    });
-  });
+          positionLabel: "",
+        }
+      );
+    }
+  );
 
-  /*
-   * =========================================
-   * GROUP RESULTS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     GROUP RESULTS
+  ------------------------------------------------------- */
 
-  results.forEach((r) => {
-    const row = map.get(
-      String(r.studentId)
-    );
-
-    if (!row) return;
-
-    row.subjects.push({
-      subjectName:
-        r.subjectId?.name || "",
-
-      subjectCode:
-        r.subjectId?.code || "",
-
-      ca1:
-        Number(r.ca1 || 0),
-
-      ca2:
-        Number(r.ca2 || 0),
-
-      assignment:
-        Number(r.assignment || 0),
-
-      exam:
-        Number(r.exam || 0),
-
-      total:
-        Number(r.total || 0),
-
-      grade:
-        r.grade || "",
-
-      remark:
-        r.remark || "",
-    });
-
-    row.totalScore +=
-      Number(r.total || 0);
-
-    row.subjectCount += 1;
-  });
-
-  /*
-   * =========================================
-   * AVERAGE
-   * =========================================
-   */
-
-  map.forEach((row) => {
-    row.averageScore =
-      row.subjectCount > 0
-        ? Number(
-            (
-              row.totalScore /
-              row.subjectCount
-            ).toFixed(2)
+  results.forEach(
+    (result) => {
+      const row =
+        map.get(
+          String(
+            result.studentId
           )
-        : 0;
-  });
+        );
 
-  /*
-   * =========================================
-   * RANKING
-   * =========================================
-   */
+      if (!row) return;
+
+      row.subjects.push({
+        subjectName:
+          result.subjectId?.name ||
+          "",
+
+        subjectCode:
+          result.subjectId?.code ||
+          "",
+
+        ca1:
+          result.ca1 || 0,
+
+        ca2:
+          result.ca2 || 0,
+
+        assignment:
+          result.assignment || 0,
+
+        exam:
+          result.exam || 0,
+
+        total:
+          result.total || 0,
+
+        grade:
+          result.grade || "",
+
+        remark:
+          result.remark || "",
+      });
+
+      row.totalScore +=
+        result.total || 0;
+
+      row.subjectCount += 1;
+    }
+  );
+
+  /* -------------------------------------------------------
+     AVERAGE
+  ------------------------------------------------------- */
+
+  map.forEach(
+    (row) => {
+      row.averageScore =
+        row.subjectCount > 0
+          ? Number(
+              (
+                row.totalScore /
+                row.subjectCount
+              ).toFixed(2)
+            )
+          : 0;
+    }
+  );
+
+  /* -------------------------------------------------------
+     RANKING
+  ------------------------------------------------------- */
 
   const ranked =
-    Array.from(map.values()).sort(
+    Array.from(
+      map.values()
+    ).sort(
       (a, b) =>
         b.totalScore -
         a.totalScore
     );
 
-  ranked.forEach((s, i) => {
-    s.position = i + 1;
+  ranked.forEach(
+    (student, index) => {
+      student.position =
+        index + 1;
 
-    s.positionLabel =
-      ordinal(i + 1);
-  });
+      student.positionLabel =
+        ordinal(index + 1);
+    }
+  );
 
-  /*
-   * =========================================
-   * RESPONSE
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     RESPONSE
+  ------------------------------------------------------- */
 
   return {
     classReport: {
@@ -995,11 +977,9 @@ export async function generateClassReportSheet({
   };
 }
 
-/**
- * =========================================
- * GENERATE ALL STUDENT REPORT CARDS
- * =========================================
- */
+/* =========================================================
+   ALL CLASS REPORT CARDS
+========================================================= */
 
 export async function generateClassReportCardsBundle({
   user,
@@ -1007,16 +987,15 @@ export async function generateClassReportCardsBundle({
   sessionId,
   termId,
 }) {
-  /*
-   * =========================================
-   * AUTH
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     AUTH
+  ------------------------------------------------------- */
 
   if (
-    !["school_admin", "teacher"].includes(
-      user.role
-    )
+    ![
+      "school_admin",
+      "teacher",
+    ].includes(user.role)
   ) {
     throw new ApiError(
       403,
@@ -1024,11 +1003,9 @@ export async function generateClassReportCardsBundle({
     );
   }
 
-  /*
-   * =========================================
-   * VALIDATE IDS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     VALIDATE IDS
+  ------------------------------------------------------- */
 
   if (
     !mongoose.Types.ObjectId.isValid(
@@ -1057,21 +1034,9 @@ export async function generateClassReportCardsBundle({
       classId
     );
 
-  const sessionObjectId =
-    new mongoose.Types.ObjectId(
-      sessionId
-    );
-
-  const termObjectId =
-    new mongoose.Types.ObjectId(
-      termId
-    );
-
-  /*
-   * =========================================
-   * CLASS CHECK
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     CLASS
+  ------------------------------------------------------- */
 
   const classDoc =
     await ClassModel.findOne({
@@ -1086,11 +1051,9 @@ export async function generateClassReportCardsBundle({
     );
   }
 
-  /*
-   * =========================================
-   * STUDENTS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     STUDENTS
+  ------------------------------------------------------- */
 
   const students =
     await Student.find({
@@ -1110,7 +1073,6 @@ export async function generateClassReportCardsBundle({
       },
 
       sessionId,
-
       termId,
 
       totalStudents: 0,
@@ -1119,11 +1081,9 @@ export async function generateClassReportCardsBundle({
     };
   }
 
-  /*
-   * =========================================
-   * GENERATE REPORTS
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     GENERATE REPORTS
+  ------------------------------------------------------- */
 
   const reports = [];
 
@@ -1132,23 +1092,29 @@ export async function generateClassReportCardsBundle({
       const report =
         await generateStudentReportCard({
           user,
-          studentId: student._id,
-          sessionId:
-            sessionObjectId,
-          termId:
-            termObjectId,
+
+          studentId:
+            student._id,
+
+          sessionId,
+
+          termId,
         });
 
       /*
        * IMPORTANT:
-       * generateStudentReportCard returns:
+       *
+       * generateStudentReportCard()
+       * returns:
        *
        * {
        *   reportCard: {...}
        * }
        *
-       * So store the actual reportCard.
+       * So we push report.reportCard,
+       * not the wrapper itself.
        */
+
       reports.push(
         report.reportCard
       );
@@ -1163,13 +1129,13 @@ export async function generateClassReportCardsBundle({
           _id: student._id,
 
           firstName:
-            student.firstName || "",
+            student.firstName,
 
           lastName:
-            student.lastName || "",
+            student.lastName,
 
           admissionNumber:
-            student.admissionNumber || "",
+            student.admissionNumber,
         },
 
         error: true,
@@ -1180,33 +1146,39 @@ export async function generateClassReportCardsBundle({
     }
   }
 
-  /*
-   * =========================================
-   * CLASS POSITION
-   * =========================================
-   */
+  /* -------------------------------------------------------
+     CLASS RANKING SUMMARY
+  ------------------------------------------------------- */
 
   const ranked =
     reports
-      .filter((r) => !r.error)
+      .filter(
+        (report) =>
+          !report.error
+      )
       .sort(
         (a, b) =>
-          (b.summary?.totalScore || 0) -
-          (a.summary?.totalScore || 0)
+          (b.summary?.totalScore ||
+            0) -
+          (a.summary?.totalScore ||
+            0)
       );
 
-  ranked.forEach((r, i) => {
-    if (r.summary) {
-      r.summary.classPosition =
-        i + 1;
-    }
-  });
+  ranked.forEach(
+    (report, index) => {
+      if (report.summary) {
+        report.summary.position =
+          index + 1;
 
-  /*
-   * =========================================
-   * RESPONSE
-   * =========================================
-   */
+        report.summary.positionLabel =
+          ordinal(index + 1);
+      }
+    }
+  );
+
+  /* -------------------------------------------------------
+     RESPONSE
+  ------------------------------------------------------- */
 
   return {
     class: {
