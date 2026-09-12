@@ -1,4 +1,3 @@
-
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -20,14 +19,29 @@ import {
   getPerformanceRemark,
 } from "./reportCardCalculations";
 
-/* =========================================
-   TYPES
-========================================= */
-
 type GenerateStudentPdfParams = {
   reportCard: StudentReportCard;
   branding?: SchoolBranding;
 };
+
+type PdfWithTable = jsPDF & {
+  lastAutoTable?: {
+    finalY: number;
+  };
+};
+
+const PAGE_WIDTH = 210;
+const PAGE_HEIGHT = 297;
+
+const MARGIN_X = 14;
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2;
+
+const HEADER_HEIGHT = 30;
+
+const FOOTER_HEIGHT = 22;
+
+const CONTENT_BOTTOM =
+  PAGE_HEIGHT - FOOTER_HEIGHT - 8;
 
 /* =========================================
    MAIN GENERATOR
@@ -41,11 +55,8 @@ export async function generateStudentPdf({
     orientation: "portrait",
     unit: "mm",
     format: "a4",
-  });
-
-  /* =====================================
-     DOCUMENT META
-  ===================================== */
+    compress: true,
+  }) as PdfWithTable;
 
   pdf.setProperties({
     title: pdfDocumentMeta.title,
@@ -55,18 +66,13 @@ export async function generateStudentPdf({
     keywords: pdfDocumentMeta.keywords,
   });
 
-  /* =====================================
-     COLORS
-  ===================================== */
-
   const primaryColor =
     branding?.primaryColor ||
     pdfTheme.colors.primary;
 
-  /* =====================================
-     HEADER
-  ===================================== */
-
+  /*
+   * Render first page.
+   */
   renderHeader({
     pdf,
     reportCard,
@@ -74,49 +80,89 @@ export async function generateStudentPdf({
     primaryColor,
   });
 
-  /* =====================================
-     STUDENT INFO
-  ===================================== */
-
-  renderStudentInfo({
+  const studentInfoBottom = renderStudentInfo({
     pdf,
     reportCard,
   });
 
-  /* =====================================
-     SUBJECT TABLE
-  ===================================== */
+  const tableStartY = studentInfoBottom + 6;
 
   renderSubjectTable({
     pdf,
     reportCard,
     primaryColor,
+    startY: tableStartY,
   });
 
-  /* =====================================
-     SUMMARY + ATTENDANCE
-  ===================================== */
+  let currentY =
+    pdf.lastAutoTable?.finalY
+      ? pdf.lastAutoTable.finalY + 8
+      : tableStartY + 20;
 
-  renderSummary({
+  /*
+   * Summary + attendance.
+   *
+   * These sections are deliberately rendered after the
+   * table's actual finalY so they cannot overlap the table.
+   */
+  currentY = ensureSpace({
     pdf,
+    currentY,
+    requiredHeight: 72,
     reportCard,
+    branding,
     primaryColor,
   });
 
-  /* =====================================
-     COMMENTS
-  ===================================== */
+  currentY = renderSummary({
+    pdf,
+    reportCard,
+    primaryColor,
+    startY: currentY,
+  });
+
+  currentY += 7;
+
+  currentY = ensureSpace({
+    pdf,
+    currentY,
+    requiredHeight: 43,
+    reportCard,
+    branding,
+    primaryColor,
+  });
+
+  currentY = renderAttendance({
+    pdf,
+    reportCard,
+    primaryColor,
+    startY: currentY,
+  });
+
+  /*
+   * Comments.
+   */
+  currentY += 8;
+
+  currentY = ensureSpace({
+    pdf,
+    currentY,
+    requiredHeight: 48,
+    reportCard,
+    branding,
+    primaryColor,
+  });
 
   renderComments({
     pdf,
     reportCard,
+    startY: currentY,
   });
 
-  /* =====================================
-     FOOTER
-  ===================================== */
-
-  renderFooter({
+  /*
+   * Footer on every page.
+   */
+  renderFooters({
     pdf,
     branding,
   });
@@ -139,52 +185,111 @@ function renderHeader({
   branding?: SchoolBranding;
   primaryColor: string;
 }) {
+  /*
+   * Main header background.
+   */
   pdf.setFillColor(primaryColor);
-
   pdf.rect(
     0,
     0,
-    210,
-    24,
+    PAGE_WIDTH,
+    HEADER_HEIGHT,
     "F"
   );
 
-  pdf.setTextColor("#FFFFFF");
+  /*
+   * School logo.
+   */
+  if (branding?.schoolLogo) {
+    try {
+      pdf.addImage(
+        branding.schoolLogo,
+        "AUTO",
+        10,
+        4,
+        22,
+        22,
+        undefined,
+        "FAST"
+      );
+    } catch {
+      /*
+       * Invalid logo should never break PDF generation.
+       */
+    }
+  }
 
+  /*
+   * School name.
+   */
   pdf.setFont(
-    pdfFonts.bold
+    pdfFonts.bold,
+    "bold"
   );
 
-  pdf.setFontSize(18);
+  pdf.setFontSize(16);
+
+  pdf.setTextColor(
+    "#FFFFFF"
+  );
+
+  const schoolName =
+    branding?.schoolName ||
+    "SCHOOL";
+
+  const schoolNameX =
+    branding?.schoolLogo
+      ? 36
+      : MARGIN_X;
 
   pdf.text(
-    branding?.schoolName ||
-      "EDUTRACK INTERNATIONAL SCHOOL",
-    105,
-    12,
-    {
-      align: "center",
-    }
+    schoolName,
+    schoolNameX,
+    11
+  );
+
+  /*
+   * Report title.
+   */
+  pdf.setFont(
+    pdfFonts.bold,
+    "bold"
   );
 
   pdf.setFontSize(10);
 
   pdf.text(
     reportCardLabels.reportTitle,
-    105,
-    19,
-    {
-      align: "center",
-    }
+    schoolNameX,
+    19
   );
 
+  /*
+   * Session / term.
+   */
+  pdf.setFont(
+    pdfFonts.regular,
+    "normal"
+  );
+
+  pdf.setFontSize(8.5);
+
+  pdf.text(
+    `${reportCard.session.name} • ${reportCard.term.name}`,
+    schoolNameX,
+    25
+  );
+
+  /*
+   * Reset text color.
+   */
   pdf.setTextColor(
     pdfTheme.colors.text
   );
 }
 
 /* =========================================
-   STUDENT INFO
+   STUDENT INFORMATION
 ========================================= */
 
 function renderStudentInfo({
@@ -194,81 +299,207 @@ function renderStudentInfo({
   pdf: jsPDF;
   reportCard: StudentReportCard;
 }) {
+  let y = HEADER_HEIGHT + 8;
+
   const student =
     reportCard.student;
 
+  const rows = [
+    [
+      "Student Name",
+      `${student.firstName} ${student.lastName}`,
+      "Admission No.",
+      student.admissionNumber || "—",
+    ],
+    [
+      "Class",
+      student.className || "—",
+      "Gender",
+      student.gender || "—",
+    ],
+    [
+      "Session",
+      reportCard.session.name || "—",
+      "Term",
+      reportCard.term.name || "—",
+    ],
+  ];
+
+  /*
+   * Section title.
+   */
   pdf.setFont(
-    pdfFonts.bold
+    pdfFonts.bold,
+    "bold"
   );
 
   pdf.setFontSize(11);
 
+  pdf.setTextColor(
+    pdfTheme.colors.text
+  );
+
   pdf.text(
     "Student Information",
-    14,
-    34
+    MARGIN_X,
+    y
   );
 
-  pdf.setFont(
-    pdfFonts.regular
+  y += 5;
+
+  /*
+   * Information box.
+   */
+  const boxHeight = 27;
+
+  pdf.setFillColor(
+    pdfTheme.colors.lightGray
   );
 
-  pdf.setFontSize(10);
+  pdf.setDrawColor(
+    pdfTheme.colors.border
+  );
 
-  const info = [
-    [
-      "Name",
-      `${student.firstName} ${student.lastName}`,
-    ],
-    [
-      "Admission No",
-      student.admissionNumber,
-    ],
-    [
-      "Class",
-      student.className,
-    ],
-    [
-      "Session",
-      reportCard.session.name,
-    ],
-    [
-      "Term",
-      reportCard.term.name,
-    ],
-    [
-      "Gender",
-      student.gender || "-",
-    ],
-  ];
+  pdf.setLineWidth(0.3);
 
-  let y = 42;
+  pdf.roundedRect(
+    MARGIN_X,
+    y,
+    CONTENT_WIDTH,
+    boxHeight,
+    2,
+    2,
+    "FD"
+  );
 
-  info.forEach(
-    ([label, value]) => {
+  const rowHeight =
+    boxHeight / rows.length;
+
+  rows.forEach(
+    (row, rowIndex) => {
+      const rowY =
+        y +
+        rowHeight * rowIndex;
+
+      if (rowIndex > 0) {
+        pdf.setDrawColor(
+          pdfTheme.colors.border
+        );
+
+        pdf.line(
+          MARGIN_X,
+          rowY,
+          MARGIN_X + CONTENT_WIDTH,
+          rowY
+        );
+      }
+
+      const label1X =
+        MARGIN_X + 4;
+
+      const value1X =
+        MARGIN_X + 35;
+
+      const label2X =
+        MARGIN_X + CONTENT_WIDTH / 2 + 2;
+
+      const value2X =
+        MARGIN_X + CONTENT_WIDTH / 2 + 35;
+
+      const textY =
+        rowY + 5.3;
+
+      /*
+       * First label.
+       */
       pdf.setFont(
-        pdfFonts.bold
+        pdfFonts.bold,
+        "bold"
+      );
+
+      pdf.setFontSize(7.5);
+
+      pdf.setTextColor(
+        pdfTheme.colors.mutedText
       );
 
       pdf.text(
-        `${label}:`,
-        14,
-        y
+        row[0],
+        label1X,
+        textY
       );
 
+      /*
+       * First value.
+       */
       pdf.setFont(
-        pdfFonts.regular
+        pdfFonts.regular,
+        "normal"
+      );
+
+      pdf.setFontSize(8.5);
+
+      pdf.setTextColor(
+        pdfTheme.colors.text
       );
 
       pdf.text(
-        String(value ?? "-"),
-        48,
-        y
+        truncateText(
+          pdf,
+          row[1],
+          43
+        ),
+        value1X,
+        textY
       );
 
-      y += 7;
+      /*
+       * Second label.
+       */
+      pdf.setFont(
+        pdfFonts.bold,
+        "bold"
+      );
+
+      pdf.setFontSize(7.5);
+
+      pdf.setTextColor(
+        pdfTheme.colors.mutedText
+      );
+
+      pdf.text(
+        row[2],
+        label2X,
+        textY
+      );
+
+      /*
+       * Second value.
+       */
+      pdf.setFont(
+        pdfFonts.regular,
+        "normal"
+      );
+
+      pdf.setFontSize(8.5);
+
+      pdf.setTextColor(
+        pdfTheme.colors.text
+      );
+
+      pdf.text(
+        truncateText(
+          pdf,
+          row[3],
+          43
+        ),
+        value2X,
+        textY
+      );
     }
   );
+
+  return y + boxHeight;
 }
 
 /* =========================================
@@ -279,13 +510,31 @@ function renderSubjectTable({
   pdf,
   reportCard,
   primaryColor,
+  startY,
 }: {
-  pdf: jsPDF;
+  pdf: PdfWithTable;
   reportCard: StudentReportCard;
   primaryColor: string;
+  startY: number;
 }) {
+  pdf.setFont(
+    pdfFonts.regular,
+    "normal"
+  );
+
   autoTable(pdf, {
-    startY: 88,
+    startY,
+
+    margin: {
+      left: MARGIN_X,
+      right: MARGIN_X,
+      top: HEADER_HEIGHT + 5,
+      bottom: FOOTER_HEIGHT + 8,
+    },
+
+    tableWidth: CONTENT_WIDTH,
+
+    showHead: "everyPage",
 
     head: [
       [
@@ -301,33 +550,68 @@ function renderSubjectTable({
     ],
 
     body:
-      reportCard.results.map(
-        (subject) => [
-          subject.subjectName,
-          subject.ca1 ?? 0,
-          subject.ca2 ?? 0,
-          subject.assignment ?? 0,
-          subject.exam ?? 0,
-          subject.total ?? 0,
-          subject.grade ?? "-",
-          subject.remark ?? "-",
-        ]
-      ),
+      reportCard.results.length > 0
+        ? reportCard.results.map(
+            (subject) => [
+              subject.subjectName || "—",
+              formatNumber(subject.ca1),
+              formatNumber(subject.ca2),
+              formatNumber(
+                subject.assignment
+              ),
+              formatNumber(subject.exam),
+              formatNumber(subject.total),
+              subject.grade || "—",
+              subject.remark || "—",
+            ]
+          )
+        : [
+            [
+              "No subject results available",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+            ],
+          ],
 
     theme: "grid",
 
     styles: {
-      fontSize: 9,
-      cellPadding: 3,
+      font: pdfFonts.regular,
+      fontStyle: "normal",
+      fontSize: 7.8,
+      cellPadding: {
+        top: 2.4,
+        bottom: 2.4,
+        left: 2,
+        right: 2,
+      },
+      textColor:
+        pdfTheme.colors.text,
       lineColor:
-        pdfTheme.colors.border,
+        pdfTheme.colors.tableBorder,
+      lineWidth: 0.25,
+      valign: "middle",
+      overflow: "linebreak",
     },
 
     headStyles: {
-      fillColor:
-        primaryColor,
-      textColor: "#FFFFFF",
+      font: pdfFonts.bold,
       fontStyle: "bold",
+      fontSize: 7.5,
+      fillColor: primaryColor,
+      textColor: "#FFFFFF",
+      halign: "center",
+      valign: "middle",
+      cellPadding: 2.8,
+    },
+
+    bodyStyles: {
+      minCellHeight: 7,
     },
 
     alternateRowStyles: {
@@ -335,215 +619,269 @@ function renderSubjectTable({
         pdfTheme.colors.lightGray,
     },
 
-    margin: {
-      left: 14,
-      right: 14,
+    columnStyles: {
+      0: {
+        cellWidth: 43,
+        halign: "left",
+      },
+
+      1: {
+        cellWidth: 14,
+        halign: "center",
+      },
+
+      2: {
+        cellWidth: 14,
+        halign: "center",
+      },
+
+      3: {
+        cellWidth: 18,
+        halign: "center",
+      },
+
+      4: {
+        cellWidth: 14,
+        halign: "center",
+      },
+
+      5: {
+        cellWidth: 14,
+        halign: "center",
+      },
+
+      6: {
+        cellWidth: 14,
+        halign: "center",
+      },
+
+      7: {
+        cellWidth: "auto",
+        halign: "left",
+      },
+    },
+
+    didParseCell(data) {
+      /*
+       * Keep subject name readable.
+       */
+      if (
+        data.section === "body" &&
+        data.column.index === 0
+      ) {
+        data.cell.styles.fontStyle =
+          "bold";
+      }
+
+      /*
+       * Center numerical columns.
+       */
+      if (
+        data.section === "body" &&
+        data.column.index >= 1 &&
+        data.column.index <= 6
+      ) {
+        data.cell.styles.halign =
+          "center";
+      }
+    },
+
+    didDrawPage(data) {
+      /*
+       * Header repeats on table pages.
+       *
+       * This is intentionally lightweight so it
+       * does not cover the table.
+       */
+      if (data.pageNumber > 1) {
+        pdf.setFillColor(
+          primaryColor
+        );
+
+        pdf.rect(
+          0,
+          0,
+          PAGE_WIDTH,
+          15,
+          "F"
+        );
+
+        pdf.setFont(
+          pdfFonts.bold,
+          "bold"
+        );
+
+        pdf.setFontSize(8);
+
+        pdf.setTextColor(
+          "#FFFFFF"
+        );
+
+        pdf.text(
+          reportCard.student
+            ? `${reportCard.student.firstName} ${reportCard.student.lastName}`
+            : "Student Report Card",
+          MARGIN_X,
+          9
+        );
+
+        pdf.text(
+          reportCardLabels.reportTitle,
+          PAGE_WIDTH - MARGIN_X,
+          9,
+          {
+            align: "right",
+          }
+        );
+
+        pdf.setTextColor(
+          pdfTheme.colors.text
+        );
+      }
     },
   });
 }
 
 /* =========================================
-   SUMMARY
+   PERFORMANCE SUMMARY
 ========================================= */
 
 function renderSummary({
   pdf,
   reportCard,
   primaryColor,
+  startY,
 }: {
   pdf: jsPDF;
   reportCard: StudentReportCard;
   primaryColor: string;
+  startY: number;
 }) {
-  const lastAutoTable =
-    (pdf as any).lastAutoTable;
+  const summary =
+    reportCard.summary;
 
-  const finalY =
-    lastAutoTable?.finalY
-      ? lastAutoTable.finalY + 8
-      : 100;
+  const boxHeight = 42;
 
-  const attendance =
-    reportCard.attendance || {
-      total: 0,
-      present: 0,
-      absent: 0,
-      late: 0,
-    };
+  pdf.setFont(
+    pdfFonts.bold,
+    "bold"
+  );
 
-  const attendancePercentage =
-    calculateAttendancePercentage(
-      attendance
+  pdf.setFontSize(11);
+
+  pdf.setTextColor(
+    pdfTheme.colors.text
+  );
+
+  pdf.text(
+    reportCardLabels.performance,
+    MARGIN_X,
+    startY
+  );
+
+  const boxY = startY + 4;
+
+  pdf.setFillColor(
+    pdfTheme.colors.background
+  );
+
+  pdf.setDrawColor(
+    pdfTheme.colors.border
+  );
+
+  pdf.setLineWidth(0.3);
+
+  pdf.roundedRect(
+    MARGIN_X,
+    boxY,
+    CONTENT_WIDTH,
+    boxHeight,
+    2,
+    2,
+    "FD"
+  );
+
+  const average =
+    Number(summary.averageScore || 0);
+
+  const performance =
+    getPerformanceRemark(
+      average
     );
 
-  /* =====================================
-     PERFORMANCE SUMMARY
-  ===================================== */
-
-  pdf.setFont(
-    pdfFonts.bold
-  );
-
-  pdf.setFontSize(11);
-
-  pdf.text(
-    "Performance Summary",
-    14,
-    finalY
-  );
-
-  pdf.setFont(
-    pdfFonts.regular
-  );
-
-  pdf.setFontSize(10);
-
-  const summary = [
-    [
-      "Subjects Offered",
-      reportCard.summary
-        .subjectsCount,
-    ],
-    [
-      "Total Score",
-      reportCard.summary
-        .totalScore,
-    ],
-    [
-      "Average Score",
-      reportCard.summary
-        .averageScore,
-    ],
-    [
-      "Class Position",
-      reportCard.summary
-        .positionLabel,
-    ],
+  /*
+   * Four statistics.
+   */
+  const boxes = [
+    {
+      label:
+        reportCardLabels.totalScore,
+      value:
+        formatNumber(
+          summary.totalScore
+        ),
+    },
+    {
+      label:
+        reportCardLabels.averageScore,
+      value:
+        `${average.toFixed(2)}%`,
+    },
+    {
+      label:
+        reportCardLabels.subjects,
+      value:
+        String(
+          summary.subjectsCount || 0
+        ),
+    },
+    {
+      label:
+        reportCardLabels.classPosition,
+      value:
+        summary.positionLabel ||
+        "—",
+    },
   ];
 
-  let summaryY =
-    finalY + 8;
-
-  summary.forEach(
-    ([label, value]) => {
-      pdf.setFont(
-        pdfFonts.bold
-      );
-
-      pdf.text(
-        `${label}:`,
-        14,
-        summaryY
-      );
-
-      pdf.setFont(
-        pdfFonts.regular
-      );
-
-      pdf.text(
-        String(value ?? "-"),
-        60,
-        summaryY
-      );
-
-      summaryY += 7;
-    }
-  );
-
-  /* =====================================
-     ATTENDANCE SECTION
-  ===================================== */
-
-  const attendanceY =
-    summaryY + 4;
-
-  pdf.setFont(
-    pdfFonts.bold
-  );
-
-  pdf.setFontSize(11);
-
-  pdf.text(
-    "Attendance",
-    14,
-    attendanceY
-  );
-
-  /* =====================================
-     ATTENDANCE BOXES
-  ===================================== */
-
-  const boxY =
-    attendanceY + 5;
-
-  const boxHeight = 17;
-
-  const boxGap = 3;
-
-  const availableWidth = 182;
+  const gap = 3;
 
   const boxWidth =
-    (availableWidth -
-      boxGap * 4) /
-    5;
+    (CONTENT_WIDTH -
+      gap * 3) /
+    4;
 
-  const attendanceItems = [
-    {
-      label: "Total Days",
-      value: attendance.total,
-    },
-    {
-      label: "Present",
-      value: attendance.present,
-    },
-    {
-      label: "Absent",
-      value: attendance.absent,
-    },
-    {
-      label: "Late",
-      value: attendance.late,
-    },
-    {
-      label: "Attendance",
-      value: `${attendancePercentage}%`,
-    },
-  ];
-
-  attendanceItems.forEach(
+  boxes.forEach(
     (item, index) => {
       const x =
-        14 +
+        MARGIN_X +
         index *
-          (boxWidth + boxGap);
+          (boxWidth + gap);
 
-      /* Box */
+      pdf.setFillColor(
+        pdfTheme.colors.lightGray
+      );
 
       pdf.setDrawColor(
         pdfTheme.colors.border
       );
 
-      pdf.setFillColor(
-        "#FFFFFF"
-      );
-
       pdf.roundedRect(
         x,
-        boxY,
+        boxY + 5,
         boxWidth,
-        boxHeight,
-        2,
-        2,
+        22,
+        1.5,
+        1.5,
         "FD"
       );
 
-      /* Label */
-
       pdf.setFont(
-        pdfFonts.regular
+        pdfFonts.bold,
+        "bold"
       );
 
-      pdf.setFontSize(7);
+      pdf.setFontSize(6.8);
 
       pdf.setTextColor(
         pdfTheme.colors.mutedText
@@ -552,28 +890,27 @@ function renderSummary({
       pdf.text(
         item.label,
         x + boxWidth / 2,
-        boxY + 5,
+        boxY + 11,
         {
           align: "center",
         }
       );
 
-      /* Value */
-
       pdf.setFont(
-        pdfFonts.bold
+        pdfFonts.bold,
+        "bold"
       );
 
-      pdf.setFontSize(10);
+      pdf.setFontSize(10.5);
 
       pdf.setTextColor(
-        pdfTheme.colors.text
+        primaryColor
       );
 
       pdf.text(
-        String(item.value ?? 0),
+        item.value,
         x + boxWidth / 2,
-        boxY + 12,
+        boxY + 21,
         {
           align: "center",
         }
@@ -581,15 +918,12 @@ function renderSummary({
     }
   );
 
-  /* =====================================
-     ATTENDANCE PERFORMANCE BAR
-  ===================================== */
-
-  const barY =
-    boxY + boxHeight + 6;
-
+  /*
+   * Performance indicator.
+   */
   pdf.setFont(
-    pdfFonts.regular
+    pdfFonts.bold,
+    "bold"
   );
 
   pdf.setFontSize(8);
@@ -599,36 +933,32 @@ function renderSummary({
   );
 
   pdf.text(
-    "Attendance Performance",
-    14,
-    barY
+    `Performance: ${performance}`,
+    MARGIN_X + 4,
+    boxY + 35
   );
 
-  pdf.setFont(
-    pdfFonts.bold
-  );
+  /*
+   * Performance progress bar.
+   */
+  const barX =
+    MARGIN_X + 54;
 
-  pdf.text(
-    `${attendancePercentage}%`,
-    196,
-    barY,
-    {
-      align: "right",
-    }
-  );
+  const barY =
+    boxY + 32;
 
-  /* Background bar */
+  const barWidth =
+    CONTENT_WIDTH - 64;
 
-  const barWidth = 182;
   const barHeight = 3;
 
   pdf.setFillColor(
-    "#E5E7EB"
+    pdfTheme.colors.border
   );
 
   pdf.roundedRect(
-    14,
-    barY + 3,
+    barX,
+    barY,
     barWidth,
     barHeight,
     1.5,
@@ -636,28 +966,221 @@ function renderSummary({
     "F"
   );
 
-  /* Progress */
+  const progress =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        average
+      )
+    );
 
-  const progressWidth =
-    (attendancePercentage /
-      100) *
-    barWidth;
-
-  if (progressWidth > 0) {
+  if (progress > 0) {
     pdf.setFillColor(
       primaryColor
     );
 
     pdf.roundedRect(
-      14,
-      barY + 3,
-      progressWidth,
+      barX,
+      barY,
+      (barWidth *
+        progress) /
+        100,
       barHeight,
       1.5,
       1.5,
       "F"
     );
   }
+
+  return boxY + boxHeight;
+}
+
+/* =========================================
+   ATTENDANCE
+========================================= */
+
+function renderAttendance({
+  pdf,
+  reportCard,
+  primaryColor,
+  startY,
+}: {
+  pdf: jsPDF;
+  reportCard: StudentReportCard;
+  primaryColor: string;
+  startY: number;
+}) {
+  const attendance =
+    reportCard.attendance || {
+      total: 0,
+      present: 0,
+      absent: 0,
+      late: 0,
+    };
+
+  const percentage =
+    calculateAttendancePercentage(
+      attendance
+    );
+
+  pdf.setFont(
+    pdfFonts.bold,
+    "bold"
+  );
+
+  pdf.setFontSize(11);
+
+  pdf.setTextColor(
+    pdfTheme.colors.text
+  );
+
+  pdf.text(
+    reportCardLabels.attendance,
+    MARGIN_X,
+    startY
+  );
+
+  const boxY = startY + 4;
+
+  const boxHeight = 32;
+
+  pdf.setFillColor(
+    pdfTheme.colors.background
+  );
+
+  pdf.setDrawColor(
+    pdfTheme.colors.border
+  );
+
+  pdf.setLineWidth(0.3);
+
+  pdf.roundedRect(
+    MARGIN_X,
+    boxY,
+    CONTENT_WIDTH,
+    boxHeight,
+    2,
+    2,
+    "FD"
+  );
+
+  const items = [
+    {
+      label: "Total Days",
+      value: String(
+        attendance.total || 0
+      ),
+    },
+    {
+      label: "Present",
+      value: String(
+        attendance.present || 0
+      ),
+    },
+    {
+      label: "Absent",
+      value: String(
+        attendance.absent || 0
+      ),
+    },
+    {
+      label: "Late",
+      value: String(
+        attendance.late || 0
+      ),
+    },
+    {
+      label: "Attendance",
+      value: `${percentage.toFixed(
+        2
+      )}%`,
+    },
+  ];
+
+  const gap = 3;
+
+  const itemWidth =
+    (CONTENT_WIDTH -
+      gap * 4) /
+    5;
+
+  items.forEach(
+    (item, index) => {
+      const x =
+        MARGIN_X +
+        index *
+          (itemWidth + gap);
+
+      const fill =
+        index === 4
+          ? primaryColor
+          : pdfTheme.colors.lightGray;
+
+      const text =
+        index === 4
+          ? "#FFFFFF"
+          : pdfTheme.colors.text;
+
+      pdf.setFillColor(fill);
+
+      pdf.setDrawColor(
+        pdfTheme.colors.border
+      );
+
+      pdf.roundedRect(
+        x,
+        boxY + 5,
+        itemWidth,
+        21,
+        1.5,
+        1.5,
+        "FD"
+      );
+
+      pdf.setFont(
+        pdfFonts.bold,
+        "bold"
+      );
+
+      pdf.setFontSize(6.5);
+
+      pdf.setTextColor(
+        index === 4
+          ? "#E5E7EB"
+          : pdfTheme.colors.mutedText
+      );
+
+      pdf.text(
+        item.label,
+        x + itemWidth / 2,
+        boxY + 11,
+        {
+          align: "center",
+        }
+      );
+
+      pdf.setFont(
+        pdfFonts.bold,
+        "bold"
+      );
+
+      pdf.setFontSize(9.5);
+
+      pdf.setTextColor(text);
+
+      pdf.text(
+        item.value,
+        x + itemWidth / 2,
+        boxY + 20,
+        {
+          align: "center",
+        }
+      );
+    }
+  );
+
+  return boxY + boxHeight;
 }
 
 /* =========================================
@@ -667,64 +1190,31 @@ function renderSummary({
 function renderComments({
   pdf,
   reportCard,
+  startY,
 }: {
   pdf: jsPDF;
   reportCard: StudentReportCard;
+  startY: number;
 }) {
   const average =
-    reportCard.summary
-      .averageScore;
+    Number(
+      reportCard.summary
+        ?.averageScore || 0
+    );
 
-  const performanceRemark =
+  const performance =
     getPerformanceRemark(
       average
     );
 
-  let comment =
-    defaultComments.good;
-
-  if (
-    performanceRemark ===
-    "Excellent"
-  ) {
-    comment =
-      defaultComments.excellent;
-  }
-
-  if (
-    performanceRemark ===
-    "Very Good"
-  ) {
-    comment =
-      defaultComments.veryGood;
-  }
-
-  if (
-    performanceRemark ===
-    "Fair"
-  ) {
-    comment =
-      defaultComments.fair;
-  }
-
-  if (
-    performanceRemark ===
-    "Needs Improvement"
-  ) {
-    comment =
-      defaultComments.poor;
-  }
-
-  /*
-   * Put comments below the attendance
-   * section instead of using a fixed
-   * position that could overlap content.
-   */
-
-  const commentsY = 218;
+  const teacherComment =
+    getDefaultComment(
+      performance
+    );
 
   pdf.setFont(
-    pdfFonts.bold
+    pdfFonts.bold,
+    "bold"
   );
 
   pdf.setFontSize(11);
@@ -734,27 +1224,91 @@ function renderComments({
   );
 
   pdf.text(
-    "Teacher's Comment",
-    14,
-    commentsY
+    reportCardLabels.teacherComment,
+    MARGIN_X,
+    startY
+  );
+
+  const commentY =
+    startY + 5;
+
+  const commentHeight = 28;
+
+  pdf.setFillColor(
+    pdfTheme.colors.lightGray
+  );
+
+  pdf.setDrawColor(
+    pdfTheme.colors.border
+  );
+
+  pdf.setLineWidth(0.3);
+
+  pdf.roundedRect(
+    MARGIN_X,
+    commentY,
+    CONTENT_WIDTH,
+    commentHeight,
+    2,
+    2,
+    "FD"
   );
 
   pdf.setFont(
-    pdfFonts.regular
+    pdfFonts.regular,
+    "normal"
   );
 
-  pdf.setFontSize(10);
+  pdf.setFontSize(8.5);
 
-  const commentLines =
+  pdf.setTextColor(
+    pdfTheme.colors.text
+  );
+
+  const wrapped =
     pdf.splitTextToSize(
-      comment,
-      182
+      teacherComment,
+      CONTENT_WIDTH - 8
     );
 
   pdf.text(
-    commentLines,
-    14,
-    commentsY + 8
+    wrapped,
+    MARGIN_X + 4,
+    commentY + 8
+  );
+
+  /*
+   * Principal comment area.
+   */
+  const principalY =
+    commentY + commentHeight + 5;
+
+  pdf.setFont(
+    pdfFonts.bold,
+    "bold"
+  );
+
+  pdf.setFontSize(9);
+
+  pdf.setTextColor(
+    pdfTheme.colors.mutedText
+  );
+
+  pdf.text(
+    reportCardLabels.principalComment,
+    MARGIN_X,
+    principalY
+  );
+
+  pdf.setDrawColor(
+    pdfTheme.colors.border
+  );
+
+  pdf.line(
+    MARGIN_X,
+    principalY + 5,
+    MARGIN_X + CONTENT_WIDTH,
+    principalY + 5
   );
 }
 
@@ -762,73 +1316,232 @@ function renderComments({
    FOOTER
 ========================================= */
 
-function renderFooter({
+function renderFooters({
   pdf,
   branding,
 }: {
   pdf: jsPDF;
   branding?: SchoolBranding;
 }) {
-  const footerY = 270;
+  const pageCount =
+    pdf.getNumberOfPages();
 
-  pdf.setDrawColor(
-    pdfTheme.colors.border
-  );
+  for (
+    let page = 1;
+    page <= pageCount;
+    page++
+  ) {
+    pdf.setPage(page);
 
-  pdf.line(
-    14,
-    footerY,
-    70,
-    footerY
-  );
+    const footerY =
+      PAGE_HEIGHT - 14;
 
-  pdf.line(
-    130,
-    footerY,
-    190,
-    footerY
-  );
+    pdf.setDrawColor(
+      pdfTheme.colors.border
+    );
 
-  pdf.setFont(
-    pdfFonts.regular
-  );
+    pdf.setLineWidth(0.3);
 
-  pdf.setFontSize(9);
+    pdf.line(
+      MARGIN_X,
+      footerY - 5,
+      PAGE_WIDTH - MARGIN_X,
+      footerY - 5
+    );
 
-  pdf.setTextColor(
-    pdfTheme.colors.text
-  );
+    /*
+     * Authorized signature.
+     */
+    pdf.setFont(
+      pdfFonts.regular,
+      "normal"
+    );
 
-  pdf.text(
-    "Class Teacher",
-    28,
-    footerY + 6
-  );
+    pdf.setFontSize(7);
 
-  pdf.text(
-    "Principal",
-    155,
-    footerY + 6
-  );
+    pdf.setTextColor(
+      pdfTheme.colors.mutedText
+    );
 
-  pdf.setFontSize(8);
+    pdf.text(
+      reportCardLabels.signature,
+      MARGIN_X,
+      footerY
+    );
 
-  pdf.setTextColor(
-    pdfTheme.colors.mutedText
-  );
-
-  pdf.text(
-    branding?.schoolName
-      ? `${branding.schoolName} • Generated by EduTrack ERP`
-      : "Generated by EduTrack ERP",
-    105,
-    287,
-    {
-      align: "center",
+    /*
+     * Signature image.
+     */
+    if (
+      branding?.principalSignature
+    ) {
+      try {
+        pdf.addImage(
+          branding.principalSignature,
+          "AUTO",
+          MARGIN_X + 28,
+          footerY - 9,
+          28,
+          10,
+          undefined,
+          "FAST"
+        );
+      } catch {
+        /*
+         * Ignore invalid signature image.
+         */
+      }
     }
-  );
 
-  pdf.setTextColor(
-    pdfTheme.colors.text
-  );
+    /*
+     * Page number.
+     */
+    pdf.text(
+      `Page ${page} of ${pageCount}`,
+      PAGE_WIDTH - MARGIN_X,
+      footerY,
+      {
+        align: "right",
+      }
+    );
+
+    /*
+     * School stamp.
+     */
+    if (
+      branding?.schoolStamp &&
+      page === pageCount
+    ) {
+      try {
+        pdf.addImage(
+          branding.schoolStamp,
+          "AUTO",
+          PAGE_WIDTH - MARGIN_X - 30,
+          footerY - 18,
+          25,
+          18,
+          undefined,
+          "FAST"
+        );
+      } catch {
+        /*
+         * Ignore invalid stamp image.
+         */
+      }
+    }
+
+    pdf.setTextColor(
+      pdfTheme.colors.text
+    );
+  }
 }
+
+/* =========================================
+   PAGE SPACE MANAGEMENT
+========================================= */
+
+function ensureSpace({
+  pdf,
+  currentY,
+  requiredHeight,
+  reportCard,
+  branding,
+  primaryColor,
+}: {
+  pdf: PdfWithTable;
+  currentY: number;
+  requiredHeight: number;
+  reportCard: StudentReportCard;
+  branding?: SchoolBranding;
+  primaryColor: string;
+}) {
+  if (
+    currentY + requiredHeight <=
+    CONTENT_BOTTOM
+  ) {
+    return currentY;
+  }
+
+  /*
+   * Not enough room:
+   * create a clean page.
+   */
+  pdf.addPage();
+
+  renderHeader({
+    pdf,
+    reportCard,
+    branding,
+    primaryColor,
+  });
+
+  return HEADER_HEIGHT + 8;
+}
+
+/* =========================================
+   HELPERS
+========================================= */
+
+function formatNumber(
+  value: number | null | undefined
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    Number.isNaN(Number(value))
+  ) {
+    return "0";
+  }
+
+  return Number(value).toFixed(0);
+}
+
+function truncateText(
+  pdf: jsPDF,
+  text: string,
+  maxWidth: number
+) {
+  if (!text) return "—";
+
+  if (
+    pdf.getTextWidth(text) <=
+    maxWidth
+  ) {
+    return text;
+  }
+
+  let result = text;
+
+  while (
+    result.length > 1 &&
+    pdf.getTextWidth(
+      `${result}…`
+    ) > maxWidth
+  ) {
+    result =
+      result.slice(0, -1);
+  }
+
+  return `${result}…`;
+}
+
+function getDefaultComment(
+  performance: string
+) {
+  switch (performance) {
+    case "Excellent":
+      return defaultComments.excellent;
+
+    case "Very Good":
+      return defaultComments.veryGood;
+
+    case "Good":
+      return defaultComments.good;
+
+    case "Fair":
+      return defaultComments.fair;
+
+    default:
+      return defaultComments.poor;
+  }
+      }
