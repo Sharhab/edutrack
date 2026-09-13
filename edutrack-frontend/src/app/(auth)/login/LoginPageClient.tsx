@@ -129,10 +129,6 @@ export default function LoginPageClient() {
       };
 
       setSession(token, user);
-
-      document.cookie = `token=${token}; path=/; max-age=86400; SameSite=Lax`;
-      document.cookie = `role=${user.role}; path=/; max-age=86400; SameSite=Lax`;
-
       router.replace(getDashboardRoute(user.role));
     } catch (err: unknown) {
       console.error(err);
