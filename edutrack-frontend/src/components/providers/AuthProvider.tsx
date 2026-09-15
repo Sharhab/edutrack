@@ -68,52 +68,35 @@ export default function AuthProvider({
    * CREATE SESSION
    * =========================
    */
-function setSession(nextToken: string, nextUser: AuthUser) {
-  try {
-    if (!nextUser?._id) {
-      console.error("❌ Invalid user received:", nextUser);
-      return;
-    }
+      function setSession(nextToken: string, nextUser: AuthUser) {
+  localStorage.setItem("token", nextToken);
+  localStorage.setItem("user", JSON.stringify(nextUser));
 
-    // Store token for Axios authentication.
-    localStorage.setItem("token", nextToken);
+  // Middleware requires these cookies to protect routes.
+  document.cookie = `token=${encodeURIComponent(
+    nextToken
+  )}; path=/; max-age=86400; SameSite=Lax`;
 
-    // Store user for UI/session restoration.
-    localStorage.setItem(
-      "user",
-      JSON.stringify(nextUser)
-    );
+  document.cookie = `role=${encodeURIComponent(
+    nextUser.role
+  )}; path=/; max-age=86400; SameSite=Lax`;
 
-    // These cookies are for frontend/middleware routing.
-    // Do NOT create the API token cookie here.
-    document.cookie =
-      `role=${encodeURIComponent(nextUser.role)}; ` +
-      `path=/; ` +
-      `max-age=86400; ` +
-      `SameSite=Lax`;
-
-    if (nextUser.schoolId) {
-      document.cookie =
-        `schoolId=${encodeURIComponent(nextUser.schoolId)}; ` +
-        `path=/; ` +
-        `max-age=86400; ` +
-        `SameSite=Lax`;
-    }
-
-    setToken(nextToken);
-    setUser(nextUser);
-
-    console.log("SESSION CREATED ✅", {
-      _id: nextUser._id,
-      role: nextUser.role,
-      schoolId: nextUser.schoolId,
-      tokenPresent: Boolean(nextToken),
-    });
-  } catch (error) {
-    console.error("Failed to save session", error);
+  if (nextUser.schoolId) {
+    document.cookie = `schoolId=${encodeURIComponent(
+      nextUser.schoolId
+    )}; path=/; max-age=86400; SameSite=Lax`;
   }
-}
-  
+
+  setToken(nextToken);
+  setUser(nextUser);
+
+  console.log("SESSION CREATED ✅", {
+    _id: nextUser._id,
+    role: nextUser.role,
+    schoolId: nextUser.schoolId,
+    tokenPresent: Boolean(nextToken),
+  });
+}  
   /**
    * =========================
    * LOGOUT
