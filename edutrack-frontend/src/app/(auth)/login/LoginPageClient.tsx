@@ -53,7 +53,9 @@ export default function LoginPageClient() {
   const [error, setError] = useState("");
 
   /**
-   * 🔥 SYNC ROLE FROM URL (SAFE)
+   * =========================
+   * SYNC ROLE FROM URL
+   * =========================
    */
   useEffect(() => {
     const r = searchParams.get("role");
@@ -61,18 +63,23 @@ export default function LoginPageClient() {
   }, [searchParams]);
 
   /**
-   * 🔥 TENANT RESOLUTION (FIXED - NO RACE, NO BLANK UI)
+   * =========================
+   * TENANT RESOLUTION
+   * =========================
    */
   useEffect(() => {
     async function initTenant() {
       try {
         setTenantLoading(true);
 
-        const slugFromUrl = getTenantSlugFromUrl(searchParams);
+        const slugFromUrl =
+          getTenantSlugFromUrl(searchParams);
+
         const host = getHostFromWindow();
         const subdomain = getSubdomain(host);
 
-        const slug = slugFromUrl || subdomain;
+        const slug =
+          slugFromUrl || subdomain;
 
         if (!slug) {
           setTenant(null);
@@ -85,7 +92,11 @@ export default function LoginPageClient() {
 
         setTenant(resolved);
       } catch (err) {
-        console.error("Tenant load error:", err);
+        console.error(
+          "Tenant load error:",
+          err
+        );
+
         setTenant(null);
       } finally {
         setTenantLoading(false);
@@ -93,12 +104,16 @@ export default function LoginPageClient() {
     }
 
     initTenant();
-  }, []);
+  }, [searchParams, setTenant]);
 
   /**
-   * 🔥 LOGIN HANDLER (SAAS SAFE)
+   * =========================
+   * LOGIN HANDLER
+   * =========================
    */
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
 
     if (loading) return;
@@ -107,38 +122,116 @@ export default function LoginPageClient() {
       setError("");
       setLoading(true);
 
-      const res = await api.post("/auth/login", {
-        email: form.email,
-        password: form.password,
-        tenantSlug: tenant?.slug || null,
-        role: role || null,
-      });
+      console.log("🔐 LOGIN START");
 
-      const token = res.data?.data?.token;
-      const rawUser = res.data?.data?.user;
+      const res = await api.post(
+        "/auth/login",
+        {
+          email: form.email,
+          password: form.password,
+          tenantSlug:
+            tenant?.slug || null,
+          role: role || null,
+        }
+      );
 
-      if (!token) throw new Error("Token missing");
-      if (!rawUser) throw new Error("User missing");
+      console.log(
+        "✅ LOGIN API RESPONSE:",
+        {
+          success: res.data?.success,
+          message: res.data?.message,
+          hasToken:
+            Boolean(res.data?.data?.token),
+          hasUser:
+            Boolean(res.data?.data?.user),
+        }
+      );
+
+      const token =
+        res.data?.data?.token;
+
+      const rawUser =
+        res.data?.data?.user;
+
+      if (!token) {
+        throw new Error(
+          "Token missing"
+        );
+      }
+
+      if (!rawUser) {
+        throw new Error(
+          "User missing"
+        );
+      }
 
       const user: AuthUser = {
         _id: rawUser._id,
-        schoolId: rawUser.schoolId || null,
+        schoolId:
+          rawUser.schoolId || null,
         role: rawUser.role,
         name: rawUser.name,
         email: rawUser.email,
       };
 
+      console.log(
+        "👤 USER READY:",
+        {
+          id: user._id,
+          role: user.role,
+          schoolId: user.schoolId,
+        }
+      );
+
+      /**
+       * SAVE AUTH SESSION
+       */
       setSession(token, user);
-      router.replace(getDashboardRoute(user.role));
+
+      /**
+       * GET DASHBOARD ROUTE
+       */
+      const dashboardRoute =
+        getDashboardRoute(user.role);
+
+      console.log(
+        "🚀 DASHBOARD REDIRECT:",
+        {
+          role: user.role,
+          dashboardRoute,
+        }
+      );
+
+      /**
+       * IMPORTANT:
+       *
+       * Use a full browser navigation temporarily.
+       *
+       * This bypasses Next.js client-side
+       * navigation and guarantees that the
+       * browser actually goes to the dashboard.
+       */
+      window.location.href =
+        dashboardRoute;
     } catch (err: unknown) {
-      console.error(err);
+      console.error(
+        "❌ LOGIN ERROR:",
+        err
+      );
 
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message || "Login failed");
-      } else if (err instanceof Error) {
+        setError(
+          err.response?.data?.message ||
+            "Login failed"
+        );
+      } else if (
+        err instanceof Error
+      ) {
         setError(err.message);
       } else {
-        setError("Something went wrong");
+        setError(
+          "Something went wrong"
+        );
       }
     } finally {
       setLoading(false);
@@ -146,7 +239,9 @@ export default function LoginPageClient() {
   }
 
   /**
-   * 🔥 ONLY LOADER (DO NOT BLOCK UI TREE)
+   * =========================
+   * AUTH HYDRATION
+   * =========================
    */
   if (!hydrated) {
     return (
@@ -157,27 +252,42 @@ export default function LoginPageClient() {
   }
 
   /**
-   * 🔥 TENANT BLOCK STATE
+   * =========================
+   * TENANT BLOCK STATE
+   * =========================
    */
-  if (tenant && isTenantBlocked(tenant)) {
+  if (
+    tenant &&
+    isTenantBlocked(tenant)
+  ) {
     return (
       <div className="min-h-screen px-4 py-10">
-        <TenantFaviconAndTitle pageTitle="Blocked" tenant={tenant} />
+        <TenantFaviconAndTitle
+          pageTitle="Blocked"
+          tenant={tenant}
+        />
 
         <TenantBlockedState
           title="School Workspace Unavailable"
-          description={getTenantBlockReason(tenant)}
+          description={getTenantBlockReason(
+            tenant
+          )}
         />
       </div>
     );
   }
 
   /**
-   * 🔥 MAIN LOGIN UI (ALWAYS RENDERS — FIX FOR YOUR ISSUE)
+   * =========================
+   * LOGIN UI
+   * =========================
    */
   return (
     <div className="relative min-h-screen px-4 py-10">
-      <TenantFaviconAndTitle pageTitle="Login" tenant={tenant} />
+      <TenantFaviconAndTitle
+        pageTitle="Login"
+        tenant={tenant}
+      />
 
       {/* BACKGROUND */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_24%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.14),transparent_22%),radial-gradient(circle_at_bottom,rgba(59,130,246,0.10),transparent_25%)]" />
@@ -187,7 +297,7 @@ export default function LoginPageClient() {
         {/* BRAND CARD */}
         <TenantBrandCard tenant={tenant} />
 
-        {/* LOGIN FORM (ALWAYS VISIBLE) */}
+        {/* LOGIN FORM */}
         <div className="card p-6 sm:p-8">
 
           <h2 className="text-2xl font-bold">
@@ -198,30 +308,45 @@ export default function LoginPageClient() {
 
           {tenant?.slug && (
             <p className="mt-1 text-sm text-cyan-300">
-              {tenant.slug}.edutrack.cloud
+              {tenant.slug}
+              .edutrack.cloud
             </p>
           )}
 
           {role && (
             <p className="mt-2 text-xs text-slate-400">
-              Role: <span className="text-cyan-300">{role}</span>
+              Role:{" "}
+              <span className="text-cyan-300">
+                {role}
+              </span>
             </p>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="mt-6 space-y-4"
+          >
 
             {/* EMAIL */}
             <div>
-              <label className="text-sm">Email</label>
+              <label className="text-sm">
+                Email
+              </label>
+
               <div className="relative">
                 <Mail className="absolute left-3 top-3 text-gray-400" />
+
                 <input
                   type="email"
                   required
                   className="input pl-10"
                   value={form.email}
                   onChange={(e) =>
-                    setForm((p) => ({ ...p, email: e.target.value }))
+                    setForm((p) => ({
+                      ...p,
+                      email:
+                        e.target.value,
+                    }))
                   }
                 />
               </div>
@@ -229,16 +354,24 @@ export default function LoginPageClient() {
 
             {/* PASSWORD */}
             <div>
-              <label className="text-sm">Password</label>
+              <label className="text-sm">
+                Password
+              </label>
+
               <div className="relative">
                 <Lock className="absolute left-3 top-3 text-gray-400" />
+
                 <input
                   type="password"
                   required
                   className="input pl-10"
                   value={form.password}
                   onChange={(e) =>
-                    setForm((p) => ({ ...p, password: e.target.value }))
+                    setForm((p) => ({
+                      ...p,
+                      password:
+                        e.target.value,
+                    }))
                   }
                 />
               </div>
@@ -254,10 +387,14 @@ export default function LoginPageClient() {
             {/* BUTTON */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={
+                loading || tenantLoading
+              }
               className="btn-primary w-full"
             >
-              {loading ? "Logging in..." : "Login"}
+              {loading
+                ? "Logging in..."
+                : "Login"}
             </button>
 
           </form>
