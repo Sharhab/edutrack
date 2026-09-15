@@ -12,8 +12,11 @@ import {
   bulkUpsertStudentsHandler,
 } from "./student.controller.js";
 
-import { previewStudentCSVHandler,
-  importStudentCSVHandler, }  from "./student.csv.controller.js"
+import {
+  previewStudentCSVHandler,
+  importStudentCSVHandler,
+} from "./student.csv.controller.js";
+
 import { uploadCSV } from "./csv.upload.js";
 
 const router = express.Router();
@@ -22,8 +25,11 @@ router.use(protect);
 router.use(authorize("school_admin"));
 
 /**
+ * ==========================================
  * CSV IMPORT
+ * ==========================================
  */
+
 router.post(
   "/import/preview",
   uploadCSV.single("file"),
@@ -36,28 +42,80 @@ router.post(
 );
 
 /**
+ * ==========================================
  * BULK UPSERT JSON
+ * ==========================================
  */
+
 router.post(
   "/bulk-upsert",
   asyncHandler(bulkUpsertStudentsHandler)
 );
 
 /**
+ * ==========================================
  * NORMAL CRUD
+ * ==========================================
  */
-router.post("/", asyncHandler(createStudentHandler));
 
-router.get("/", asyncHandler(listStudentsHandler));
+router.post(
+  "/",
+  asyncHandler(createStudentHandler)
+);
+
 router.get(
-  "/class/:classId",
+  "/",
   asyncHandler(listStudentsHandler)
 );
 
-router.get("/:id", asyncHandler(getStudentHandler));
+/**
+ * GET STUDENTS BY CLASS
+ *
+ * Supports:
+ * GET /api/students/class/:classId
+ *
+ * We reuse listStudentsHandler by converting
+ * the path parameter into the query expected
+ * by listStudents().
+ */
+router.get(
+  "/class/:classId",
+  asyncHandler(async (req, res) => {
+    const data = await listStudentsHandler(
+      {
+        ...req,
+        query: {
+          ...req.query,
+          classId: req.params.classId,
+        },
+      },
+      res
+    );
 
-router.put("/:id", asyncHandler(updateStudentHandler));
+    return data;
+  })
+);
 
-router.delete("/:id", asyncHandler(deleteStudentHandler));
+/**
+ * GET ONE STUDENT
+ *
+ * IMPORTANT:
+ * This must remain AFTER /class/:classId
+ * so "class" is not interpreted as a student ID.
+ */
+router.get(
+  "/:id",
+  asyncHandler(getStudentHandler)
+);
+
+router.put(
+  "/:id",
+  asyncHandler(updateStudentHandler)
+);
+
+router.delete(
+  "/:id",
+  asyncHandler(deleteStudentHandler)
+);
 
 export default router;
