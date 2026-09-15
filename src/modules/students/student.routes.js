@@ -9,6 +9,7 @@ import {
   getStudentHandler,
   listStudentsHandler,
   updateStudentHandler,
+  listStudentsByClassHandler,
   bulkUpsertStudentsHandler,
 } from "./student.controller.js";
 
