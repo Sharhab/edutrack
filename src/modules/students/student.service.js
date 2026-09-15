@@ -215,16 +215,19 @@ export async function listStudents(
    * CLASS FILTER
    * =========================
    */
-  if (query.classIds) {
-    const classIds = query.classIds
-      .split(",")
-      .filter(Boolean);
+ if (query.classId) {
+  filter.classId = query.classId;
+}
 
-    filter.classId = {
-      $in: classIds,
-    };
-  }
+if (query.classIds) {
+  const classIds = query.classIds
+    .split(",")
+    .filter(Boolean);
 
+  filter.classId = {
+    $in: classIds,
+  };
+}
   /**
    * =========================
    * STATUS FILTER
