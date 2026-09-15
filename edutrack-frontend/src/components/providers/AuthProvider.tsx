@@ -68,39 +68,52 @@ export default function AuthProvider({
    * CREATE SESSION
    * =========================
    */
-  function setSession(nextToken: string, nextUser: AuthUser) {
-    try {
-      if (!nextUser?._id) {
-        console.error("❌ Invalid user received:", nextUser);
-        return;
-      }
-
-      // store locally (for UI only)
-      localStorage.setItem("token", nextToken);
-      localStorage.setItem("user", JSON.stringify(nextUser));
-
-      // cookies (for middleware + backend fallback)
-      document.cookie = `token=${nextToken}; path=/; max-age=86400; SameSite=Lax`;
-      document.cookie = `role=${nextUser.role}; path=/; max-age=86400; SameSite=Lax`;
-
-      if (nextUser.schoolId) {
-        document.cookie = `schoolId=${nextUser.schoolId}; path=/; max-age=86400; SameSite=Lax`;
-      }
-
-      // state update
-      setToken(nextToken);
-      setUser(nextUser);
-
-      console.log("SESSION CREATED ✅", {
-        _id: nextUser._id,
-        role: nextUser.role,
-        schoolId: nextUser.schoolId,
-      });
-    } catch (error) {
-      console.error("Failed to save session", error);
+function setSession(nextToken: string, nextUser: AuthUser) {
+  try {
+    if (!nextUser?._id) {
+      console.error("❌ Invalid user received:", nextUser);
+      return;
     }
-  }
 
+    // Store token for Axios authentication.
+    localStorage.setItem("token", nextToken);
+
+    // Store user for UI/session restoration.
+    localStorage.setItem(
+      "user",
+      JSON.stringify(nextUser)
+    );
+
+    // These cookies are for frontend/middleware routing.
+    // Do NOT create the API token cookie here.
+    document.cookie =
+      `role=${encodeURIComponent(nextUser.role)}; ` +
+      `path=/; ` +
+      `max-age=86400; ` +
+      `SameSite=Lax`;
+
+    if (nextUser.schoolId) {
+      document.cookie =
+        `schoolId=${encodeURIComponent(nextUser.schoolId)}; ` +
+        `path=/; ` +
+        `max-age=86400; ` +
+        `SameSite=Lax`;
+    }
+
+    setToken(nextToken);
+    setUser(nextUser);
+
+    console.log("SESSION CREATED ✅", {
+      _id: nextUser._id,
+      role: nextUser.role,
+      schoolId: nextUser.schoolId,
+      tokenPresent: Boolean(nextToken),
+    });
+  } catch (error) {
+    console.error("Failed to save session", error);
+  }
+}
+  
   /**
    * =========================
    * LOGOUT
