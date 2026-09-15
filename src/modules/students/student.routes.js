@@ -49,6 +49,10 @@ router.post(
 router.post("/", asyncHandler(createStudentHandler));
 
 router.get("/", asyncHandler(listStudentsHandler));
+router.get(
+  "/class/:classId",
+  asyncHandler(listStudentsHandler)
+);
 
 router.get("/:id", asyncHandler(getStudentHandler));
 
