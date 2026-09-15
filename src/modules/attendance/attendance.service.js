@@ -141,9 +141,11 @@ function formatAttendance(doc) {
 
 // ================= CREATE =================
 
-export async function markAttendance(payload, user) {
+
+ export async function markAttendance(payload, user) {
   const schoolId = user.schoolId;
 
+  // 1. Validate class, session and term
   await validateAcademicRefs({
     classId: payload.classId,
     sessionId: payload.sessionId,
@@ -151,12 +153,14 @@ export async function markAttendance(payload, user) {
     schoolId,
   });
 
+  // 2. Validate students belong to this class
   await validateStudents(
     payload.records,
     payload.classId,
     schoolId
   );
 
+  // 3. Validate teacher/admin permission
   await ensureTeacherCanMark({
     userId: user._id,
     role: user.role,
@@ -164,16 +168,18 @@ export async function markAttendance(payload, user) {
     schoolId,
   });
 
-  
-
+  // 4. Create/update attendance records
   const operations = payload.records.map((record) => ({
     updateOne: {
       filter: {
         schoolId,
         studentId: record.studentId,
         classId: payload.classId,
+        sessionId: payload.sessionId,
+        termId: payload.termId,
         date: payload.date,
       },
+
       update: {
         $set: {
           schoolId,
@@ -186,22 +192,33 @@ export async function markAttendance(payload, user) {
           markedBy: user._id,
         },
       },
+
       upsert: true,
     },
   }));
 
   await Attendance.bulkWrite(operations);
 
+  // 5. Return ONLY attendance for this class,
+  //    session, term and date
   const attendance = await Attendance.find({
     schoolId,
     classId: payload.classId,
+    sessionId: payload.sessionId,
+    termId: payload.termId,
     date: payload.date,
   })
-    .populate("studentId", "firstName lastName admissionNumber")
+    .populate(
+      "studentId",
+      "firstName lastName admissionNumber"
+    )
     .populate("classId", "name level")
     .populate("sessionId", "name")
     .populate("termId", "name")
-    .populate("markedBy", "firstName lastName role")
+    .populate(
+      "markedBy",
+      "firstName lastName role"
+    )
     .sort({ createdAt: -1 });
 
   return attendance.map(formatAttendance);
