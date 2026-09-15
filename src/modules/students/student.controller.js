@@ -46,6 +46,22 @@ export async function listStudentsHandler(req, res) {
     data,
   });
 }
+
+export async function listStudentsByClassHandler(req, res) {
+  const data = await listStudents(
+    req.user.schoolId,
+    {
+      ...req.query,
+      classId: req.params.classId,
+    }
+  );
+
+  res.json({
+    success: true,
+    message: "Students fetched successfully",
+    data,
+  });
+}
 export async function getStudentHandler(req, res) {
   const data = await getStudentById(req.params.id, req.user.schoolId);
 
