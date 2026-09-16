@@ -14,7 +14,10 @@ import {
 import api from "../../../../../lib/axios";
 import { useReportCard } from "../../../../../hooks/useReportCard";
 
-import type { ReportCardFilter } from "../../../../../types/report-card";
+import type {
+  ReportCardFilter,
+  StudentReportCard,
+} from "../../../../../types/report-card";
 
 /* =========================================
    TYPES
@@ -31,6 +34,35 @@ type Student = {
   lastName: string;
   admissionNumber: string;
 };
+
+/*
+ * Bundle/class APIs may return either:
+ *
+ * 1. StudentReportCard
+ *
+ * OR
+ *
+ * 2. { reportCard: StudentReportCard }
+ *
+ * This type safely supports both formats.
+ */
+type ReportItem =
+  | StudentReportCard
+  | {
+      reportCard: StudentReportCard;
+    };
+
+/*
+ * Safely get the actual StudentReportCard regardless
+ * of which response shape the backend returns.
+ */
+function getReportCard(item: ReportItem): StudentReportCard {
+  if ("reportCard" in item) {
+    return item.reportCard;
+  }
+
+  return item as StudentReportCard;
+}
 
 /* =========================================
    PAGE
@@ -72,9 +104,9 @@ export default function ReportCardsDashboardPage() {
   const [selectedStudent, setSelectedStudent] = useState("");
   const [search, setSearch] = useState("");
 
-  const [viewMode, setViewMode] = useState<"student" | "class" | "bundle">(
-    "student"
-  );
+  const [viewMode, setViewMode] = useState<
+    "student" | "class" | "bundle"
+  >("student");
 
   /* =========================================
      LOAD OPTIONS
@@ -115,7 +147,9 @@ export default function ReportCardsDashboardPage() {
       try {
         setLoadingStudents(true);
 
-        const res = await api.get(`/students/class/${selectedClass}`);
+        const res = await api.get(
+          `/students/class/${selectedClass}`
+        );
 
         const studentData =
           res?.data?.data ||
@@ -123,7 +157,9 @@ export default function ReportCardsDashboardPage() {
           res?.data ||
           [];
 
-        setStudents(Array.isArray(studentData) ? studentData : []);
+        setStudents(
+          Array.isArray(studentData) ? studentData : []
+        );
       } catch (err) {
         console.error("Failed loading students", err);
         setStudents([]);
@@ -143,11 +179,14 @@ export default function ReportCardsDashboardPage() {
     if (!search.trim()) return students;
 
     return students.filter((s) => {
-      const fullName = `${s.firstName} ${s.lastName}`.toLowerCase();
+      const fullName =
+        `${s.firstName} ${s.lastName}`.toLowerCase();
 
       return (
         fullName.includes(search.toLowerCase()) ||
-        s.admissionNumber?.toLowerCase().includes(search.toLowerCase())
+        s.admissionNumber
+          ?.toLowerCase()
+          .includes(search.toLowerCase())
       );
     });
   }, [students, search]);
@@ -157,7 +196,15 @@ export default function ReportCardsDashboardPage() {
   ========================================= */
 
   const handleGenerate = async () => {
-    if (generating || loading || classLoading || bundleLoading) return;
+    if (
+      generating ||
+      loading ||
+      classLoading ||
+      bundleLoading
+    ) {
+      return;
+    }
+
     if (!selectedSession || !selectedTerm) return;
 
     try {
@@ -172,11 +219,16 @@ export default function ReportCardsDashboardPage() {
 
       if (viewMode === "student") {
         if (!selectedStudent) return;
-        await fetchStudentReportCard(selectedStudent, baseParams);
+
+        await fetchStudentReportCard(
+          selectedStudent,
+          baseParams
+        );
       }
 
       if (viewMode === "class") {
         if (!selectedClass) return;
+
         await fetchClassReport({
           sessionId: selectedSession,
           termId: selectedTerm,
@@ -186,6 +238,7 @@ export default function ReportCardsDashboardPage() {
 
       if (viewMode === "bundle") {
         if (!selectedClass) return;
+
         await fetchClassReportCardsBundle({
           sessionId: selectedSession,
           termId: selectedTerm,
@@ -229,6 +282,19 @@ export default function ReportCardsDashboardPage() {
   const classReportData = classReport;
   const bundleData = reportBundle;
 
+  /*
+   * Normalize class reports so TypeScript knows that
+   * each item may be either supported API shape.
+   */
+  const classReports = (classReportData?.reports ||
+    []) as ReportItem[];
+
+  /*
+   * Normalize bundle reports for the same reason.
+   */
+  const bundleReports = (bundleData?.reports ||
+    []) as ReportItem[];
+
   /* =========================================
      UI
   ========================================= */
@@ -240,6 +306,7 @@ export default function ReportCardsDashboardPage() {
         <h1 className="text-2xl font-bold text-white">
           Report Card Dashboard
         </h1>
+
         <p className="text-slate-400">
           Generate student, class and bundle report cards
         </p>
@@ -247,36 +314,73 @@ export default function ReportCardsDashboardPage() {
 
       {/* FILTERS */}
       <div className="grid grid-cols-1 gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-5">
-        <select value={selectedSession} onChange={(e) => setSelectedSession(e.target.value)}>
+        <select
+          value={selectedSession}
+          onChange={(e) =>
+            setSelectedSession(e.target.value)
+          }
+        >
           <option value="">Select Session</option>
+
           {sessions.map((s) => (
-            <option key={s._id} value={s._id}>{s.name}</option>
+            <option key={s._id} value={s._id}>
+              {s.name}
+            </option>
           ))}
         </select>
 
-        <select value={selectedTerm} onChange={(e) => setSelectedTerm(e.target.value)}>
+        <select
+          value={selectedTerm}
+          onChange={(e) =>
+            setSelectedTerm(e.target.value)
+          }
+        >
           <option value="">Select Term</option>
+
           {terms.map((t) => (
-            <option key={t._id} value={t._id}>{t.name}</option>
+            <option key={t._id} value={t._id}>
+              {t.name}
+            </option>
           ))}
         </select>
 
-        <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
+        <select
+          value={selectedClass}
+          onChange={(e) =>
+            setSelectedClass(e.target.value)
+          }
+        >
           <option value="">Select Class</option>
+
           {classes.map((c) => (
-            <option key={c._id} value={c._id}>{c.name}</option>
+            <option key={c._id} value={c._id}>
+              {c.name}
+            </option>
           ))}
         </select>
 
         <select
           value={viewMode}
           onChange={(e) =>
-            setViewMode(e.target.value as "student" | "class" | "bundle")
+            setViewMode(
+              e.target.value as
+                | "student"
+                | "class"
+                | "bundle"
+            )
           }
         >
-          <option value="student">Generate Student Report Card</option>
-          <option value="class">Generate Class Report Sheet</option>
-          <option value="bundle">Generate Class Report Card Bundle</option>
+          <option value="student">
+            Generate Student Report Card
+          </option>
+
+          <option value="class">
+            Generate Class Report Sheet
+          </option>
+
+          <option value="bundle">
+            Generate Class Report Card Bundle
+          </option>
         </select>
 
         <button
@@ -288,138 +392,206 @@ export default function ReportCardsDashboardPage() {
             bundleLoading ||
             !selectedSession ||
             !selectedTerm ||
-            (viewMode === "student" && !selectedStudent) ||
-            ((viewMode === "class" || viewMode === "bundle") && !selectedClass)
+            (viewMode === "student" &&
+              !selectedStudent) ||
+            ((viewMode === "class" ||
+              viewMode === "bundle") &&
+              !selectedClass)
           }
           className="flex items-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-black"
         >
-          {generating ? <Loader2 className="animate-spin" /> : <FileText />}
+          {generating ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <FileText />
+          )}
+
           Generate
         </button>
       </div>
 
-      {/* STUDENT */}
+      {/* =========================================
+          STUDENT
+      ========================================= */}
+
       {studentReport && viewMode === "student" && (
         <div className="rounded-2xl border p-4">
           <h2>Student Preview</h2>
+
           <p>
-            {studentReport.student.firstName} {studentReport.student.lastName}
+            {studentReport.student.firstName}{" "}
+            {studentReport.student.lastName}
           </p>
-          <button onClick={() => openStudent(studentReport.student._id)}>
+
+          <button
+            onClick={() =>
+              openStudent(studentReport.student._id)
+            }
+          >
             Open Full Report
           </button>
         </div>
       )}
 
-      {/* CLASS */}
-      {/* CLASS */}
-{classReportData && viewMode === "class" && (
-  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-    <h2 className="mb-3 font-semibold text-white">
-      Class Report Preview
-    </h2>
+      {/* =========================================
+          CLASS
+      ========================================= */}
 
-    <p className="text-slate-300">
-      Class:
-      <span className="ml-2 text-white">
-        {classReportData.class?.name}
-      </span>
-    </p>
+      {classReportData && viewMode === "class" && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <h2 className="mb-3 font-semibold text-white">
+            Class Report Preview
+          </h2>
 
-    <p className="text-slate-300">
-      Total Students:
-      <span className="ml-2 text-cyan-400">
-        {classReportData.totalStudents}
-      </span>
-    </p>
+          <p className="text-slate-300">
+            Class:
 
-    <p className="text-slate-300">
-      Generated Reports:
-      <span className="ml-2 text-cyan-400">
-        {classReportData.reports?.length || 0}
-      </span>
-    </p>
+            <span className="ml-2 text-white">
+              {classReportData.class?.name}
+            </span>
+          </p>
 
-    <div className="mt-4 space-y-1">
-      {classReportData.reports
-        ?.slice(0, 5)
-        .map((item: any) => (
-          <div
-            key={item.reportCard.student._id}
-            className="text-sm text-slate-300"
-          >
-            •{" "}
-            {item.reportCard.student.firstName}{" "}
-            {item.reportCard.student.lastName}
-            {" — "}
-            {item.reportCard.summary.positionLabel}
+          <p className="text-slate-300">
+            Total Students:
+
+            <span className="ml-2 text-cyan-400">
+              {classReportData.totalStudents}
+            </span>
+          </p>
+
+          <p className="text-slate-300">
+            Generated Reports:
+
+            <span className="ml-2 text-cyan-400">
+              {classReports.length}
+            </span>
+          </p>
+
+          <div className="mt-4 space-y-1">
+            {classReports
+              .slice(0, 5)
+              .map(
+                (
+                  item: ReportItem,
+                  index: number
+                ) => {
+                  const reportCard =
+                    getReportCard(item);
+
+                  return (
+                    <div
+                      key={
+                        reportCard.student?._id ||
+                        `class-report-${index}`
+                      }
+                      className="text-sm text-slate-300"
+                    >
+                      •{" "}
+                      {reportCard.student?.firstName ||
+                        ""}{" "}
+                      {reportCard.student?.lastName ||
+                        ""}
+                      {" — "}
+                      {reportCard.summary
+                        ?.positionLabel ||
+                        "Position N/A"}
+                    </div>
+                  );
+                }
+              )}
           </div>
-        ))}
-    </div>
 
-    <button
-      onClick={openClass}
-      className="mt-4 rounded-lg bg-cyan-500 px-4 py-2 text-black"
-    >
-      Open Class Report
-    </button>
-  </div>
-)}
-      {/* BUNDLE */}
-       {bundleData && viewMode === "bundle" && (
-  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-    <h2 className="mb-3 font-semibold text-white">
-      Report Card Bundle
-    </h2>
-
-    <p className="text-slate-300">
-      Class:
-      <span className="ml-2 text-white">
-        {bundleData.class?.name}
-      </span>
-    </p>
-
-    <p className="text-slate-300">
-      Total Students:
-      <span className="ml-2 text-cyan-400">
-        {bundleData.totalStudents}
-      </span>
-    </p>
-
-    <p className="text-slate-300">
-      Generated Reports:
-      <span className="ml-2 text-cyan-400">
-        {bundleData.reports?.length || 0}
-      </span>
-    </p>
-
-    <div className="mt-4 space-y-1">
-      {bundleData.reports
-        ?.slice(0, 5)
-        .map((item: any) => (
-          <div
-            key={item.reportCard.student._id}
-            className="text-sm text-slate-300"
+          <button
+            onClick={openClass}
+            className="mt-4 rounded-lg bg-cyan-500 px-4 py-2 text-black"
           >
-            •{" "}
-            {item.reportCard.student.firstName}{" "}
-            {item.reportCard.student.lastName}
-            {" ("}
-            {item.reportCard.summary.positionLabel}
-            {")"}
-          </div>
-        ))}
-    </div>
+            Open Class Report
+          </button>
+        </div>
+      )}
 
-    <button
-      onClick={openBundle}
-      className="mt-4 rounded-lg bg-cyan-500 px-4 py-2 text-black"
-    >
-      Open Bundle Viewer
-    </button>
-  </div>
-)}
-      {/* ERROR */}
+      {/* =========================================
+          BUNDLE
+      ========================================= */}
+
+      {bundleData && viewMode === "bundle" && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <h2 className="mb-3 font-semibold text-white">
+            Report Card Bundle
+          </h2>
+
+          <p className="text-slate-300">
+            Class:
+
+            <span className="ml-2 text-white">
+              {bundleData.class?.name}
+            </span>
+          </p>
+
+          <p className="text-slate-300">
+            Total Students:
+
+            <span className="ml-2 text-cyan-400">
+              {bundleData.totalStudents}
+            </span>
+          </p>
+
+          <p className="text-slate-300">
+            Generated Reports:
+
+            <span className="ml-2 text-cyan-400">
+              {bundleReports.length}
+            </span>
+          </p>
+
+          <div className="mt-4 space-y-1">
+            {bundleReports
+              .slice(0, 5)
+              .map(
+                (
+                  item: ReportItem,
+                  index: number
+                ) => {
+                  const reportCard =
+                    getReportCard(item);
+
+                  return (
+                    <div
+                      key={
+                        reportCard.student?._id ||
+                        `bundle-report-${index}`
+                      }
+                      className="text-sm text-slate-300"
+                    >
+                      •{" "}
+                      {reportCard.student?.firstName ||
+                        ""}{" "}
+                      {reportCard.student?.lastName ||
+                        ""}
+                      {" ("}
+                      {reportCard.summary
+                        ?.positionLabel ||
+                        "Position N/A"}
+                      {")"}
+                    </div>
+                  );
+                }
+              )}
+          </div>
+
+          <button
+            onClick={openBundle}
+            className="mt-4 rounded-lg bg-cyan-500 px-4 py-2 text-black"
+          >
+            Open Bundle Viewer
+          </button>
+        </div>
+      )}
+
+      {/* =========================================
+          ERROR
+      ========================================= */}
+
       {error && (
         <div className="rounded-xl border border-red-500 bg-red-500/10 p-3 text-red-400">
           {error}
