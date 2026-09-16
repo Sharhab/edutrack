@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Loader2, Search } from "lucide-react";
+import {
+  FileText,
+  Loader2,
+  Search,
+} from "lucide-react";
 
 import {
   getSessions,
@@ -18,9 +22,9 @@ import type {
   StudentReportCard,
 } from "../../../../../types/report-card";
 
-/* =========================================
+/* =========================================================
    TYPES
-========================================= */
+========================================================= */
 
 type OptionItem = {
   _id: string;
@@ -34,13 +38,39 @@ type Student = {
   admissionNumber: string;
 };
 
-type ReportItem = StudentReportCard | {
-  reportCard: StudentReportCard;
-};
+/*
+ * Backend/API can return either:
+ *
+ * 1. Raw report card
+ *
+ * {
+ *   student: {...},
+ *   summary: {...},
+ *   results: [...]
+ * }
+ *
+ * OR:
+ *
+ * 2. Wrapped report card
+ *
+ * {
+ *   reportCard: {
+ *     student: {...},
+ *     summary: {...},
+ *     results: [...]
+ *   }
+ * }
+ */
 
-/* =========================================
+type ReportItem =
+  | StudentReportCard
+  | {
+      reportCard: StudentReportCard;
+    };
+
+/* =========================================================
    HELPERS
-========================================= */
+========================================================= */
 
 function getReportCard(
   item: ReportItem
@@ -52,12 +82,30 @@ function getReportCard(
     return item.reportCard;
   }
 
-  return item as StudentReportCard;
+  return item;
 }
 
-/* =========================================
+/*
+ * The hook/type may currently describe reports
+ * differently depending on the API response.
+ *
+ * This helper converts the unknown reports collection
+ * into a safe array for this page.
+ */
+
+function normalizeReports(
+  reports: unknown
+): ReportItem[] {
+  if (!Array.isArray(reports)) {
+    return [];
+  }
+
+  return reports as ReportItem[];
+}
+
+/* =========================================================
    PAGE
-========================================= */
+========================================================= */
 
 export default function ReportCardsDashboardPage() {
   const router = useRouter();
@@ -77,9 +125,9 @@ export default function ReportCardsDashboardPage() {
     error,
   } = useReportCard();
 
-  /* =====================================
+  /* =======================================================
      DATA
-  ===================================== */
+  ======================================================= */
 
   const [sessions, setSessions] =
     useState<OptionItem[]>([]);
@@ -93,9 +141,9 @@ export default function ReportCardsDashboardPage() {
   const [students, setStudents] =
     useState<Student[]>([]);
 
-  /* =====================================
+  /* =======================================================
      LOADING
-  ===================================== */
+  ======================================================= */
 
   const [loadingStudents, setLoadingStudents] =
     useState(false);
@@ -103,9 +151,9 @@ export default function ReportCardsDashboardPage() {
   const [generating, setGenerating] =
     useState(false);
 
-  /* =====================================
-     FILTER STATE
-  ===================================== */
+  /* =======================================================
+     FILTERS
+  ======================================================= */
 
   const [selectedSession, setSelectedSession] =
     useState("");
@@ -122,24 +170,31 @@ export default function ReportCardsDashboardPage() {
   const [search, setSearch] =
     useState("");
 
+  /* =======================================================
+     VIEW MODE
+  ======================================================= */
+
   const [viewMode, setViewMode] =
     useState<
       "student" | "class" | "bundle"
     >("student");
 
-  /* =====================================
-     LOAD OPTIONS
-  ===================================== */
+  /* =======================================================
+     LOAD SESSIONS / TERMS / CLASSES
+  ======================================================= */
 
   useEffect(() => {
     const loadOptions = async () => {
       try {
-        const [sessionsData, termsData, classesData] =
-          await Promise.all([
-            getSessions(),
-            getTerms(),
-            getClassOptions(),
-          ]);
+        const [
+          sessionsData,
+          termsData,
+          classesData,
+        ] = await Promise.all([
+          getSessions(),
+          getTerms(),
+          getClassOptions(),
+        ]);
 
         setSessions(
           Array.isArray(sessionsData)
@@ -160,7 +215,7 @@ export default function ReportCardsDashboardPage() {
         );
       } catch (err) {
         console.error(
-          "Failed loading options",
+          "Failed loading report card options:",
           err
         );
       }
@@ -169,9 +224,9 @@ export default function ReportCardsDashboardPage() {
     loadOptions();
   }, []);
 
-  /* =====================================
-     LOAD STUDENTS
-  ===================================== */
+  /* =======================================================
+     LOAD STUDENTS BY CLASS
+  ======================================================= */
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -184,36 +239,50 @@ export default function ReportCardsDashboardPage() {
       try {
         setLoadingStudents(true);
 
-        const res = await api.get(
+        /*
+         * Backend endpoint:
+         *
+         * GET /students/class/:classId
+         */
+
+        const response = await api.get(
           `/students/class/${selectedClass}`
         );
 
         const studentData =
-          res?.data?.data ||
-          res?.data?.students ||
-          res?.data ||
+          response?.data?.data ??
+          response?.data?.students ??
+          response?.data ??
           [];
 
-        const normalized =
+        const safeStudents: Student[] =
           Array.isArray(studentData)
             ? studentData
             : [];
 
-        setStudents(normalized);
+        setStudents(safeStudents);
+
+        /*
+         * Make sure selected student still
+         * belongs to the selected class.
+         */
 
         setSelectedStudent((current) => {
-          if (!current) return "";
+          if (!current) {
+            return "";
+          }
 
-          const stillExists = normalized.some(
-            (student: Student) =>
-              student._id === current
-          );
+          const exists =
+            safeStudents.some(
+              (student) =>
+                student._id === current
+            );
 
-          return stillExists ? current : "";
+          return exists ? current : "";
         });
       } catch (err) {
         console.error(
-          "Failed loading students",
+          "Failed loading students:",
           err
         );
 
@@ -227,9 +296,9 @@ export default function ReportCardsDashboardPage() {
     loadStudents();
   }, [selectedClass]);
 
-  /* =====================================
+  /* =======================================================
      FILTER STUDENTS
-  ===================================== */
+  ======================================================= */
 
   const filteredStudents = useMemo(() => {
     const value =
@@ -239,32 +308,37 @@ export default function ReportCardsDashboardPage() {
       return students;
     }
 
-    return students.filter((student) => {
-      const fullName =
-        `${student.firstName || ""} ${
-          student.lastName || ""
-        }`
-          .trim()
-          .toLowerCase();
+    return students.filter(
+      (student) => {
+        const fullName =
+          `${student.firstName || ""} ${
+            student.lastName || ""
+          }`
+            .trim()
+            .toLowerCase();
 
-      const admission =
-        student.admissionNumber
-          ?.toLowerCase() || "";
+        const admissionNumber =
+          student.admissionNumber
+            ?.toLowerCase() || "";
 
-      return (
-        fullName.includes(value) ||
-        admission.includes(value)
-      );
-    });
+        return (
+          fullName.includes(value) ||
+          admissionNumber.includes(value)
+        );
+      }
+    );
   }, [students, search]);
 
-  /* =====================================
-     GENERATE
-  ===================================== */
+  /* =======================================================
+     GENERATE REPORT
+  ======================================================= */
 
   const handleGenerate = async () => {
+    if (generating) {
+      return;
+    }
+
     if (
-      generating ||
       loading ||
       classLoading ||
       bundleLoading
@@ -289,10 +363,14 @@ export default function ReportCardsDashboardPage() {
         studentId: selectedStudent,
       };
 
-      /* STUDENT */
+      /* ===================================================
+         STUDENT REPORT
+      =================================================== */
 
       if (viewMode === "student") {
-        if (!selectedStudent) return;
+        if (!selectedStudent) {
+          return;
+        }
 
         await fetchStudentReportCard(
           selectedStudent,
@@ -302,10 +380,14 @@ export default function ReportCardsDashboardPage() {
         return;
       }
 
-      /* CLASS */
+      /* ===================================================
+         CLASS REPORT
+      =================================================== */
 
       if (viewMode === "class") {
-        if (!selectedClass) return;
+        if (!selectedClass) {
+          return;
+        }
 
         await fetchClassReport({
           sessionId: selectedSession,
@@ -316,10 +398,14 @@ export default function ReportCardsDashboardPage() {
         return;
       }
 
-      /* BUNDLE */
+      /* ===================================================
+         BUNDLE
+      =================================================== */
 
       if (viewMode === "bundle") {
-        if (!selectedClass) return;
+        if (!selectedClass) {
+          return;
+        }
 
         await fetchClassReportCardsBundle({
           sessionId: selectedSession,
@@ -331,7 +417,7 @@ export default function ReportCardsDashboardPage() {
       }
     } catch (err) {
       console.error(
-        "Generate report failed",
+        "Generate report failed:",
         err
       );
     } finally {
@@ -339,14 +425,16 @@ export default function ReportCardsDashboardPage() {
     }
   };
 
-  /* =====================================
+  /* =======================================================
      NAVIGATION
-  ===================================== */
+  ======================================================= */
 
   const openStudent = (
     studentId: string
   ) => {
-    if (!studentId) return;
+    if (!studentId) {
+      return;
+    }
 
     router.push(
       `/school-admin/results/report-cards/${studentId}?sessionId=${encodeURIComponent(
@@ -358,7 +446,9 @@ export default function ReportCardsDashboardPage() {
   };
 
   const openClass = () => {
-    if (!selectedClass) return;
+    if (!selectedClass) {
+      return;
+    }
 
     router.push(
       `/school-admin/results/class-reports?classId=${encodeURIComponent(
@@ -372,7 +462,9 @@ export default function ReportCardsDashboardPage() {
   };
 
   const openBundle = () => {
-    if (!selectedClass) return;
+    if (!selectedClass) {
+      return;
+    }
 
     router.push(
       `/school-admin/results/report-cards/bundle?classId=${encodeURIComponent(
@@ -385,9 +477,9 @@ export default function ReportCardsDashboardPage() {
     );
   };
 
-  /* =====================================
+  /* =======================================================
      NORMALIZED DATA
-  ===================================== */
+  ======================================================= */
 
   const studentReport =
     reportCard;
@@ -398,9 +490,26 @@ export default function ReportCardsDashboardPage() {
   const bundleData =
     reportBundle;
 
-  /* =====================================
+  /*
+   * Explicitly normalize the reports arrays.
+   *
+   * This is important because the backend currently
+   * returns raw StudentReportCard objects in the bundle.
+   */
+
+  const classReports: ReportItem[] =
+    normalizeReports(
+      classReportData?.reports
+    );
+
+  const bundleReports: ReportItem[] =
+    normalizeReports(
+      bundleData?.reports
+    );
+
+  /* =======================================================
      GENERATING STATE
-  ===================================== */
+  ======================================================= */
 
   const isGenerating =
     generating ||
@@ -408,14 +517,16 @@ export default function ReportCardsDashboardPage() {
     classLoading ||
     bundleLoading;
 
-  /* =====================================
-     UI
-  ===================================== */
+  /* =======================================================
+     RETURN
+  ======================================================= */
 
   return (
     <div className="space-y-6">
 
-      {/* HEADER */}
+      {/* ===================================================
+          HEADER
+      =================================================== */}
 
       <div>
         <h1 className="text-2xl font-bold text-white">
@@ -428,7 +539,9 @@ export default function ReportCardsDashboardPage() {
         </p>
       </div>
 
-      {/* FILTERS */}
+      {/* ===================================================
+          FILTERS
+      =================================================== */}
 
       <div className="grid grid-cols-1 gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-5">
 
@@ -436,92 +549,99 @@ export default function ReportCardsDashboardPage() {
 
         <select
           value={selectedSession}
-          onChange={(e) =>
+          onChange={(event) =>
             setSelectedSession(
-              e.target.value
+              event.target.value
             )
           }
-          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
+          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
         >
           <option value="">
             Select Session
           </option>
 
-          {sessions.map((session) => (
-            <option
-              key={session._id}
-              value={session._id}
-            >
-              {session.name}
-            </option>
-          ))}
+          {sessions.map(
+            (session) => (
+              <option
+                key={session._id}
+                value={session._id}
+              >
+                {session.name}
+              </option>
+            )
+          )}
         </select>
 
         {/* TERM */}
 
         <select
           value={selectedTerm}
-          onChange={(e) =>
+          onChange={(event) =>
             setSelectedTerm(
-              e.target.value
+              event.target.value
             )
           }
-          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
+          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
         >
           <option value="">
             Select Term
           </option>
 
-          {terms.map((term) => (
-            <option
-              key={term._id}
-              value={term._id}
-            >
-              {term.name}
-            </option>
-          ))}
+          {terms.map(
+            (term) => (
+              <option
+                key={term._id}
+                value={term._id}
+              >
+                {term.name}
+              </option>
+            )
+          )}
         </select>
 
         {/* CLASS */}
 
         <select
           value={selectedClass}
-          onChange={(e) => {
+          onChange={(event) => {
             setSelectedClass(
-              e.target.value
+              event.target.value
             );
+
             setSelectedStudent("");
             setSearch("");
           }}
-          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
+          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
         >
           <option value="">
             Select Class
           </option>
 
-          {classes.map((classItem) => (
-            <option
-              key={classItem._id}
-              value={classItem._id}
-            >
-              {classItem.name}
-            </option>
-          ))}
+          {classes.map(
+            (classItem) => (
+              <option
+                key={classItem._id}
+                value={classItem._id}
+              >
+                {classItem.name}
+              </option>
+            )
+          )}
         </select>
 
-        {/* MODE */}
+        {/* VIEW MODE */}
 
         <select
           value={viewMode}
-          onChange={(e) =>
+          onChange={(event) =>
             setViewMode(
-              e.target.value as
+              event.target.value as
                 | "student"
                 | "class"
                 | "bundle"
             )
           }
-          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
+          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
         >
           <option value="student">
             Generate Student Report Card
@@ -536,7 +656,7 @@ export default function ReportCardsDashboardPage() {
           </option>
         </select>
 
-        {/* GENERATE */}
+        {/* GENERATE BUTTON */}
 
         <button
           type="button"
@@ -551,7 +671,7 @@ export default function ReportCardsDashboardPage() {
               viewMode === "bundle") &&
               !selectedClass)
           }
-          className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 font-medium text-black disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 font-medium text-black transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isGenerating ? (
             <Loader2
@@ -568,20 +688,23 @@ export default function ReportCardsDashboardPage() {
         </button>
       </div>
 
-      {/* STUDENT SELECTOR */}
+      {/* ===================================================
+          STUDENT SELECTOR
+      =================================================== */}
 
       {viewMode === "student" && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
 
           <div className="mb-4 flex items-center justify-between">
+
             <div>
               <h2 className="font-semibold text-white">
                 Select Student
               </h2>
 
               <p className="text-sm text-slate-400">
-                Select a class first, then choose
-                a student
+                Select a class first, then
+                choose a student
               </p>
             </div>
 
@@ -596,6 +719,7 @@ export default function ReportCardsDashboardPage() {
           {/* SEARCH */}
 
           <div className="relative mb-3">
+
             <Search
               size={18}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
@@ -604,8 +728,10 @@ export default function ReportCardsDashboardPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) =>
-                setSearch(e.target.value)
+              onChange={(event) =>
+                setSearch(
+                  event.target.value
+                )
               }
               disabled={!selectedClass}
               placeholder={
@@ -613,17 +739,18 @@ export default function ReportCardsDashboardPage() {
                   ? "Search student by name or admission number..."
                   : "Select a class first..."
               }
-              className="w-full rounded-xl border border-white/10 bg-slate-900 py-2 pl-10 pr-3 text-sm text-white outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-xl border border-white/10 bg-slate-900 py-2 pl-10 pr-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
 
-          {/* STUDENT LIST */}
+          {/* STUDENTS */}
 
           <div className="max-h-64 space-y-2 overflow-y-auto">
 
             {!selectedClass ? (
               <div className="rounded-xl border border-dashed border-white/10 p-4 text-center text-sm text-slate-500">
-                Select a class to load students.
+                Select a class to load
+                students.
               </div>
             ) : loadingStudents ? (
               <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-400">
@@ -631,6 +758,7 @@ export default function ReportCardsDashboardPage() {
                   size={18}
                   className="animate-spin"
                 />
+
                 Loading students...
               </div>
             ) : filteredStudents.length ===
@@ -642,7 +770,7 @@ export default function ReportCardsDashboardPage() {
             ) : (
               filteredStudents.map(
                 (student) => {
-                  const selected =
+                  const isSelected =
                     selectedStudent ===
                     student._id;
 
@@ -655,10 +783,10 @@ export default function ReportCardsDashboardPage() {
                           student._id
                         )
                       }
-                      className={`w-full rounded-xl border p-3 text-left ${
-                        selected
+                      className={`w-full rounded-xl border p-3 text-left transition ${
+                        isSelected
                           ? "border-cyan-400 bg-cyan-500/10"
-                          : "border-white/10 bg-white/[0.02]"
+                          : "border-white/10 bg-white/[0.02] hover:border-white/20"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -676,7 +804,7 @@ export default function ReportCardsDashboardPage() {
                           </p>
                         </div>
 
-                        {selected && (
+                        {isSelected && (
                           <span className="rounded-full bg-cyan-400 px-2 py-1 text-xs font-semibold text-black">
                             Selected
                           </span>
@@ -691,7 +819,9 @@ export default function ReportCardsDashboardPage() {
         </div>
       )}
 
-      {/* STUDENT PREVIEW */}
+      {/* ===================================================
+          STUDENT REPORT PREVIEW
+      =================================================== */}
 
       {studentReport &&
         viewMode === "student" && (
@@ -723,18 +853,20 @@ export default function ReportCardsDashboardPage() {
                 type="button"
                 onClick={() =>
                   openStudent(
-                    studentReport
-                      .student?._id || ""
+                    studentReport.student
+                      ?._id || ""
                   )
                 }
                 disabled={
                   !studentReport.student?._id
                 }
-                className="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-black disabled:opacity-50"
+                className="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-black transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Open Full Report
               </button>
             </div>
+
+            {/* SUMMARY */}
 
             <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
 
@@ -778,9 +910,10 @@ export default function ReportCardsDashboardPage() {
                   Session
                 </p>
 
-                <p className="mt-1 text-sm font-medium text-white">
+                <p className="mt-1 truncate text-sm font-medium text-white">
                   {studentReport.session
-                    ?.name || "N/A"}
+                    ?.name ||
+                    "N/A"}
                 </p>
               </div>
 
@@ -788,7 +921,9 @@ export default function ReportCardsDashboardPage() {
           </div>
         )}
 
-      {/* CLASS */}
+      {/* ===================================================
+          CLASS REPORT
+      =================================================== */}
 
       {classReportData &&
         viewMode === "class" && (
@@ -811,11 +946,13 @@ export default function ReportCardsDashboardPage() {
               <button
                 type="button"
                 onClick={openClass}
-                className="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-black"
+                className="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-black transition hover:bg-cyan-400"
               >
                 Open Class Report
               </button>
             </div>
+
+            {/* CLASS STATISTICS */}
 
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
 
@@ -838,7 +975,8 @@ export default function ReportCardsDashboardPage() {
 
                 <p className="mt-1 text-xl font-semibold text-cyan-400">
                   {classReportData
-                    .totalStudents || 0}
+                    .totalStudents ||
+                    0}
                 </p>
               </div>
 
@@ -848,12 +986,13 @@ export default function ReportCardsDashboardPage() {
                 </p>
 
                 <p className="mt-1 text-xl font-semibold text-cyan-400">
-                  {classReportData
-                    .reports?.length || 0}
+                  {classReports.length}
                 </p>
               </div>
 
             </div>
+
+            {/* CLASS STUDENTS */}
 
             <div className="mt-5">
 
@@ -861,23 +1000,24 @@ export default function ReportCardsDashboardPage() {
                 Students
               </h3>
 
-              {!classReportData.reports?.length ? (
+              {classReports.length ===
+              0 ? (
                 <div className="rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-500">
                   No reports generated.
                 </div>
               ) : (
                 <div className="space-y-2">
 
-                  {classReportData.reports
+                  {classReports
                     .slice(0, 5)
                     .map(
                       (
-                        item,
-                        index
+                        item: ReportItem,
+                        index: number
                       ) => {
                         const reportCard =
                           getReportCard(
-                            item as ReportItem
+                            item
                           );
 
                         const student =
@@ -886,7 +1026,8 @@ export default function ReportCardsDashboardPage() {
                         const fullName =
                           `${student?.firstName || ""} ${
                             student?.lastName || ""
-                          }`.trim() ||
+                          }`
+                            .trim() ||
                           "Unknown Student";
 
                         return (
@@ -927,7 +1068,9 @@ export default function ReportCardsDashboardPage() {
           </div>
         )}
 
-      {/* BUNDLE */}
+      {/* ===================================================
+          BUNDLE
+      =================================================== */}
 
       {bundleData &&
         viewMode === "bundle" && (
@@ -950,11 +1093,13 @@ export default function ReportCardsDashboardPage() {
               <button
                 type="button"
                 onClick={openBundle}
-                className="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-black"
+                className="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-black transition hover:bg-cyan-400"
               >
                 Open Bundle Viewer
               </button>
             </div>
+
+            {/* BUNDLE STATISTICS */}
 
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
 
@@ -977,7 +1122,8 @@ export default function ReportCardsDashboardPage() {
 
                 <p className="mt-1 text-xl font-semibold text-cyan-400">
                   {bundleData
-                    .totalStudents || 0}
+                    .totalStudents ||
+                    0}
                 </p>
               </div>
 
@@ -987,12 +1133,13 @@ export default function ReportCardsDashboardPage() {
                 </p>
 
                 <p className="mt-1 text-xl font-semibold text-cyan-400">
-                  {bundleData.reports
-                    ?.length || 0}
+                  {bundleReports.length}
                 </p>
               </div>
 
             </div>
+
+            {/* BUNDLE STUDENTS */}
 
             <div className="mt-5">
 
@@ -1000,23 +1147,36 @@ export default function ReportCardsDashboardPage() {
                 Report Cards
               </h3>
 
-              {!bundleData.reports?.length ? (
+              {bundleReports.length ===
+              0 ? (
                 <div className="rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-500">
                   No report cards generated.
                 </div>
               ) : (
                 <div className="space-y-2">
 
-                  {bundleData.reports
+                  {bundleReports
                     .slice(0, 5)
                     .map(
                       (
-                        item,
-                        index
+                        item: ReportItem,
+                        index: number
                       ) => {
+                        /*
+                         * IMPORTANT:
+                         *
+                         * This works with BOTH:
+                         *
+                         * item.student
+                         *
+                         * and:
+                         *
+                         * item.reportCard.student
+                         */
+
                         const reportCard =
                           getReportCard(
-                            item as ReportItem
+                            item
                           );
 
                         const student =
@@ -1025,7 +1185,8 @@ export default function ReportCardsDashboardPage() {
                         const fullName =
                           `${student?.firstName || ""} ${
                             student?.lastName || ""
-                          }`.trim() ||
+                          }`
+                            .trim() ||
                           "Unknown Student";
 
                         return (
@@ -1060,16 +1221,29 @@ export default function ReportCardsDashboardPage() {
                       }
                     )}
 
+                  {bundleReports.length >
+                    5 && (
+                    <p className="pt-2 text-center text-xs text-slate-500">
+                      Showing the first 5
+                      students. Open the
+                      bundle viewer to see
+                      all students.
+                    </p>
+                  )}
+
                 </div>
               )}
             </div>
           </div>
         )}
 
-      {/* ERROR */}
+      {/* ===================================================
+          ERROR
+      =================================================== */}
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
+
           <p className="font-medium">
             Report generation failed
           </p>
@@ -1077,6 +1251,7 @@ export default function ReportCardsDashboardPage() {
           <p className="mt-1">
             {error}
           </p>
+
         </div>
       )}
 
