@@ -75,14 +75,11 @@ type ReportItem =
 function getReportCard(
   item: ReportItem
 ): StudentReportCard {
-  if (
-    "reportCard" in item &&
-    item.reportCard
-  ) {
+  if ("reportCard" in item) {
     return item.reportCard;
   }
 
-  return item;
+  return item as StudentReportCard;
 }
 
 /*
