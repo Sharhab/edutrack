@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+
 import { StudentReportCard } from "../../types/report-card";
 
 import ReportCardSummary from "./ReportCardSummary";
@@ -8,23 +9,19 @@ import ReportCardSubjectTable from "./ReportCardSubjectTable";
 import ReportCardAttendance from "./ReportCardAttendance";
 import ReportCardFooter from "./ReportCardFooter";
 
+import {
+  defaultComments,
+} from "./pdfTheme";
+
+import {
+  getPerformanceRemark,
+} from "./reportCardCalculations";
+
 type Props = {
   data: StudentReportCard;
   schoolName?: string;
   schoolLogo?: string;
   brandColor?: string;
-  schoolAddress?: string;
-  schoolPhone?: string;
-  schoolEmail?: string;
-  schoolWebsite?: string;
-};
-
-type StudentWithOptionalPhoto = StudentReportCard["student"] & {
-  photo?: string;
-  passport?: string;
-  passportPhoto?: string;
-  image?: string;
-  profilePicture?: string;
 };
 
 export default function ReportCardTemplate({
@@ -32,10 +29,6 @@ export default function ReportCardTemplate({
   schoolName = "SCHOOL NAME",
   schoolLogo,
   brandColor = "#0f766e",
-  schoolAddress,
-  schoolPhone,
-  schoolEmail,
-  schoolWebsite,
 }: Props) {
   const {
     student,
@@ -46,51 +39,65 @@ export default function ReportCardTemplate({
     attendance,
   } = data;
 
-  const studentWithPhoto =
-    student as StudentWithOptionalPhoto;
-
-  const studentPhoto =
-    studentWithPhoto.photo ||
-    studentWithPhoto.passport ||
-    studentWithPhoto.passportPhoto ||
-    studentWithPhoto.image ||
-    studentWithPhoto.profilePicture;
+  /* =====================================================
+     EXISTING DATA ONLY
+  ===================================================== */
 
   const studentName =
-  `${student?.firstName || ""} ${
-    student?.lastName || ""
-  }`.trim() || "—";
+    `${student?.firstName || ""} ${
+      student?.lastName || ""
+    }`.trim() || "—";
 
-const sessionName =
-  session?.name || "—";
+  const admissionNumber =
+    student?.admissionNumber || "—";
 
-const termName =
-  term?.name || "—";
+  const className =
+    student?.className || "—";
 
-const className =
-  student?.className || "—";
+  const gender =
+    student?.gender || "—";
 
-const gender =
-  student?.gender || "—";
+  const sessionName =
+    session?.name || "—";
 
-const admissionNumber =
-  student?.admissionNumber || "—";
-  
+  const termName =
+    term?.name || "—";
+
+  /*
+   * Existing performance calculation.
+   *
+   * We do NOT use summary.performanceRemark
+   * because that property does not exist in
+   * ReportCardSummary.
+   */
+  const averageScore =
+    Number(summary?.averageScore || 0);
+
+  const performance =
+    getPerformanceRemark(
+      averageScore
+    );
+
+  const teacherComment =
+    getDefaultComment(
+      performance
+    );
+
   return (
     <>
       <style jsx global>{`
         .report-card-page {
           width: 210mm;
           min-height: 297mm;
-          background: #ffffff;
-          color: #172033;
           margin: 0 auto;
-          padding: 7mm 8mm 6mm;
+          padding: 6mm 7mm;
           box-sizing: border-box;
+          background: #ffffff;
           font-family:
             Arial,
             Helvetica,
             sans-serif;
+          color: #172033;
           overflow: hidden;
         }
 
@@ -98,94 +105,85 @@ const admissionNumber =
           width: 100%;
           min-height: 100%;
           box-sizing: border-box;
-          border: 1px solid #cbd5e1;
           background: #ffffff;
-          position: relative;
+          border: 1px solid #cbd5e1;
+          overflow: hidden;
         }
 
+        /* =================================================
+           TOP HEADER
+           PASSPORT LEFT
+           SCHOOL CENTER
+           LOGO RIGHT
+        ================================================= */
+
         .report-card-header {
+          width: 100%;
+          min-height: 34mm;
           display: grid;
-          grid-template-columns: 27mm 1fr 27mm;
+          grid-template-columns:
+            28mm
+            minmax(0, 1fr)
+            28mm;
           align-items: center;
-          min-height: 35mm;
-          padding: 4mm 5mm;
-          border-bottom: 2px solid ${brandColor};
           box-sizing: border-box;
+          padding: 3.5mm 4mm;
+          border-bottom: 2px solid ${brandColor};
         }
 
         .passport-area {
           width: 23mm;
-          height: 28mm;
+          height: 27mm;
+          box-sizing: border-box;
           border: 1px solid #94a3b8;
+          background: #f8fafc;
           display: flex;
           align-items: center;
           justify-content: center;
           overflow: hidden;
-          background: #f8fafc;
-        }
-
-        .passport-area img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
         }
 
         .passport-placeholder {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
           text-align: center;
           color: #64748b;
-          font-size: 7px;
-          font-weight: 700;
-          letter-spacing: 0.4px;
+          font-size: 6.5px;
           line-height: 1.4;
+          font-weight: 700;
         }
 
         .school-heading {
+          min-width: 0;
           text-align: center;
           padding: 0 5mm;
-          min-width: 0;
         }
 
         .school-name {
           margin: 0;
-          font-size: 18px;
+          color: ${brandColor};
+          font-size: 17px;
           line-height: 1.15;
           font-weight: 800;
-          color: ${brandColor};
           text-transform: uppercase;
-          letter-spacing: 0.3px;
           overflow-wrap: anywhere;
         }
 
-        .school-address {
-          margin-top: 2px;
-          font-size: 7.5px;
-          line-height: 1.25;
-          color: #64748b;
-        }
-
         .report-title {
-          margin: 5px 0 2px;
-          font-size: 13px;
-          line-height: 1.1;
-          font-weight: 800;
+          margin: 4px 0 3px;
           color: #172033;
+          font-size: 12px;
+          line-height: 1.15;
+          font-weight: 800;
           text-transform: uppercase;
-          letter-spacing: 0.8px;
+          letter-spacing: 0.6px;
         }
 
         .session-term {
           display: flex;
           justify-content: center;
           align-items: center;
-          gap: 14px;
-          flex-wrap: wrap;
+          gap: 15px;
           font-size: 8px;
+          line-height: 1.2;
           color: #475569;
         }
 
@@ -196,13 +194,14 @@ const admissionNumber =
         .logo-area {
           width: 23mm;
           height: 23mm;
+          box-sizing: border-box;
+          justify-self: end;
           border: 1px solid #94a3b8;
+          background: #ffffff;
           display: flex;
           align-items: center;
           justify-content: center;
           overflow: hidden;
-          background: #ffffff;
-          justify-self: end;
         }
 
         .logo-area img {
@@ -214,60 +213,74 @@ const admissionNumber =
         .logo-placeholder {
           text-align: center;
           color: #64748b;
-          font-size: 7px;
+          font-size: 6.5px;
           line-height: 1.4;
           font-weight: 700;
         }
 
+        /* =================================================
+           CONTENT
+        ================================================= */
+
         .report-content {
-          padding: 4mm 5mm 3mm;
+          padding: 3.5mm 4mm 2.5mm;
           box-sizing: border-box;
         }
+
+        /* =================================================
+           SECTION TITLE
+        ================================================= */
 
         .section-title {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 5px;
           margin: 0 0 2mm;
-          padding-bottom: 1.2mm;
+          padding-bottom: 1mm;
           border-bottom: 1px solid #cbd5e1;
         }
 
         .section-title-bar {
           width: 3px;
-          height: 13px;
+          height: 12px;
+          flex-shrink: 0;
           border-radius: 2px;
           background: ${brandColor};
-          flex-shrink: 0;
         }
 
         .section-title-text {
           margin: 0;
-          font-size: 9px;
+          color: #172033;
+          font-size: 8.5px;
           line-height: 1;
           font-weight: 800;
-          color: #172033;
           text-transform: uppercase;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.4px;
         }
 
+        /* =================================================
+           STUDENT INFORMATION
+           HORIZONTAL
+        ================================================= */
+
         .student-information {
+          width: 100%;
           display: grid;
           grid-template-columns:
             1.55fr
             1.15fr
-            0.9fr
-            0.8fr
+            0.85fr
+            0.75fr
             1.05fr
             1.05fr;
-          width: 100%;
+          margin-bottom: 3.5mm;
           border: 1px solid #cbd5e1;
-          margin-bottom: 4mm;
+          box-sizing: border-box;
         }
 
         .student-info-item {
           min-width: 0;
-          padding: 2.2mm 2.5mm;
+          padding: 2mm 2.2mm;
           border-right: 1px solid #cbd5e1;
           box-sizing: border-box;
         }
@@ -280,27 +293,32 @@ const admissionNumber =
           display: block;
           margin-bottom: 1px;
           color: #64748b;
-          font-size: 6.5px;
+          font-size: 6px;
           line-height: 1;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.25px;
+          letter-spacing: 0.2px;
         }
 
         .student-info-value {
           display: block;
           color: #172033;
-          font-size: 8px;
-          line-height: 1.25;
+          font-size: 7.5px;
+          line-height: 1.2;
           font-weight: 700;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
 
+        /* =================================================
+           ACADEMIC PERFORMANCE
+        ================================================= */
+
         .academic-section {
           width: 100%;
-          margin-bottom: 4mm;
+          margin-bottom: 3.5mm;
+          overflow: hidden;
         }
 
         .academic-table-wrapper {
@@ -311,31 +329,35 @@ const admissionNumber =
         .academic-table-wrapper :global(table) {
           width: 100% !important;
           margin: 0 !important;
-          border-collapse: collapse !important;
           table-layout: fixed !important;
-        }
-
-        .academic-table-wrapper :global(th),
-        .academic-table-wrapper :global(td) {
-          padding: 3px 4px !important;
-          font-size: 7px !important;
-          line-height: 1.15 !important;
+          border-collapse: collapse !important;
         }
 
         .academic-table-wrapper :global(th) {
+          padding: 2.5px 3px !important;
+          font-size: 6.7px !important;
+          line-height: 1.1 !important;
           white-space: nowrap !important;
         }
 
         .academic-table-wrapper :global(td) {
+          padding: 2.5px 3px !important;
+          font-size: 6.7px !important;
+          line-height: 1.1 !important;
           word-break: break-word;
         }
 
+        /* =================================================
+           SUMMARY + ATTENDANCE
+           SIDE BY SIDE
+        ================================================= */
+
         .horizontal-section-row {
+          width: 100%;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 4mm;
-          width: 100%;
-          margin-bottom: 4mm;
+          gap: 3.5mm;
+          margin-bottom: 3.5mm;
         }
 
         .report-box {
@@ -343,79 +365,84 @@ const admissionNumber =
           border: 1px solid #cbd5e1;
           background: #ffffff;
           box-sizing: border-box;
+          overflow: hidden;
         }
 
         .report-box-title {
-          min-height: 7mm;
+          min-height: 6.5mm;
           display: flex;
           align-items: center;
-          padding: 0 3mm;
+          padding: 0 2.5mm;
+          box-sizing: border-box;
           background: #f8fafc;
           border-bottom: 1px solid #cbd5e1;
           color: ${brandColor};
-          font-size: 7.5px;
+          font-size: 7px;
+          line-height: 1;
           font-weight: 800;
           text-transform: uppercase;
-          letter-spacing: 0.3px;
-          box-sizing: border-box;
+          letter-spacing: 0.25px;
         }
 
         .report-box-body {
-          padding: 2.5mm;
+          padding: 2mm;
           box-sizing: border-box;
         }
 
-        /*
-         * The existing summary and attendance components keep their
-         * functionality. This wrapper prevents them from expanding
-         * outside their horizontal column.
-         */
         .summary-box,
         .attendance-box {
           min-width: 0;
           overflow: hidden;
         }
 
+        /* =================================================
+           COMMENTS
+           SIDE BY SIDE
+        ================================================= */
+
         .comments-row {
+          width: 100%;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 4mm;
-          width: 100%;
-          margin-bottom: 4mm;
+          gap: 3.5mm;
+          margin-bottom: 3.5mm;
         }
 
         .comment-box {
-          min-height: 25mm;
+          min-width: 0;
+          height: 27mm;
           border: 1px solid #cbd5e1;
           box-sizing: border-box;
+          overflow: hidden;
         }
 
         .comment-content {
-          padding: 2.5mm 3mm;
-          min-height: 18mm;
+          padding: 2mm 2.5mm;
           box-sizing: border-box;
         }
 
         .comment-label {
           display: block;
-          margin-bottom: 2mm;
+          margin-bottom: 1.5mm;
           color: #64748b;
-          font-size: 6.5px;
+          font-size: 5.8px;
+          line-height: 1;
           font-weight: 700;
           text-transform: uppercase;
         }
 
         .comment-text {
           color: #334155;
-          font-size: 7.5px;
-          line-height: 1.35;
+          font-size: 6.8px;
+          line-height: 1.3;
+          min-height: 8mm;
         }
 
         .writing-lines {
           display: flex;
           flex-direction: column;
-          gap: 5mm;
-          padding-top: 1mm;
+          gap: 4.5mm;
+          margin-top: 2mm;
         }
 
         .writing-line {
@@ -424,12 +451,16 @@ const admissionNumber =
           background: #cbd5e1;
         }
 
+        /* =================================================
+           GRADING + APPROVAL
+        ================================================= */
+
         .bottom-grid {
+          width: 100%;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 4mm;
-          width: 100%;
-          margin-bottom: 3mm;
+          gap: 3.5mm;
+          margin-bottom: 2mm;
         }
 
         .grading-table {
@@ -441,10 +472,10 @@ const admissionNumber =
         .grading-table th,
         .grading-table td {
           border: 1px solid #cbd5e1;
-          padding: 1.7mm 1.5mm;
+          padding: 1.3mm 1mm;
           text-align: center;
-          font-size: 6.5px;
-          line-height: 1.1;
+          font-size: 5.8px;
+          line-height: 1;
         }
 
         .grading-table th {
@@ -456,8 +487,8 @@ const admissionNumber =
         .approval-area {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 4mm;
-          padding: 3mm;
+          gap: 3mm;
+          padding: 2.5mm;
           box-sizing: border-box;
         }
 
@@ -467,71 +498,74 @@ const admissionNumber =
         }
 
         .signature-space {
-          height: 10mm;
+          height: 9mm;
           border-bottom: 1px solid #64748b;
           margin-bottom: 1.5mm;
         }
 
         .signature-label {
-          font-size: 6.5px;
-          line-height: 1.2;
-          font-weight: 700;
           color: #475569;
+          font-size: 5.8px;
+          line-height: 1.15;
+          font-weight: 700;
           text-transform: uppercase;
         }
 
         .approval-date {
           grid-column: 1 / -1;
-          display: flex;
-          justify-content: flex-end;
-          font-size: 6.5px;
           color: #64748b;
-          margin-top: 1mm;
+          font-size: 5.8px;
+          text-align: right;
         }
 
+        /* =================================================
+           FOOTER
+        ================================================= */
+
         .report-footer {
-          margin-top: 2mm;
-          padding-top: 2mm;
+          margin-top: 1.5mm;
+          padding-top: 1.5mm;
           border-top: 1px solid #cbd5e1;
         }
 
-        /*
-         * Print / PDF preview
-         */
+        /* =================================================
+           PRINT
+        ================================================= */
+
         @media print {
+          html,
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+          }
+
           .report-card-page {
             width: 210mm;
             height: 297mm;
             min-height: 297mm;
             margin: 0;
-            padding: 5mm 7mm;
-            box-shadow: none !important;
+            padding: 5mm 6mm;
+            overflow: hidden;
             page-break-after: avoid;
             page-break-before: avoid;
           }
 
           .report-card-paper {
+            width: 100%;
             height: 100%;
             min-height: 0;
             page-break-inside: avoid;
           }
 
-          .report-content {
-            page-break-inside: avoid;
-          }
-
+          .report-content,
+          .academic-section,
           .horizontal-section-row,
           .comments-row,
           .bottom-grid,
           .report-box,
           .comment-box {
             page-break-inside: avoid;
-          }
-
-          body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: white !important;
           }
         }
 
@@ -544,81 +578,29 @@ const admissionNumber =
       <div className="report-card-page">
         <div className="report-card-paper">
 
-          {/* =====================================================
+          {/* =================================================
               TOP HEADER
-              LEFT  = STUDENT PASSPORT
-              CENTER = SCHOOL NAME / REPORT / SESSION / TERM
-              RIGHT = SCHOOL LOGO
-          ===================================================== */}
+          ================================================= */}
+
           <div className="report-card-header">
 
-            {/* STUDENT PASSPORT */}
+            {/* PASSPORT — TOP LEFT */}
+
             <div className="passport-area">
-              {studentPhoto ? (
-                <img
-                  src={studentPhoto}
-                  alt={`${studentName} passport`}
-                />
-              ) : (
-                <div className="passport-placeholder">
-                  <span>STUDENT</span>
-                  <span>PASSPORT</span>
-                </div>
-              )}
+              <div className="passport-placeholder">
+                <div>STUDENT</div>
+                <div>PASSPORT</div>
+              </div>
             </div>
 
-            {/* SCHOOL CENTER */}
+            {/* SCHOOL — TOP CENTER */}
+
             <div className="school-heading">
-              <h1 className="school-name">
-                {schoolName}
-              </h1>
 
-              {(schoolAddress ||
-                schoolPhone ||
-                schoolEmail ||
-                schoolWebsite) && (
-                <div className="school-address">
-                  {schoolAddress && (
-                    <div>{schoolAddress}</div>
-                  )}
-
-                  {(schoolPhone ||
-                    schoolEmail ||
-                    schoolWebsite) && (
-                    <div>
-                      {schoolPhone && (
-                        <span>
-                          {schoolPhone}
-                        </span>
-                      )}
-
-                      {schoolPhone &&
-                        schoolEmail && (
-                          <span> &nbsp;•&nbsp; </span>
-                        )}
-
-                      {schoolEmail && (
-                        <span>
-                          {schoolEmail}
-                        </span>
-                      )}
-
-                      {(schoolPhone ||
-                        schoolEmail) &&
-                        schoolWebsite && (
-                          <span>
-                            &nbsp;•&nbsp;
-                          </span>
-                        )}
-
-                      {schoolWebsite && (
-                        <span>
-                          {schoolWebsite}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
+              {schoolName && (
+                <h1 className="school-name">
+                  {schoolName}
+                </h1>
               )}
 
               <h2 className="report-title">
@@ -636,9 +618,11 @@ const admissionNumber =
                   {termName}
                 </span>
               </div>
+
             </div>
 
-            {/* SCHOOL LOGO */}
+            {/* LOGO — TOP RIGHT */}
+
             <div className="logo-area">
               {schoolLogo ? (
                 <img
@@ -652,15 +636,20 @@ const admissionNumber =
                 </div>
               )}
             </div>
+
           </div>
 
           <div className="report-content">
 
-            {/* =====================================================
-                STUDENT INFORMATION — HORIZONTAL
-            ===================================================== */}
+            {/* =================================================
+                STUDENT INFORMATION
+            ================================================= */}
+
             <div className="section-title">
-              <span className="section-title-bar" />
+              <span
+                className="section-title-bar"
+              />
+
               <h3 className="section-title-text">
                 Student Information
               </h3>
@@ -672,6 +661,7 @@ const admissionNumber =
                 <span className="student-info-label">
                   Student Name
                 </span>
+
                 <span className="student-info-value">
                   {studentName}
                 </span>
@@ -681,6 +671,7 @@ const admissionNumber =
                 <span className="student-info-label">
                   Admission No.
                 </span>
+
                 <span className="student-info-value">
                   {admissionNumber}
                 </span>
@@ -690,6 +681,7 @@ const admissionNumber =
                 <span className="student-info-label">
                   Class
                 </span>
+
                 <span className="student-info-value">
                   {className}
                 </span>
@@ -699,6 +691,7 @@ const admissionNumber =
                 <span className="student-info-label">
                   Gender
                 </span>
+
                 <span className="student-info-value">
                   {gender}
                 </span>
@@ -708,6 +701,7 @@ const admissionNumber =
                 <span className="student-info-label">
                   Session
                 </span>
+
                 <span className="student-info-value">
                   {sessionName}
                 </span>
@@ -717,6 +711,7 @@ const admissionNumber =
                 <span className="student-info-label">
                   Term
                 </span>
+
                 <span className="student-info-value">
                   {termName}
                 </span>
@@ -724,13 +719,17 @@ const admissionNumber =
 
             </div>
 
-            {/* =====================================================
+            {/* =================================================
                 ACADEMIC PERFORMANCE
-            ===================================================== */}
+            ================================================= */}
+
             <div className="academic-section">
 
               <div className="section-title">
-                <span className="section-title-bar" />
+                <span
+                  className="section-title-bar"
+                />
+
                 <h3 className="section-title-text">
                   Academic Performance
                 </h3>
@@ -745,12 +744,14 @@ const admissionNumber =
 
             </div>
 
-            {/* =====================================================
-                SUMMARY + ATTENDANCE — HORIZONTAL
-            ===================================================== */}
+            {/* =================================================
+                PERFORMANCE + ATTENDANCE
+            ================================================= */}
+
             <div className="horizontal-section-row">
 
               <div className="report-box summary-box">
+
                 <div className="report-box-title">
                   Performance Summary
                 </div>
@@ -761,9 +762,11 @@ const admissionNumber =
                     brandColor={brandColor}
                   />
                 </div>
+
               </div>
 
               <div className="report-box attendance-box">
+
                 <div className="report-box-title">
                   Attendance
                 </div>
@@ -774,16 +777,19 @@ const admissionNumber =
                     brandColor={brandColor}
                   />
                 </div>
+
               </div>
 
             </div>
 
-            {/* =====================================================
-                COMMENTS — HORIZONTAL
-            ===================================================== */}
+            {/* =================================================
+                COMMENTS
+            ================================================= */}
+
             <div className="comments-row">
 
               {/* CLASS TEACHER */}
+
               <div className="comment-box">
 
                 <div className="report-box-title">
@@ -793,12 +799,11 @@ const admissionNumber =
                 <div className="comment-content">
 
                   <span className="comment-label">
-                    Teacher's Assessment
+                    Assessment
                   </span>
 
                   <div className="comment-text">
-                    {summary?.performanceRemark ||
-                      "................................................................................"}
+                    {teacherComment}
                   </div>
 
                   <div className="writing-lines">
@@ -811,10 +816,11 @@ const admissionNumber =
               </div>
 
               {/* PRINCIPAL */}
+
               <div className="comment-box">
 
                 <div className="report-box-title">
-                  Principal / Head Teacher's Comment
+                  Principal's Comment
                 </div>
 
                 <div className="comment-content">
@@ -835,12 +841,14 @@ const admissionNumber =
 
             </div>
 
-            {/* =====================================================
-                GRADING + APPROVAL — HORIZONTAL
-            ===================================================== */}
+            {/* =================================================
+                GRADING + APPROVAL
+            ================================================= */}
+
             <div className="bottom-grid">
 
-              {/* GRADING SCALE */}
+              {/* GRADING */}
+
               <div className="report-box">
 
                 <div className="report-box-title">
@@ -848,7 +856,9 @@ const admissionNumber =
                 </div>
 
                 <div className="report-box-body">
+
                   <table className="grading-table">
+
                     <thead>
                       <tr>
                         <th>Grade</th>
@@ -858,6 +868,7 @@ const admissionNumber =
                     </thead>
 
                     <tbody>
+
                       <tr>
                         <td>A</td>
                         <td>80–100</td>
@@ -893,13 +904,17 @@ const admissionNumber =
                         <td>0–39</td>
                         <td>Fail</td>
                       </tr>
+
                     </tbody>
+
                   </table>
+
                 </div>
 
               </div>
 
               {/* APPROVAL */}
+
               <div className="report-box">
 
                 <div className="report-box-title">
@@ -910,6 +925,7 @@ const admissionNumber =
 
                   <div className="signature-block">
                     <div className="signature-space" />
+
                     <div className="signature-label">
                       Class Teacher
                     </div>
@@ -917,13 +933,14 @@ const admissionNumber =
 
                   <div className="signature-block">
                     <div className="signature-space" />
+
                     <div className="signature-label">
-                      Principal / Head Teacher
+                      Principal
                     </div>
                   </div>
 
                   <div className="approval-date">
-                    Date: ______________________
+                    Date: ____________________
                   </div>
 
                 </div>
@@ -932,9 +949,10 @@ const admissionNumber =
 
             </div>
 
-            {/* =====================================================
+            {/* =================================================
                 FOOTER
-            ===================================================== */}
+            ================================================= */}
+
             <div className="report-footer">
               <ReportCardFooter />
             </div>
@@ -944,4 +962,29 @@ const admissionNumber =
       </div>
     </>
   );
+}
+
+/* =========================================================
+   EXISTING COMMENT LOGIC
+========================================================= */
+
+function getDefaultComment(
+  performance: string
+) {
+  switch (performance) {
+    case "Excellent":
+      return defaultComments.excellent;
+
+    case "Very Good":
+      return defaultComments.veryGood;
+
+    case "Good":
+      return defaultComments.good;
+
+    case "Fair":
+      return defaultComments.fair;
+
+    default:
+      return defaultComments.poor;
+  }
 }
