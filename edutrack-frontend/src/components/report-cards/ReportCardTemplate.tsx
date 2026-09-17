@@ -57,27 +57,25 @@ export default function ReportCardTemplate({
     studentWithPhoto.profilePicture;
 
   const studentName =
-    `${student?.firstName || ""} ${
-      student?.lastName || ""
-    }`.trim() || "—";
+  `${student?.firstName || ""} ${
+    student?.lastName || ""
+  }`.trim() || "—";
 
-  const sessionName =
-    session?.name || "—";
+const sessionName =
+  session?.name || "—";
 
-  const termName =
-    term?.name || "—";
+const termName =
+  term?.name || "—";
 
-  const className =
-    student?.class?.name ||
-    student?.className ||
-    "—";
+const className =
+  student?.className || "—";
 
-  const gender =
-    student?.gender || "—";
+const gender =
+  student?.gender || "—";
 
-  const admissionNumber =
-    student?.admissionNumber || "—";
-
+const admissionNumber =
+  student?.admissionNumber || "—";
+  
   return (
     <>
       <style jsx global>{`
