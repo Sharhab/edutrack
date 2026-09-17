@@ -31,6 +31,11 @@ export default function ReportCardTemplate({
     attendance,
   } = data;
 
+  const studentName =
+    `${student?.firstName || ""} ${
+      student?.lastName || ""
+    }`.trim() || "—";
+
   return (
     <div
       className="
@@ -47,9 +52,9 @@ export default function ReportCardTemplate({
         print:shadow-none
       "
     >
-      {/* =========================================================
+      {/* =====================================================
           SCHOOL HEADER
-      ========================================================= */}
+      ====================================================== */}
       <ReportCardHeader
         student={student}
         session={session}
@@ -59,13 +64,11 @@ export default function ReportCardTemplate({
         brandColor={brandColor}
       />
 
-      {/* =========================================================
-          REPORT BODY
-      ========================================================= */}
       <main className="p-5 sm:p-6 md:p-8 print:p-5">
-        {/* =======================================================
-            1. STUDENT PROFILE / REPORT IDENTIFICATION
-        ======================================================= */}
+
+        {/* ===================================================
+            STUDENT INFORMATION
+        ==================================================== */}
         <section className="mb-7 print:mb-5">
           <SectionHeading
             title="Student Information"
@@ -74,16 +77,16 @@ export default function ReportCardTemplate({
 
           <div className="overflow-hidden rounded-xl border border-gray-200 print:rounded-none">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+
               <InfoItem
                 label="Student Name"
-                value={student?.name || "—"}
+                value={studentName}
               />
 
               <InfoItem
                 label="Admission Number"
                 value={
                   student?.admissionNumber ||
-                  student?.admissionNo ||
                   "—"
                 }
               />
@@ -92,32 +95,41 @@ export default function ReportCardTemplate({
                 label="Class"
                 value={
                   student?.className ||
-                  student?.class?.name ||
                   "—"
                 }
               />
 
               <InfoItem
                 label="Gender"
-                value={student?.gender || "—"}
+                value={
+                  student?.gender ||
+                  "—"
+                }
               />
 
               <InfoItem
                 label="Academic Session"
-                value={session?.name || session?.label || "—"}
+                value={
+                  session?.name ||
+                  "—"
+                }
               />
 
               <InfoItem
                 label="Term"
-                value={term?.name || term?.label || "—"}
+                value={
+                  term?.name ||
+                  "—"
+                }
               />
+
             </div>
           </div>
         </section>
 
-        {/* =======================================================
-            2. OVERALL PERFORMANCE
-        ======================================================= */}
+        {/* ===================================================
+            OVERALL PERFORMANCE
+        ==================================================== */}
         <section className="mb-7 print:mb-5">
           <SectionHeading
             title="Overall Academic Performance"
@@ -130,9 +142,9 @@ export default function ReportCardTemplate({
           />
         </section>
 
-        {/* =======================================================
-            3. SUBJECT PERFORMANCE
-        ======================================================= */}
+        {/* ===================================================
+            SUBJECT RESULTS
+        ==================================================== */}
         <section className="mb-7 print:mb-5">
           <SectionHeading
             title="Academic Performance by Subject"
@@ -147,9 +159,9 @@ export default function ReportCardTemplate({
           </div>
         </section>
 
-        {/* =======================================================
-            4. ATTENDANCE
-        ======================================================= */}
+        {/* ===================================================
+            ATTENDANCE
+        ==================================================== */}
         <section className="mb-7 print:mb-5">
           <SectionHeading
             title="Attendance Record"
@@ -162,9 +174,9 @@ export default function ReportCardTemplate({
           />
         </section>
 
-        {/* =======================================================
-            5. GRADING SCALE
-        ======================================================= */}
+        {/* ===================================================
+            GRADING SCALE
+        ==================================================== */}
         <section className="mb-7 print:mb-5">
           <SectionHeading
             title="Grading Scale"
@@ -174,30 +186,32 @@ export default function ReportCardTemplate({
           <GradingScale />
         </section>
 
-        {/* =======================================================
-            6. COMMENTS / SIGNATURE AREA
-        ======================================================= */}
+        {/* ===================================================
+            COMMENTS AND APPROVAL
+        ==================================================== */}
         <section className="mb-2">
           <SectionHeading
             title="Assessment & Approval"
             brandColor={brandColor}
           />
 
-          <AssessmentApproval brandColor={brandColor} />
+          <AssessmentApproval
+            brandColor={brandColor}
+          />
         </section>
       </main>
 
-      {/* =========================================================
-          FOOTER
-      ========================================================= */}
+      {/* =====================================================
+          EXISTING FOOTER
+      ====================================================== */}
       <ReportCardFooter />
     </div>
   );
 }
 
-/* ===============================================================
+/* ===========================================================
    SECTION HEADING
-================================================================ */
+=========================================================== */
 
 type SectionHeadingProps = {
   title: string;
@@ -212,7 +226,9 @@ function SectionHeading({
     <div className="flex items-center gap-3 mb-3 print:mb-2">
       <div
         className="h-6 w-1 rounded-full"
-        style={{ backgroundColor: brandColor }}
+        style={{
+          backgroundColor: brandColor,
+        }}
       />
 
       <h2 className="text-sm sm:text-base font-bold uppercase tracking-wide text-gray-800">
@@ -222,9 +238,9 @@ function SectionHeading({
   );
 }
 
-/* ===============================================================
+/* ===========================================================
    INFORMATION ITEM
-================================================================ */
+=========================================================== */
 
 type InfoItemProps = {
   label: string;
@@ -244,7 +260,6 @@ function InfoItem({
         border-gray-200
         px-4
         py-3
-        last:border-b-0
       "
     >
       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
@@ -258,9 +273,9 @@ function InfoItem({
   );
 }
 
-/* ===============================================================
+/* ===========================================================
    GRADING SCALE
-================================================================ */
+=========================================================== */
 
 function GradingScale() {
   const grades = [
@@ -306,7 +321,7 @@ function GradingScale() {
             </th>
 
             <th className="border-b border-gray-200 px-3 py-2 text-left font-bold">
-              Score
+              Score Range
             </th>
 
             <th className="border-b border-gray-200 px-3 py-2 text-left font-bold">
@@ -337,9 +352,9 @@ function GradingScale() {
   );
 }
 
-/* ===============================================================
+/* ===========================================================
    ASSESSMENT / APPROVAL
-================================================================ */
+=========================================================== */
 
 type AssessmentApprovalProps = {
   brandColor: string;
@@ -350,17 +365,21 @@ function AssessmentApproval({
 }: AssessmentApprovalProps) {
   return (
     <div className="rounded-xl border border-gray-200 p-4 print:rounded-none">
+
       {/* Teacher Comment */}
       <div className="mb-5">
         <p
           className="mb-2 text-xs font-bold uppercase tracking-wide"
-          style={{ color: brandColor }}
+          style={{
+            color: brandColor,
+          }}
         >
           Class Teacher's Comment
         </p>
 
         <div className="min-h-[70px] rounded-lg border border-gray-200 bg-gray-50 p-3 print:bg-white">
-          <div className="h-full border-b border-dashed border-gray-300" />
+          <div className="border-b border-dashed border-gray-300" />
+          <div className="mt-6 border-b border-dashed border-gray-300" />
         </div>
       </div>
 
@@ -368,18 +387,22 @@ function AssessmentApproval({
       <div className="mb-6">
         <p
           className="mb-2 text-xs font-bold uppercase tracking-wide"
-          style={{ color: brandColor }}
+          style={{
+            color: brandColor,
+          }}
         >
           Principal / Head Teacher's Comment
         </p>
 
         <div className="min-h-[70px] rounded-lg border border-gray-200 bg-gray-50 p-3 print:bg-white">
-          <div className="h-full border-b border-dashed border-gray-300" />
+          <div className="border-b border-dashed border-gray-300" />
+          <div className="mt-6 border-b border-dashed border-gray-300" />
         </div>
       </div>
 
       {/* Signatures */}
       <div className="grid grid-cols-1 gap-8 pt-3 sm:grid-cols-3 sm:gap-5">
+
         <SignatureLine
           label="Class Teacher"
           brandColor={brandColor}
@@ -394,14 +417,15 @@ function AssessmentApproval({
           label="Date"
           brandColor={brandColor}
         />
+
       </div>
     </div>
   );
 }
 
-/* ===============================================================
+/* ===========================================================
    SIGNATURE LINE
-================================================================ */
+=========================================================== */
 
 type SignatureLineProps = {
   label: string;
@@ -415,8 +439,10 @@ function SignatureLine({
   return (
     <div className="pt-8">
       <div
-        className="border-t border-gray-400"
-        style={{ borderTopColor: brandColor }}
+        className="border-t"
+        style={{
+          borderTopColor: brandColor,
+        }}
       />
 
       <p className="mt-2 text-center text-[11px] font-semibold text-gray-600">
