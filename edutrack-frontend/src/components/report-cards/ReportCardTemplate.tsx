@@ -31,6 +31,25 @@ type Props = {
   brandColor?: string;
 };
 
+const BACKEND_URL =
+  "https://edutrack-dpui.onrender.com";
+
+function resolveSchoolLogoUrl(
+  logoUrl?: string
+) {
+  if (!logoUrl) return "";
+
+  if (
+    logoUrl.startsWith("http://") ||
+    logoUrl.startsWith("https://")
+  ) {
+    return logoUrl;
+  }
+
+  return `${BACKEND_URL}${
+    logoUrl.startsWith("/") ? "" : "/"
+  }${logoUrl}`;
+}
 export default function ReportCardTemplate({
   data,
   schoolName = "SCHOOL NAME",
@@ -650,18 +669,18 @@ export default function ReportCardTemplate({
             {/* LOGO — TOP RIGHT */}
 
             <div className="logo-area">
-              {schoolLogo ? (
-                <img
-                  src={schoolLogo}
-                  alt="School logo"
-                />
-              ) : (
-                <div className="logo-placeholder">
-                  <div>SCHOOL</div>
-                  <div>LOGO</div>
-                </div>
-              )}
-            </div>
+  {schoolLogo ? (
+    <img
+      src={resolveSchoolLogoUrl(schoolLogo)}
+      alt="School logo"
+    />
+  ) : (
+    <div className="logo-placeholder">
+      <div>SCHOOL</div>
+      <div>LOGO</div>
+    </div>
+  )}
+</div>
 
           </div>
 
