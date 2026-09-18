@@ -11,11 +11,11 @@ import ReportCardFooter from "./ReportCardFooter";
 
 import {
   defaultComments,
-} from "./pdfTheme";
+} from "../../lib/report-card/pdfTheme";
 
 import {
   getPerformanceRemark,
-} from "./reportCardCalculations";
+} from "../../lib/report-card/reportCardCalculations";
 
 type Props = {
   data: StudentReportCard;
