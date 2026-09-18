@@ -16,6 +16,9 @@ import StudentRankBadge from "../../../../../../components/report-cards/StudentR
 import DownloadPdfButton from "../../../../../../components/report-cards/DownloadpdfButton";
 import PrintButton from "../../../../../../components/report-cards/PrintButton";
 
+import { getSchoolProfile } from "../../../../../../lib/settings";
+import { SchoolProfile } from "../../../../../../types/settings";
+
 /* =========================================
    TYPES (bundle-safe minimal shape)
 ========================================= */
@@ -59,11 +62,42 @@ export default function ClassReportBundlePage() {
   const [bundle, setBundle] = useState<ClassBundle | null>(null);
 
   /* =========================================
+     SCHOOL PROFILE
+  ========================================== */
+
+  const [schoolProfile, setSchoolProfile] =
+    useState<SchoolProfile | null>(null);
+
+  const [schoolProfileLoading, setSchoolProfileLoading] =
+    useState(true);
+
+  /* =========================================
      VALIDATION (PREVENT bundle/student bug)
   ========================================== */
 
   const isValidObjectId = (id: string | null) =>
     !!id && /^[0-9a-fA-F]{24}$/.test(id);
+
+  /* =========================================
+     FETCH SCHOOL PROFILE
+  ========================================== */
+
+  const fetchSchoolProfile = useCallback(async () => {
+    try {
+      setSchoolProfileLoading(true);
+
+      const profile = await getSchoolProfile();
+
+      setSchoolProfile(profile);
+    } catch (err) {
+      console.error(
+        "Failed to load school profile:",
+        err
+      );
+    } finally {
+      setSchoolProfileLoading(false);
+    }
+  }, []);
 
   /* =========================================
      FETCH BUNDLE
@@ -108,9 +142,14 @@ export default function ClassReportBundlePage() {
     }
   }, [classId, sessionId, termId]);
 
+  /* =========================================
+     LOAD DATA
+  ========================================== */
+
   useEffect(() => {
     fetchBundle();
-  }, [fetchBundle]);
+    fetchSchoolProfile();
+  }, [fetchBundle, fetchSchoolProfile]);
 
   /* =========================================
      LOADING
@@ -149,7 +188,8 @@ export default function ClassReportBundlePage() {
   ========================================== */
 
   return (
-      <div className="bg-gray-50 min-h-screen print:bg-white print:p-0">
+    <div className="bg-gray-50 min-h-screen print:bg-white print:p-0">
+
       {/* HEADER */}
       <div className="flex justify-between items-center mb-4 print:hidden">
         <div>
@@ -165,7 +205,10 @@ export default function ClassReportBundlePage() {
 
         <div className="flex gap-2">
           <PrintButton />
-          <DownloadPdfButton onClick={() => window.print()} />
+
+          <DownloadPdfButton
+            onClick={() => window.print()}
+          />
         </div>
       </div>
 
@@ -178,24 +221,49 @@ export default function ClassReportBundlePage() {
 
           return (
             <div
-  key={rc.student._id || index}
-  className="
-    bg-white
-    shadow-sm
-    rounded-md
-    p-4
-    print:p-0
-    print:shadow-none
-    print:rounded-none
-    print:break-after-page
-    print:min-h-screen
-  "
->
+              key={rc.student._id || index}
+              className="
+                bg-white
+                shadow-sm
+                rounded-md
+                p-4
+                print:p-0
+                print:shadow-none
+                print:rounded-none
+                print:break-after-page
+                print:min-h-screen
+              "
+            >
+              <div className="print-report">
 
-     <div className="print-report">
-  <ReportCardTemplate data={rc} />
-</div>
+                <ReportCardTemplate
+                  data={rc}
 
+                  /*
+                   * SCHOOL PROFILE
+                   *
+                   * These values come directly from:
+                   * /settings/school-profile
+                   */
+                  schoolName={
+                    schoolProfile?.schoolName
+                  }
+
+                  schoolAddress={
+                    schoolProfile?.address
+                  }
+
+                  schoolLogo={
+                    schoolProfile?.logoUrl
+                  }
+
+                  brandColor={
+                    schoolProfile?.themeColor ||
+                    "#06b6d4"
+                  }
+                />
+
+              </div>
             </div>
           );
         })}
