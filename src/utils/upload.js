@@ -1,65 +1,10 @@
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
 
 /* =========================================
-   PATH SETUP
+   MULTER MEMORY STORAGE
 ========================================= */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-/*
- * utils/
- *   upload.js
- *
- * uploads/
- *   logos/
- *
- * Therefore:
- * ../uploads
- */
-const uploadDir = path.join(
-  __dirname,
-  "../../uploads/logos"
-);
-/* =========================================
-   ENSURE UPLOAD DIRECTORY EXISTS
-========================================= */
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, {
-    recursive: true,
-  });
-}
-
-console.log(
-  "📁 Logo upload directory:",
-  uploadDir
-);
-
-/* =========================================
-   MULTER STORAGE
-========================================= */
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-
-  filename: function (req, file, cb) {
-    const ext = path.extname(
-      file.originalname
-    );
-
-    const safeName = `${Date.now()}-${Math.round(
-      Math.random() * 1e9
-    )}${ext}`;
-
-    cb(null, safeName);
-  },
-});
+const storage = multer.memoryStorage();
 
 /* =========================================
    FILE FILTER
