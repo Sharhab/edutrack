@@ -23,19 +23,18 @@ const attendanceSchema = new mongoose.Schema(
       index: true,
     },
 
-    sessionId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Session",
-      required: true,
-      index: true,
-    },
-
-    termId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Term",
-      required: true,
-      index: true,
-    },
+   sessionId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Session",
+  required: false,
+  index: true,
+},
+termId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Term",
+  required: false,
+  index: true,
+},
 
     date: {
       type: String,
