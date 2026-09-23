@@ -3,7 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
-
+import fs from "fs";
 import routes from "./routes/index.js";
 import {
   errorHandler,
@@ -111,6 +111,23 @@ app.use(
     path.join(__dirname, "../uploads")
   )
 );
+
+console.log(
+  "📁 Uploads directory:",
+  uploadsPath
+);
+
+console.log(
+  "📁 Uploads directory exists:",
+  fs.existsSync(uploadsPath)
+);
+
+if (fs.existsSync(uploadsPath)) {
+  console.log(
+    "📁 Logo files:",
+    fs.readdirSync(uploadsPath)
+  );
+}
 
 /* =========================================
    DEBUG REQUESTS
