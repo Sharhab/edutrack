@@ -24,7 +24,6 @@ const uploadDir = path.join(
   __dirname,
   "../../uploads/logos"
 );
-
 /* =========================================
    ENSURE UPLOAD DIRECTORY EXISTS
 ========================================= */
