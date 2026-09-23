@@ -104,12 +104,13 @@ app.use(cookieParser());
 /* =========================================
    STATIC FILES
 ========================================= */
+/* =========================================
+   STATIC FILES
+========================================= */
 
-app.use(
-  "/uploads",
-  express.static(
-    path.join(__dirname, "../uploads")
-  )
+const uploadsPath = path.join(
+  __dirname,
+  "../uploads"
 );
 
 console.log(
@@ -125,10 +126,16 @@ console.log(
 if (fs.existsSync(uploadsPath)) {
   console.log(
     "📁 Logo files:",
-    fs.readdirSync(uploadsPath)
+    fs.readdirSync(
+      path.join(uploadsPath, "logos")
+    )
   );
 }
 
+app.use(
+  "/uploads",
+  express.static(uploadsPath)
+);
 /* =========================================
    DEBUG REQUESTS
 ========================================= */
