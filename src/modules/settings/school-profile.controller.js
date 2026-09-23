@@ -50,7 +50,10 @@ export async function updateSchoolProfileHandler(req, res) {
 /* =========================================
    UPLOAD LOGO
 ========================================= */
-export async function uploadSchoolLogoHandler(req, res) {
+export async function uploadSchoolLogoHandler(
+  req,
+  res
+) {
   if (!req.file) {
     throw new ApiError(
       400,
@@ -58,20 +61,19 @@ export async function uploadSchoolLogoHandler(req, res) {
     );
   }
 
-  const filePath = `/uploads/logos/${req.file.filename}`;
-
-  const data = await uploadSchoolLogo(
-    filePath,
-    req.user
-  );
+  const data =
+    await uploadSchoolLogo(
+      req.file,
+      req.user
+    );
 
   res.status(201).json({
     success: true,
-    message: "School logo uploaded successfully",
+    message:
+      "School logo uploaded successfully",
     data,
   });
 }
-
 /* =========================================
    DELETE LOGO
 ========================================= */
