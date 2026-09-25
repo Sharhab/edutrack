@@ -28,11 +28,6 @@ export async function getSchoolProfileHandler(req, res) {
 export async function updateSchoolProfileHandler(req, res) {
   const parsed = updateSchoolProfileSchema.parse(req.body);
 
-  // uploaded through PUT /
-  if (req.file) {
-    parsed.logoUrl = `/uploads/logos/${req.file.filename}`;
-  }
-
   const profile = await updateSchoolProfile(
     parsed,
     req.user
