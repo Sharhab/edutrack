@@ -4,13 +4,18 @@ import multer from "multer";
    MULTER MEMORY STORAGE
 ========================================= */
 
-const storage = multer.memoryStorage();
+const storage =
+  multer.memoryStorage();
 
 /* =========================================
    FILE FILTER
 ========================================= */
 
-function fileFilter(req, file, cb) {
+function fileFilter(
+  req,
+  file,
+  cb
+) {
   const allowed = [
     "image/png",
     "image/jpeg",
@@ -18,7 +23,11 @@ function fileFilter(req, file, cb) {
     "image/webp",
   ];
 
-  if (!allowed.includes(file.mimetype)) {
+  if (
+    !allowed.includes(
+      file.mimetype
+    )
+  ) {
     return cb(
       new Error(
         "Only png, jpg, jpeg, and webp files are allowed"
@@ -33,11 +42,13 @@ function fileFilter(req, file, cb) {
    EXPORT
 ========================================= */
 
-export const uploadLogo = multer({
-  storage,
-  fileFilter,
+export const uploadLogo =
+  multer({
+    storage,
+    fileFilter,
 
-  limits: {
-    fileSize: 2 * 1024 * 1024,
-  },
-});
+    limits: {
+      fileSize:
+        2 * 1024 * 1024,
+    },
+  });

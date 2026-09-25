@@ -1,9 +1,12 @@
-
 import mongoose from "mongoose";
 import { School } from "../schools/school.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
 import { ApiError } from "../../utils/apiError.js";
+import cloudinary from "../../../cloudinary.js";
+/* =========================================
+   PROFILE MAPPER
+========================================= */
 
 function mapProfile(
   school,
@@ -13,6 +16,33 @@ function mapProfile(
   const apiUrl =
     process.env.APP_URL ||
     "https://edutrack-dpui.onrender.com";
+
+  let logoUrl = "";
+
+  if (school.logo) {
+    /*
+     * Cloudinary / external URL
+     *
+     * If the stored logo is already a complete URL,
+     * return it exactly as it is.
+     */
+    if (
+      school.logo.startsWith("http://") ||
+      school.logo.startsWith("https://")
+    ) {
+      logoUrl = school.logo;
+    } else {
+      /*
+       * Backward compatibility:
+       *
+       * Existing logos stored as:
+       * /uploads/logos/filename.jpg
+       *
+       * will continue to work.
+       */
+      logoUrl = `${apiUrl}${school.logo}`;
+    }
+  }
 
   return {
     _id: school._id,
@@ -35,9 +65,7 @@ function mapProfile(
       school.currentTerm ||
       "",
 
-    logoUrl: school.logo
-      ? `${apiUrl}${school.logo}`
-      : "",
+    logoUrl,
 
     themeColor:
       school.themeColor ||
@@ -52,6 +80,10 @@ function mapProfile(
     slug: school.slug,
   };
 }
+
+/* =========================================
+   GET SCHOOL PROFILE
+========================================= */
 
 export async function getSchoolProfile(
   user
@@ -92,8 +124,18 @@ export async function getSchoolProfile(
   );
 }
 
-export async function updateSchoolProfile(payload, user) {
-  const school = await School.findById(user.schoolId);
+/* =========================================
+   UPDATE SCHOOL PROFILE
+========================================= */
+
+export async function updateSchoolProfile(
+  payload,
+  user
+) {
+  const school =
+    await School.findById(
+      user.schoolId
+    );
 
   if (!school) {
     throw new ApiError(
@@ -105,54 +147,90 @@ export async function updateSchoolProfile(payload, user) {
   // =========================
   // BASIC INFORMATION
   // =========================
-  if (payload.schoolName !== undefined) {
-    school.name = payload.schoolName.trim();
+
+  if (
+    payload.schoolName !== undefined
+  ) {
+    school.name =
+      payload.schoolName.trim();
   }
 
-  if (payload.email !== undefined) {
-    school.email = payload.email
-      .trim()
-      .toLowerCase();
+  if (
+    payload.email !== undefined
+  ) {
+    school.email =
+      payload.email
+        .trim()
+        .toLowerCase();
   }
 
-  if (payload.phone !== undefined) {
-    school.phone = payload.phone.trim();
+  if (
+    payload.phone !== undefined
+  ) {
+    school.phone =
+      payload.phone.trim();
   }
 
-  if (payload.address !== undefined) {
-    school.address = payload.address.trim();
+  if (
+    payload.address !== undefined
+  ) {
+    school.address =
+      payload.address.trim();
   }
 
-  if (payload.principalName !== undefined) {
+  if (
+    payload.principalName !== undefined
+  ) {
     school.principalName =
       payload.principalName.trim();
   }
 
-  if (payload.themeColor !== undefined) {
+  if (
+    payload.themeColor !== undefined
+  ) {
     school.themeColor =
       payload.themeColor;
   }
 
-  if (payload.domain !== undefined) {
-    school.domain = payload.domain
-      .trim()
-      .toLowerCase();
+  if (
+    payload.domain !== undefined
+  ) {
+    school.domain =
+      payload.domain
+        .trim()
+        .toLowerCase();
   }
 
   // =========================
   // LOGO
   // =========================
-  if (payload.logoUrl !== undefined) {
-    school.logo = payload.logoUrl;
+  //
+  // Keep this for compatibility.
+  //
+  // New logo uploads go through
+  // uploadSchoolLogo() and are saved
+  // as Cloudinary URLs.
+  //
+  // If another part of the application
+  // sends a logoUrl directly, it will
+  // still work.
+  //
+  if (
+    payload.logoUrl !== undefined
+  ) {
+    school.logo =
+      payload.logoUrl;
   }
 
   // =========================
   // CURRENT SESSION
   // =========================
+
   if (payload.currentSession) {
     await Session.updateMany(
       {
-        schoolId: user.schoolId,
+        schoolId:
+          user.schoolId,
       },
       {
         isCurrent: false,
@@ -160,7 +238,8 @@ export async function updateSchoolProfile(payload, user) {
     );
 
     const sessionQuery = {
-      schoolId: user.schoolId,
+      schoolId:
+        user.schoolId,
     };
 
     if (
@@ -188,7 +267,7 @@ export async function updateSchoolProfile(payload, user) {
         }
       );
 
-    // save session name on school
+    // Save session name on school
     school.currentSession =
       session?.name ||
       payload.currentSession;
@@ -197,10 +276,12 @@ export async function updateSchoolProfile(payload, user) {
   // =========================
   // CURRENT TERM
   // =========================
+
   if (payload.currentTerm) {
     await Term.updateMany(
       {
-        schoolId: user.schoolId,
+        schoolId:
+          user.schoolId,
       },
       {
         isCurrent: false,
@@ -208,7 +289,8 @@ export async function updateSchoolProfile(payload, user) {
     );
 
     const termQuery = {
-      schoolId: user.schoolId,
+      schoolId:
+        user.schoolId,
     };
 
     if (
@@ -236,7 +318,7 @@ export async function updateSchoolProfile(payload, user) {
         }
       );
 
-    // save term name on school
+    // Save term name on school
     school.currentTerm =
       term?.name ||
       payload.currentTerm;
@@ -245,15 +327,22 @@ export async function updateSchoolProfile(payload, user) {
   // =========================
   // SAVE SCHOOL
   // =========================
+
   await school.save();
 
   // =========================
   // RETURN UPDATED PROFILE
   // =========================
+
   return getSchoolProfile(user);
 }
+
+/* =========================================
+   UPLOAD SCHOOL LOGO
+========================================= */
+
 export async function uploadSchoolLogo(
-  filePath,
+  file,
   user
 ) {
   const school =
@@ -268,15 +357,84 @@ export async function uploadSchoolLogo(
     );
   }
 
-  school.logo = filePath;
+  if (!file?.buffer) {
+    throw new ApiError(
+      400,
+      "Logo file is required"
+    );
+  }
+
+  /*
+   * Upload directly from memory to Cloudinary.
+   *
+   * This means the logo is NOT dependent
+   * on Render's local filesystem.
+   */
+  const result =
+    await new Promise(
+      (resolve, reject) => {
+        const stream =
+          cloudinary.uploader.upload_stream(
+            {
+              folder:
+                "edutrack/school-logos",
+
+              resource_type:
+                "image",
+
+              /*
+               * One logo per school.
+               *
+               * Uploading another logo for
+               * the same school replaces
+               * the previous Cloudinary image.
+               */
+              public_id:
+                `school-${user.schoolId}`,
+
+              overwrite: true,
+
+              invalidate: true,
+            },
+
+            (error, uploaded) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve(uploaded);
+              }
+            }
+          );
+
+        stream.end(file.buffer);
+      }
+    );
+
+  if (!result?.secure_url) {
+    throw new ApiError(
+      500,
+      "Logo upload failed"
+    );
+  }
+
+  /*
+   * Save the permanent Cloudinary URL
+   * in MongoDB.
+   */
+  school.logo =
+    result.secure_url;
 
   await school.save();
 
   return {
     logoUrl:
-      school.logo,
+      result.secure_url,
   };
 }
+
+/* =========================================
+   DELETE SCHOOL LOGO
+========================================= */
 
 export async function deleteSchoolLogo(
   user
@@ -293,6 +451,44 @@ export async function deleteSchoolLogo(
     );
   }
 
+  /*
+   * If the existing logo is a Cloudinary
+   * URL, attempt to remove the Cloudinary
+   * asset as well.
+   *
+   * Failure to remove the remote asset
+   * should NOT prevent the school profile
+   * from being cleared.
+   */
+  if (
+    school.logo &&
+    school.logo.includes(
+      "res.cloudinary.com"
+    )
+  ) {
+    try {
+      const publicId =
+        `edutrack/school-logos/school-${user.schoolId}`;
+
+      await cloudinary.uploader.destroy(
+        publicId,
+        {
+          resource_type: "image",
+          invalidate: true,
+        }
+      );
+    } catch (error) {
+      console.error(
+        "⚠️ Failed to delete Cloudinary school logo:",
+        error?.message ||
+          error
+      );
+    }
+  }
+
+  /*
+   * Clear logo from MongoDB.
+   */
   school.logo = "";
 
   await school.save();
