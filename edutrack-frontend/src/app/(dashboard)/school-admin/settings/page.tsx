@@ -12,6 +12,7 @@ import SchoolProfilePreview from "../../../../components/settings/SchoolProfileP
 import {
   getSchoolProfile,
   updateSchoolProfile,
+  uploadSchoolLogo,
 } from "../../../../lib/settings";
 
 import { SchoolProfileFormValues } from "../../../../types/settings";
@@ -37,8 +38,8 @@ const initialForm: SchoolProfileFormValues = {
 export default function SchoolAdminSettingsPage() {
   const { patchTenant } = useTenant();
 
+  console.log("PATCH EXISTS", patchTenant);
 
-console.log("PATCH EXISTS", patchTenant);
   const [form, setForm] =
     useState<SchoolProfileFormValues>(initialForm);
 
@@ -71,8 +72,15 @@ console.log("PATCH EXISTS", patchTenant);
 
         themeColor: profile.themeColor || "#06b6d4",
       });
-console.log("PATCH DATA", mapSchoolProfileToTenantPatch(profile));
-      patchTenant(mapSchoolProfileToTenantPatch(profile));
+
+      console.log(
+        "PATCH DATA",
+        mapSchoolProfileToTenantPatch(profile)
+      );
+
+      patchTenant(
+        mapSchoolProfileToTenantPatch(profile)
+      );
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setPageError(
@@ -80,7 +88,9 @@ console.log("PATCH DATA", mapSchoolProfileToTenantPatch(profile));
             "Failed to load school profile."
         );
       } else {
-        setPageError("Failed to load school profile.");
+        setPageError(
+          "Failed to load school profile."
+        );
       }
     } finally {
       setLoading(false);
@@ -125,7 +135,7 @@ console.log("PATCH DATA", mapSchoolProfileToTenantPatch(profile));
   }
 
   /* =========================================
-     SAVE (FILE + JSON SAFE)
+     SAVE PROFILE + LOGO
   ========================================= */
   async function handleSaveProfile() {
     const validationError = validateForm();
@@ -139,44 +149,116 @@ console.log("PATCH DATA", mapSchoolProfileToTenantPatch(profile));
       setSubmitting(true);
       setActionMessage("");
 
-      const formData = new FormData();
+      /* =========================================
+         1. UPDATE PROFILE INFORMATION
+         ========================================= */
 
-      formData.append("schoolName", form.schoolName);
-      formData.append("email", form.email);
-      formData.append("phone", form.phone);
-      formData.append("address", form.address);
-      formData.append("principalName", form.principalName);
-      formData.append("currentSession", form.currentSession);
-      formData.append("currentTerm", form.currentTerm);
-      formData.append("themeColor", form.themeColor);
+      const profilePayload: SchoolProfileFormValues = {
+        schoolName: form.schoolName,
+        email: form.email,
+        phone: form.phone,
+        address: form.address,
+        principalName: form.principalName,
+        currentSession: form.currentSession,
+        currentTerm: form.currentTerm,
 
-      // ✅ FILE HANDLING FIXED
-      if (form.logoFile instanceof File) {
-        formData.append("logo", form.logoFile);
-      }
-
-      const updated = await updateSchoolProfile(formData);
-
-      const nextForm: SchoolProfileFormValues = {
-        schoolName: updated.schoolName || "",
-        email: updated.email || "",
-        phone: updated.phone || "",
-        address: updated.address || "",
-        principalName: updated.principalName || "",
-        currentSession: updated.currentSession || "",
-        currentTerm: updated.currentTerm || "",
-
-        logoUrl: updated.logoUrl || "",
+        /*
+         * Keep the currently saved logo URL here.
+         * The actual new file is uploaded separately
+         * to Cloudinary below.
+         */
+        logoUrl: form.logoUrl,
         logoFile: undefined,
 
-        themeColor: updated.themeColor || "#06b6d4",
+        themeColor: form.themeColor,
+      };
+
+      let updated =
+        await updateSchoolProfile(
+          profilePayload
+        );
+
+      /* =========================================
+         2. UPLOAD NEW LOGO TO CLOUDINARY
+         ========================================= */
+
+      if (form.logoFile instanceof File) {
+        const logoResult =
+          await uploadSchoolLogo(
+            form.logoFile
+          );
+
+        /*
+         * The backend saves the Cloudinary URL
+         * directly into the School document.
+         *
+         * Fetch the profile again so all frontend
+         * state uses the persisted value.
+         */
+        updated =
+          await getSchoolProfile();
+
+        /*
+         * Safety fallback:
+         * If the GET response does not contain the
+         * URL for any reason, use the upload result.
+         */
+        if (
+          !updated.logoUrl &&
+          logoResult.logoUrl
+        ) {
+          updated = {
+            ...updated,
+            logoUrl:
+              logoResult.logoUrl,
+          };
+        }
+      }
+
+      /* =========================================
+         3. UPDATE FORM STATE
+      ========================================= */
+
+      const nextForm: SchoolProfileFormValues = {
+        schoolName:
+          updated.schoolName || "",
+        email:
+          updated.email || "",
+        phone:
+          updated.phone || "",
+        address:
+          updated.address || "",
+        principalName:
+          updated.principalName || "",
+        currentSession:
+          updated.currentSession || "",
+        currentTerm:
+          updated.currentTerm || "",
+
+        logoUrl:
+          updated.logoUrl || "",
+        logoFile: undefined,
+
+        themeColor:
+          updated.themeColor ||
+          "#06b6d4",
       };
 
       setForm(nextForm);
 
-      patchTenant(mapSchoolProfileToTenantPatch(updated));
+      /* =========================================
+         4. UPDATE TENANT BRANDING
+      ========================================= */
 
-      setActionMessage("School profile updated successfully.");
+      patchTenant(
+        mapSchoolProfileToTenantPatch(
+          updated
+        )
+      );
+
+      setActionMessage(
+        "School profile updated successfully."
+      );
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setActionMessage(
@@ -184,7 +266,9 @@ console.log("PATCH DATA", mapSchoolProfileToTenantPatch(profile));
             "Failed to update school profile."
         );
       } else {
-        setActionMessage("Failed to update school profile.");
+        setActionMessage(
+          "Failed to update school profile."
+        );
       }
     } finally {
       setSubmitting(false);

@@ -1,4 +1,5 @@
 import api from "../lib/axios";
+
 import {
   SchoolProfile,
   SchoolProfileResponse,
@@ -8,11 +9,13 @@ import {
 const SETTINGS_ENDPOINTS = {
   getProfile: "/settings/school-profile",
   updateProfile: "/settings/school-profile",
+  uploadLogo: "/settings/school-profile/logo",
 };
 
 /* =========================================
    GET PROFILE
 ========================================= */
+
 export async function getSchoolProfile(): Promise<SchoolProfile> {
   const { data } =
     await api.get<SchoolProfileResponse>(
@@ -25,6 +28,7 @@ export async function getSchoolProfile(): Promise<SchoolProfile> {
 /* =========================================
    UPDATE PROFILE
 ========================================= */
+
 export async function updateSchoolProfile(
   payload: SchoolProfileFormValues | FormData
 ): Promise<SchoolProfile> {
@@ -38,15 +42,44 @@ export async function updateSchoolProfile(
       {
         headers: isFormData
           ? {
-              "Content-Type":
-                "multipart/form-data",
+              "Content-Type": "multipart/form-data",
             }
           : {
-              "Content-Type":
-                "application/json",
+              "Content-Type": "application/json",
             },
       }
     );
 
   return data.data.profile;
+}
+
+/* =========================================
+   UPLOAD SCHOOL LOGO
+========================================= */
+
+export async function uploadSchoolLogo(
+  file: File
+): Promise<{ logoUrl: string }> {
+  const formData = new FormData();
+
+  formData.append("logo", file);
+
+  const { data } =
+    await api.post<{
+      success: boolean;
+      message: string;
+      data: {
+        logoUrl: string;
+      };
+    }>(
+      SETTINGS_ENDPOINTS.uploadLogo,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+
+  return data.data;
 }
