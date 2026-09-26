@@ -19,10 +19,9 @@ import TeacherAnnouncementsList from "../../../../components/teacher/TeacherAnno
 import {
   getTeacherClassStudents,
   getTeacherPortalOverview,
+  getTeacherResultContext,
   submitTeacherAttendance,
 } from "../../../../lib/teacher-portal";
-
-import { getTeacherResultContext } from "../../../../lib/results";
 
 import {
   TeacherAssignedClass,
