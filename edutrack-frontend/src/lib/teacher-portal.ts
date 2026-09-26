@@ -65,6 +65,8 @@ export async function getTeacherClassStudents(
 ========================================= */
 export async function submitTeacherAttendance(payload: {
   classId: string;
+  sessionId: string;
+  termId: string;
   attendance: {
     studentId: string;
     status: "present" | "absent";
@@ -77,3 +79,4 @@ export async function submitTeacherAttendance(payload: {
 
   return res.data;
 }
+

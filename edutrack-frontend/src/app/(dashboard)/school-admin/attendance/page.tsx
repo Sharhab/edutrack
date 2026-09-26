@@ -1,229 +1,447 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 import axios from "axios";
 
 import SectionCard from "../../../../components/ui/SectionCard";
+
 import PageLoader from "../../../../components/ui/PageLoader";
+
 import EmptyState from "../../../../components/ui/EmptyState";
 
-import AttendanceFiltersBar from "../../../../components/attendance/AttendanceFiltersBar";
-import AttendanceStats from "../../../../components/attendance/AttendanceStats";
-import AttendanceAnalytics from "../../../../components/attendance/AttendanceAnalytics";
-import AttendanceTable from "../../../../components/attendance/AttendanceTable";
+import TeacherClassCards from "../../../../components/teacher/TeacherClassCards";
 
-import { getAttendanceRecords } from "../../../../lib/attendance";
-import { getClassOptions } from "../../../../lib/options";
+import TeacherAttendanceTable from "../../../../components/teacher/TeacherAttendanceTable";
+
+import TeacherAnnouncementsList from "../../../../components/teacher/TeacherAnnouncementsList";
 
 import {
-  AttendanceRecord,
-  AttendanceSummary,
-  AttendanceFilters,
-} from "../../../../types/attendance";
+  getTeacherClassStudents,
+  getTeacherPortalOverview,
+  submitTeacherAttendance,
+} from "../../../../lib/teacher-portal";
 
-import { ClassOption } from "../../../../types/options";
+import { getTeacherResultContext } from "../../../../lib/results";
 
-const emptySummary: AttendanceSummary = {
-  total: 0,
-  present: 0,
-  absent: 0,
-  late: 0,
-  attendanceRate: 0,
-};
+import {
+  TeacherAssignedClass,
+  TeacherPortalAnnouncement,
+  TeacherPortalStudent,
+} from "../../../../types/teacher-portal";
 
-export default function SchoolAdminAttendancePage() {
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [summary, setSummary] =
-    useState<AttendanceSummary>(emptySummary);
+export default function TeacherStudentsPage() {
+  const [classes, setClasses] = useState<
+    TeacherAssignedClass[]
+  >([]);
 
-  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [announcements, setAnnouncements] = useState<
+    TeacherPortalAnnouncement[]
+  >([]);
 
-  const [filters, setFilters] = useState<AttendanceFilters>({
-    classId: "",
-    studentId: "",
-    date: "",
-  });
+  const [students, setStudents] = useState<
+    TeacherPortalStudent[]
+  >([]);
 
-  const [initialLoading, setInitialLoading] =
-    useState(true);
+  const [selectedClassId, setSelectedClassId] = useState("");
 
-  const [tableLoading, setTableLoading] =
+  // =========================================
+  // ACTIVE ACADEMIC SESSION / TERM
+  // =========================================
+
+  const [sessionId, setSessionId] = useState("");
+  const [termId, setTermId] = useState("");
+
+  const [loading, setLoading] = useState(true);
+
+  const [studentsLoading, setStudentsLoading] =
+    useState(false);
+
+  const [submittingAttendance, setSubmittingAttendance] =
     useState(false);
 
   const [pageError, setPageError] = useState("");
 
-  function normalizeAttendanceResponse(data: any) {
-    const recordsData = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.records)
-      ? data.records
-      : Array.isArray(data?.data)
-      ? data.data
-      : [];
+  const [studentsError, setStudentsError] =
+    useState("");
 
-    const total = recordsData.length;
+  const [actionMessage, setActionMessage] =
+    useState("");
 
-    const present = recordsData.filter(
-      (item: AttendanceRecord) => item.status === "present"
-    ).length;
+  const [actionSuccess, setActionSuccess] =
+    useState(false);
 
-    const absent = recordsData.filter(
-      (item: AttendanceRecord) => item.status === "absent"
-    ).length;
+  // =========================================
+  // LOAD TEACHER OVERVIEW + ACADEMIC CONTEXT
+  // =========================================
 
-    const late = recordsData.filter(
-      (item: AttendanceRecord) => item.status === "late"
-    ).length;
-
-    return {
-      records: recordsData,
-      summary: data?.summary || {
-        total,
-        present,
-        absent,
-        late,
-        attendanceRate: total
-          ? Math.round((present / total) * 100)
-          : 0,
-      },
-    };
-  }
-
-  async function loadClasses() {
+  async function loadOverview() {
     try {
-      const data = await getClassOptions();
-
-      console.log("📚 ATTENDANCE CLASSES:", data);
-
-      setClasses(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("FAILED TO LOAD CLASSES:", error);
-      setClasses([]);
-    }
-  }
-
-  async function loadAttendance(nextFilters?: AttendanceFilters) {
-    try {
-      setTableLoading(true);
+      setLoading(true);
       setPageError("");
 
-      const activeFilters: AttendanceFilters = {
-        classId: nextFilters?.classId ?? filters.classId,
-        studentId: nextFilters?.studentId ?? filters.studentId,
-        date: nextFilters?.date ?? filters.date,
-      };
+      const [data, context] = await Promise.all([
+        getTeacherPortalOverview(),
+        getTeacherResultContext(),
+      ]);
 
-      console.log("🔍 LOADING ATTENDANCE:", activeFilters);
+      setClasses(data.classes || []);
+      setAnnouncements(data.announcements || []);
 
-      const data = await getAttendanceRecords(activeFilters);
+      const activeSession =
+        context?.session?._id ||
+        context?.session?.id ||
+        "";
 
-      console.log("📊 ATTENDANCE RESPONSE:", data);
+      const activeTerm =
+        context?.term?._id ||
+        context?.term?.id ||
+        "";
 
-      const normalized = normalizeAttendanceResponse(data);
+      setSessionId(activeSession);
+      setTermId(activeTerm);
 
-      setRecords(normalized.records);
-      setSummary(normalized.summary);
+      console.log(
+        "📚 TEACHER ACADEMIC CONTEXT:",
+        {
+          sessionId: activeSession,
+          termId: activeTerm,
+          session: context?.session,
+          term: context?.term,
+        }
+      );
+
+      if (data.classes?.length > 0) {
+        setSelectedClassId(data.classes[0]._id);
+      }
     } catch (err: unknown) {
-      console.error("❌ ATTENDANCE ERROR:", err);
+      console.error(
+        "❌ LOAD TEACHER OVERVIEW ERROR:",
+        err
+      );
 
       if (axios.isAxiosError(err)) {
         setPageError(
           err.response?.data?.message ||
-            `Failed to load attendance records. Status: ${
-              err.response?.status || "network error"
-            }`
+            "Failed to load teacher portal information."
         );
       } else {
-        setPageError("Failed to load attendance records.");
+        setPageError(
+          "Failed to load teacher portal information."
+        );
       }
-
-      setRecords([]);
-      setSummary(emptySummary);
     } finally {
-      setTableLoading(false);
+      setLoading(false);
     }
   }
+
+  // =========================================
+  // LOAD CLASS STUDENTS
+  // =========================================
+
+  async function loadStudents(classId: string) {
+    try {
+      setStudentsLoading(true);
+      setStudentsError("");
+      setActionMessage("");
+
+      const data =
+        await getTeacherClassStudents(classId);
+
+      console.log(
+        "📚 STUDENTS RECEIVED:",
+        data
+      );
+
+      const normalizedStudents =
+        (data || []).map((item) => ({
+          ...item,
+          attendanceStatus:
+            item.attendanceStatus || "present",
+        }));
+
+      console.log(
+        "📚 NORMALIZED STUDENTS:",
+        normalizedStudents
+      );
+
+      setStudents(normalizedStudents);
+    } catch (err: unknown) {
+      console.error(
+        "❌ LOAD STUDENTS ERROR",
+        err
+      );
+
+      if (axios.isAxiosError(err)) {
+        setStudentsError(
+          err.response?.data?.message ||
+            "Failed to load class students."
+        );
+      } else {
+        setStudentsError(
+          "Failed to load class students."
+        );
+      }
+
+      setStudents([]);
+    } finally {
+      setStudentsLoading(false);
+    }
+  }
+
+  // =========================================
+  // INITIAL LOAD
+  // =========================================
 
   useEffect(() => {
-    async function start() {
-      try {
-        setInitialLoading(true);
-
-        await Promise.allSettled([
-          loadClasses(),
-          loadAttendance({
-            classId: "",
-            studentId: "",
-            date: "",
-          }),
-        ]);
-      } finally {
-        setInitialLoading(false);
-      }
-    }
-
-    start();
+    loadOverview();
   }, []);
 
-  if (initialLoading) {
+  // =========================================
+  // LOAD STUDENTS WHEN CLASS CHANGES
+  // =========================================
+
+  useEffect(() => {
+    if (selectedClassId) {
+      loadStudents(selectedClassId);
+    }
+  }, [selectedClassId]);
+
+  // =========================================
+  // TOGGLE ATTENDANCE STATUS
+  // =========================================
+
+  function handleToggleStatus(
+    studentId: string,
+    status: "present" | "absent"
+  ) {
+    setStudents((prev) =>
+      prev.map((student) =>
+        student._id === studentId
+          ? {
+              ...student,
+              attendanceStatus: status,
+            }
+          : student
+      )
+    );
+  }
+
+  // =========================================
+  // SUBMIT ATTENDANCE
+  // =========================================
+
+  async function handleSubmitAttendance() {
+    if (
+      !selectedClassId ||
+      students.length === 0
+    ) {
+      return;
+    }
+
+    // Session and term are required because
+    // report cards use them to identify the
+    // correct academic period.
+    if (!sessionId || !termId) {
+      setActionSuccess(false);
+
+      setActionMessage(
+        "Active academic session and term could not be found."
+      );
+
+      console.error(
+        "❌ MISSING ACADEMIC CONTEXT:",
+        {
+          sessionId,
+          termId,
+        }
+      );
+
+      return;
+    }
+
+    try {
+      setSubmittingAttendance(true);
+      setActionMessage("");
+      setActionSuccess(false);
+
+      console.log(
+        "📤 SUBMITTING ATTENDANCE:",
+        {
+          classId: selectedClassId,
+          sessionId,
+          termId,
+          students: students.length,
+        }
+      );
+
+      await submitTeacherAttendance({
+        classId: selectedClassId,
+        sessionId,
+        termId,
+        attendance: students.map((student) => ({
+          studentId: student._id,
+          status:
+            student.attendanceStatus ||
+            "present",
+        })),
+      });
+
+      setActionSuccess(true);
+
+      setActionMessage(
+        "✅ Attendance submitted successfully."
+      );
+
+      await loadStudents(selectedClassId);
+    } catch (err: unknown) {
+      console.error(
+        "❌ SUBMIT ATTENDANCE ERROR",
+        err
+      );
+
+      if (axios.isAxiosError(err)) {
+        setActionMessage(
+          err.response?.data?.message ||
+            "Failed to submit attendance."
+        );
+      } else {
+        setActionMessage(
+          "Failed to submit attendance."
+        );
+      }
+
+      setActionSuccess(false);
+    } finally {
+      setSubmittingAttendance(false);
+    }
+  }
+
+  // =========================================
+  // SELECTED CLASS
+  // =========================================
+
+  const selectedClass = useMemo(() => {
+    return (
+      classes.find(
+        (item) =>
+          item._id === selectedClassId
+      ) || null
+    );
+  }, [classes, selectedClassId]);
+
+  // =========================================
+  // LOADING
+  // =========================================
+
+  if (loading) {
     return <PageLoader />;
   }
+
+  // =========================================
+  // PAGE ERROR
+  // =========================================
 
   if (pageError) {
     return (
       <EmptyState
-        title="Unable to load attendance"
+        title="Unable to load teacher portal"
         description={pageError}
       />
     );
   }
 
+  // =========================================
+  // PAGE
+  // =========================================
+
   return (
     <div className="space-y-6">
       <SectionCard
-        title="Attendance"
-        subtitle="Review daily attendance records, filters, and performance summary"
+        title="Assigned Classes"
+        subtitle="Select a class to manage attendance and students"
       >
-        <AttendanceFiltersBar
+        <TeacherClassCards
           classes={classes}
-          onFilterChange={(nextFilters) => {
-            const updatedFilters: AttendanceFilters = {
-              classId: nextFilters.classId || "",
-              studentId: nextFilters.studentId || "",
-              date: nextFilters.date || "",
-            };
-
-            setFilters(updatedFilters);
-            loadAttendance(updatedFilters);
-          }}
+          selectedClassId={selectedClassId}
+          onSelect={setSelectedClassId}
         />
       </SectionCard>
 
-      <AttendanceStats summary={summary} />
+      <div className="grid gap-6 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <SectionCard
+            title={
+              selectedClass
+                ? `${selectedClass.name} Attendance`
+                : "Attendance"
+            }
+            subtitle="Mark attendance for students in the selected class"
+            rightAction={
+              <button
+                type="button"
+                onClick={
+                  handleSubmitAttendance
+                }
+                disabled={
+                  submittingAttendance ||
+                  studentsLoading ||
+                  students.length === 0
+                }
+                className="btn-primary"
+              >
+                {submittingAttendance
+                  ? "Submitting..."
+                  : "Submit Attendance"}
+              </button>
+            }
+          >
+            {actionMessage && (
+              <div
+                className={`mb-4 rounded-2xl px-4 py-3 text-sm ${
+                  actionSuccess
+                    ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    : "border border-red-500/30 bg-red-500/10 text-red-300"
+                }`}
+              >
+                {actionMessage}
+              </div>
+            )}
 
-      <AttendanceAnalytics
-        total={summary.total}
-        present={summary.present}
-        absent={summary.absent}
-        late={summary.late}
-        attendanceRate={summary.attendanceRate}
-      />
+            {studentsLoading ? (
+              <PageLoader />
+            ) : studentsError ? (
+              <EmptyState
+                title="Unable to load students"
+                description={studentsError}
+              />
+            ) : students.length === 0 ? (
+              <EmptyState
+                title="No students found"
+                description="There are currently no students assigned to this class."
+              />
+            ) : (
+              <TeacherAttendanceTable
+                students={students}
+                onToggleStatus={
+                  handleToggleStatus
+                }
+              />
+            )}
+          </SectionCard>
+        </div>
 
-      <SectionCard
-        title="Attendance Records"
-        subtitle="Filtered attendance log across classes and dates"
-      >
-        {tableLoading ? (
-          <PageLoader />
-        ) : records.length === 0 ? (
-          <EmptyState
-            title="No attendance records"
-            description="No records found for selected filters."
-          />
-        ) : (
-          <AttendanceTable data={records} />
-        )}
-      </SectionCard>
+        <div className="xl:col-span-1">
+          <SectionCard
+            title="Announcements"
+            subtitle="Latest updates from school admin"
+          >
+            <TeacherAnnouncementsList
+              items={announcements}
+            />
+          </SectionCard>
+        </div>
+      </div>
     </div>
   );
 }
