@@ -48,7 +48,7 @@ export async function getTeacherPortalOverview(): Promise<{
 
 export async function getTeacherResultContext() {
   const { data } = await api.get(
-    "/results/teacher/results/context"
+    ENDPOINTS.resultContext
   );
 
   console.log(
@@ -58,6 +58,7 @@ export async function getTeacherResultContext() {
 
   return data?.data;
 }
+
 /* =========================================
    TEACHER CLASS STUDENTS
 ========================================= */
