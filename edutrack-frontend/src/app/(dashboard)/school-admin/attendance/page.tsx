@@ -65,12 +65,8 @@ export default function TeacherAttendancePage() {
 
       if (overview.classes?.length) {
         setSelectedClassId(
-          String(
-            overview.classes[0]._id ||
-              overview.classes[0].id ||
-              ""
-          )
-        );
+  String(overview.classes[0]._id)
+);
       }
     } catch (err: any) {
       console.error("❌ Failed to load teacher attendance:", err);
