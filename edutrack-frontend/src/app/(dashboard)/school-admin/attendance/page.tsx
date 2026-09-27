@@ -7,7 +7,7 @@ import {
   getTeacherPortalOverview,
   getTeacherResultContext,
   submitTeacherAttendance,
-} from "../../../../ib/teacher-portals";
+} from "../../../../lib/teacher-portal";
 
 import {
   TeacherAssignedClass,
