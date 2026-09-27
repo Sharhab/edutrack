@@ -1,105 +1,59 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-
-import axios from "axios";
-
-import SectionCard from "../../../../components/ui/SectionCard";
-import PageLoader from "../../../../components/ui/PageLoader";
-import EmptyState from "../../../../components/ui/EmptyState";
-
-import TeacherClassCards from "../../../../components/teacher/TeacherClassCards";
-import TeacherAttendanceTable from "../../../../components/teacher/TeacherAttendanceTable";
-import TeacherAnnouncementsList from "../../../../components/teacher/TeacherAnnouncementsList";
+import React, { useEffect, useState } from "react";
 
 import {
   getTeacherClassStudents,
   getTeacherPortalOverview,
   getTeacherResultContext,
   submitTeacherAttendance,
-} from "../../../../lib/teacher-portal";
+} from "../../../../ib/teacher-portals";
 
 import {
   TeacherAssignedClass,
-  TeacherPortalAnnouncement,
   TeacherPortalStudent,
 } from "../../../../types/teacher-portal";
 
-export default function TeacherStudentsPage() {
-  const [classes, setClasses] = useState<
-    TeacherAssignedClass[]
-  >([]);
+export default function TeacherAttendancePage() {
+  const [classes, setClasses] = useState<TeacherAssignedClass[]>([]);
+  const [students, setStudents] = useState<TeacherPortalStudent[]>([]);
 
-  const [announcements, setAnnouncements] = useState<
-    TeacherPortalAnnouncement[]
-  >([]);
-
-  const [students, setStudents] = useState<
-    TeacherPortalStudent[]
-  >([]);
-
-  const [selectedClassId, setSelectedClassId] =
-    useState("");
-
-  // =========================================
-  // ACTIVE ACADEMIC SESSION / TERM
-  // =========================================
+  const [selectedClassId, setSelectedClassId] = useState("");
 
   const [sessionId, setSessionId] = useState("");
   const [termId, setTermId] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [attendance, setAttendance] = useState<
+    Record<string, "present" | "absent">
+  >({});
 
-  const [studentsLoading, setStudentsLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(true);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [submittingAttendance, setSubmittingAttendance] =
-    useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const [pageError, setPageError] =
-    useState("");
-
-  const [studentsError, setStudentsError] =
-    useState("");
-
-  const [actionMessage, setActionMessage] =
-    useState("");
-
-  const [actionSuccess, setActionSuccess] =
-    useState(false);
-
-  // =========================================
-  // LOAD TEACHER OVERVIEW + ACADEMIC CONTEXT
-  // =========================================
+  useEffect(() => {
+    loadOverview();
+  }, []);
 
   async function loadOverview() {
     try {
       setLoading(true);
-      setPageError("");
+      setError("");
 
-      const [data, context] = await Promise.all([
+      const [overview, context] = await Promise.all([
         getTeacherPortalOverview(),
         getTeacherResultContext(),
       ]);
 
-      setClasses(data.classes || []);
-      setAnnouncements(
-        data.announcements || []
-      );
-
-      // =========================================
-      // GET ACTIVE SESSION
-      // =========================================
+      setClasses(overview.classes || []);
 
       const activeSession =
         context?.session?._id ||
         context?.session?.id ||
         "";
-
-      // =========================================
-      // GET ACTIVE TERM
-      // =========================================
 
       const activeTerm =
         context?.term?._id ||
@@ -109,414 +63,343 @@ export default function TeacherStudentsPage() {
       setSessionId(activeSession);
       setTermId(activeTerm);
 
-      console.log(
-        "📚 TEACHER ACADEMIC CONTEXT:",
-        {
-          sessionId: activeSession,
-          termId: activeTerm,
-          session: context?.session,
-          term: context?.term,
-        }
-      );
-
-      // =========================================
-      // SELECT FIRST ASSIGNED CLASS
-      // =========================================
-
-      if (data.classes?.length > 0) {
+      if (overview.classes?.length) {
         setSelectedClassId(
-          data.classes[0]._id
+          String(
+            overview.classes[0]._id ||
+              overview.classes[0].id ||
+              ""
+          )
         );
       }
-    } catch (err: unknown) {
-      console.error(
-        "❌ LOAD TEACHER OVERVIEW ERROR:",
-        err
-      );
+    } catch (err: any) {
+      console.error("❌ Failed to load teacher attendance:", err);
 
-      if (axios.isAxiosError(err)) {
-        setPageError(
-          err.response?.data?.message ||
-            "Failed to load teacher portal information."
-        );
-      } else {
-        setPageError(
-          "Failed to load teacher portal information."
-        );
-      }
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to load attendance"
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  // =========================================
-  // LOAD CLASS STUDENTS
-  // =========================================
+  useEffect(() => {
+    if (!selectedClassId) {
+      setStudents([]);
+      return;
+    }
 
-  async function loadStudents(
-    classId: string
-  ) {
+    loadStudents(selectedClassId);
+  }, [selectedClassId]);
+
+  async function loadStudents(classId: string) {
     try {
       setStudentsLoading(true);
-      setStudentsError("");
-      setActionMessage("");
+      setError("");
+      setMessage("");
 
-      const data =
-        await getTeacherClassStudents(
-          classId
+      const result =
+        await getTeacherClassStudents(classId);
+
+      setStudents(result || []);
+
+      const initialAttendance: Record<
+        string,
+        "present" | "absent"
+      > = {};
+
+      (result || []).forEach((student: any) => {
+        const id = String(
+          student._id ||
+            student.id ||
+            student.studentId
         );
 
-      console.log(
-        "📚 STUDENTS RECEIVED:",
-        data
-      );
+        initialAttendance[id] = "present";
+      });
 
-      const normalizedStudents =
-        (data || []).map((item) => ({
-          ...item,
-          attendanceStatus:
-            item.attendanceStatus ||
-            "present",
-        }));
-
-      console.log(
-        "📚 NORMALIZED STUDENTS:",
-        normalizedStudents
-      );
-
-      setStudents(
-        normalizedStudents
-      );
-    } catch (err: unknown) {
+      setAttendance(initialAttendance);
+    } catch (err: any) {
       console.error(
-        "❌ LOAD STUDENTS ERROR:",
+        "❌ Failed to load students:",
         err
       );
 
-      if (axios.isAxiosError(err)) {
-        setStudentsError(
-          err.response?.data?.message ||
-            "Failed to load class students."
-        );
-      } else {
-        setStudentsError(
-          "Failed to load class students."
-        );
-      }
-
-      setStudents([]);
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to load students"
+      );
     } finally {
       setStudentsLoading(false);
     }
   }
 
-  // =========================================
-  // INITIAL LOAD
-  // =========================================
-
-  useEffect(() => {
-    loadOverview();
-  }, []);
-
-  // =========================================
-  // LOAD STUDENTS WHEN CLASS CHANGES
-  // =========================================
-
-  useEffect(() => {
-    if (selectedClassId) {
-      loadStudents(
-        selectedClassId
-      );
-    }
-  }, [selectedClassId]);
-
-  // =========================================
-  // TOGGLE ATTENDANCE STATUS
-  // =========================================
-
-  function handleToggleStatus(
+  function updateAttendance(
     studentId: string,
     status: "present" | "absent"
   ) {
-    setStudents((prev) =>
-      prev.map((student) =>
-        student._id === studentId
-          ? {
-              ...student,
-              attendanceStatus:
-                status,
-            }
-          : student
-      )
-    );
+    setAttendance((prev) => ({
+      ...prev,
+      [studentId]: status,
+    }));
   }
 
-  // =========================================
-  // SUBMIT ATTENDANCE
-  // =========================================
-
-  async function handleSubmitAttendance() {
-    if (
-      !selectedClassId ||
-      students.length === 0
-    ) {
-      return;
-    }
-
-    // =========================================
-    // SESSION + TERM ARE REQUIRED
-    // =========================================
-
-    if (!sessionId || !termId) {
-      setActionSuccess(false);
-
-      setActionMessage(
-        "Active academic session and term could not be found."
-      );
-
-      console.error(
-        "❌ MISSING ACADEMIC CONTEXT:",
-        {
-          sessionId,
-          termId,
-        }
-      );
-
-      return;
-    }
-
+  async function handleSubmit() {
     try {
-      setSubmittingAttendance(true);
-      setActionMessage("");
-      setActionSuccess(false);
+      setMessage("");
+      setError("");
+
+      if (!selectedClassId) {
+        setError("Please select a class.");
+        return;
+      }
+
+      if (!sessionId) {
+        setError(
+          "No academic session is available. Please contact the school administrator."
+        );
+        return;
+      }
+
+      if (!termId) {
+        setError(
+          "No academic term is available. Please contact the school administrator."
+        );
+        return;
+      }
+
+      if (!students.length) {
+        setError("No students found for this class.");
+        return;
+      }
+
+      setSubmitting(true);
+
+      const payload = {
+        classId: selectedClassId,
+        sessionId,
+        termId,
+        attendance: students.map((student: any) => {
+          const studentId = String(
+            student._id ||
+              student.id ||
+              student.studentId
+          );
+
+          return {
+            studentId,
+            status:
+              attendance[studentId] || "present",
+          };
+        }),
+      };
 
       console.log(
-        "📤 SUBMITTING ATTENDANCE:",
-        {
-          classId: selectedClassId,
-          sessionId,
-          termId,
-          students:
-            students.length,
-        }
+        "📤 TEACHER ATTENDANCE PAYLOAD:",
+        payload
       );
 
-      await submitTeacherAttendance({
-        classId:
-          selectedClassId,
+      await submitTeacherAttendance(payload);
 
-        sessionId,
-
-        termId,
-
-        attendance:
-          students.map(
-            (student) => ({
-              studentId:
-                student._id,
-
-              status:
-                student.attendanceStatus ||
-                "present",
-            })
-          ),
-      });
-
-      setActionSuccess(true);
-
-      setActionMessage(
-        "✅ Attendance submitted successfully."
+      setMessage(
+        "Attendance submitted successfully."
       );
-
-      // Reload students after successful
-      // submission so the page reflects
-      // the saved attendance.
-      await loadStudents(
-        selectedClassId
-      );
-    } catch (err: unknown) {
+    } catch (err: any) {
       console.error(
-        "❌ SUBMIT ATTENDANCE ERROR:",
+        "❌ Attendance submission failed:",
         err
       );
 
-      if (axios.isAxiosError(err)) {
-        setActionMessage(
-          err.response?.data?.message ||
-            "Failed to submit attendance."
-        );
-      } else {
-        setActionMessage(
-          "Failed to submit attendance."
-        );
-      }
-
-      setActionSuccess(false);
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to submit attendance"
+      );
     } finally {
-      setSubmittingAttendance(false);
+      setSubmitting(false);
     }
   }
 
-  // =========================================
-  // SELECTED CLASS
-  // =========================================
-
-  const selectedClass = useMemo(() => {
-    return (
-      classes.find(
-        (item) =>
-          item._id ===
-          selectedClassId
-      ) || null
-    );
-  }, [
-    classes,
-    selectedClassId,
-  ]);
-
-  // =========================================
-  // LOADING
-  // =========================================
-
   if (loading) {
-    return <PageLoader />;
-  }
-
-  // =========================================
-  // PAGE ERROR
-  // =========================================
-
-  if (pageError) {
     return (
-      <EmptyState
-        title="Unable to load teacher portal"
-        description={pageError}
-      />
+      <div className="p-6">
+        <p>Loading attendance...</p>
+      </div>
     );
   }
-
-  // =========================================
-  // PAGE
-  // =========================================
 
   return (
-    <div className="space-y-6">
-      {/* =========================================
-          ASSIGNED CLASSES
-      ========================================= */}
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">
+          Attendance
+        </h1>
 
-      <SectionCard
-        title="Assigned Classes"
-        subtitle="Select a class to manage attendance and students"
-      >
-        <TeacherClassCards
-          classes={classes}
-          selectedClassId={
-            selectedClassId
+        <p className="text-sm text-gray-500 mt-1">
+          Mark attendance for your assigned class.
+        </p>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          {error}
+        </div>
+      )}
+
+      {message && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-700">
+          {message}
+        </div>
+      )}
+
+      <div className="rounded-xl border bg-white p-5 shadow-sm">
+        <label className="block text-sm font-medium mb-2">
+          Class
+        </label>
+
+        <select
+          value={selectedClassId}
+          onChange={(e) =>
+            setSelectedClassId(e.target.value)
           }
-          onSelect={
-            setSelectedClassId
-          }
-        />
-      </SectionCard>
+          className="w-full rounded-lg border px-3 py-2"
+        >
+          <option value="">
+            Select class
+          </option>
 
-      {/* =========================================
-          ATTENDANCE + ANNOUNCEMENTS
-      ========================================= */}
+          {classes.map((classItem: any) => {
+            const id = String(
+              classItem._id ||
+                classItem.id ||
+                ""
+            );
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        {/* =========================================
-            ATTENDANCE
-        ========================================= */}
+            return (
+              <option key={id} value={id}>
+                {classItem.name ||
+                  classItem.className ||
+                  classItem.title ||
+                  "Class"}
+              </option>
+            );
+          })}
+        </select>
+      </div>
 
-        <div className="xl:col-span-2">
-          <SectionCard
-            title={
-              selectedClass
-                ? `${selectedClass.name} Attendance`
-                : "Attendance"
-            }
-            subtitle="Mark attendance for students in the selected class"
-            rightAction={
-              <button
-                type="button"
-                onClick={
-                  handleSubmitAttendance
-                }
-                disabled={
-                  submittingAttendance ||
-                  studentsLoading ||
-                  students.length ===
-                    0
-                }
-                className="btn-primary"
-              >
-                {submittingAttendance
-                  ? "Submitting..."
-                  : "Submit Attendance"}
-              </button>
-            }
-          >
-            {/* =========================================
-                ACTION MESSAGE
-            ========================================= */}
-
-            {actionMessage && (
-              <div
-                className={`mb-4 rounded-2xl px-4 py-3 text-sm ${
-                  actionSuccess
-                    ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                    : "border border-red-500/30 bg-red-500/10 text-red-300"
-                }`}
-              >
-                {actionMessage}
-              </div>
-            )}
-
-            {/* =========================================
-                STUDENTS
-            ========================================= */}
-
-            {studentsLoading ? (
-              <PageLoader />
-            ) : studentsError ? (
-              <EmptyState
-                title="Unable to load students"
-                description={
-                  studentsError
-                }
-              />
-            ) : students.length ===
-              0 ? (
-              <EmptyState
-                title="No students found"
-                description="There are currently no students assigned to this class."
-              />
-            ) : (
-              <TeacherAttendanceTable
-                students={students}
-                onToggleStatus={
-                  handleToggleStatus
-                }
-              />
-            )}
-          </SectionCard>
+      <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+        <div className="p-5 border-b">
+          <h2 className="font-semibold">
+            Students
+          </h2>
         </div>
 
-        {/* =========================================
-            ANNOUNCEMENTS
-        ========================================= */}
+        {studentsLoading ? (
+          <div className="p-6">
+            <p>Loading students...</p>
+          </div>
+        ) : students.length === 0 ? (
+          <div className="p-6 text-gray-500">
+            No students found.
+          </div>
+        ) : (
+          <div className="divide-y">
+            {students.map((student: any) => {
+              const studentId = String(
+                student._id ||
+                  student.id ||
+                  student.studentId
+              );
 
-        <div className="xl:col-span-1">
-          <SectionCard
-            title="Announcements"
-            subtitle="Latest updates from school admin"
-          >
-            <TeacherAnnouncementsList
-              items={announcements}
-            />
-          </SectionCard>
-        </div>
+              const name =
+                student.name ||
+                student.fullName ||
+                `${student.firstName || ""} ${
+                  student.lastName || ""
+                }`.trim() ||
+                "Student";
+
+              return (
+                <div
+                  key={studentId}
+                  className="flex items-center justify-between p-4"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {name}
+                    </p>
+
+                    {student.admissionNumber && (
+                      <p className="text-sm text-gray-500">
+                        {student.admissionNumber}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateAttendance(
+                          studentId,
+                          "present"
+                        )
+                      }
+                      className={`rounded-lg px-4 py-2 text-sm ${
+                        attendance[studentId] ===
+                        "present"
+                          ? "bg-green-600 text-white"
+                          : "border bg-white"
+                      }`}
+                    >
+                      Present
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateAttendance(
+                          studentId,
+                          "absent"
+                        )
+                      }
+                      className={`rounded-lg px-4 py-2 text-sm ${
+                        attendance[studentId] ===
+                        "absent"
+                          ? "bg-red-600 text-white"
+                          : "border bg-white"
+                      }`}
+                    >
+                      Absent
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={
+            submitting ||
+            !selectedClassId ||
+            !sessionId ||
+            !termId ||
+            !students.length
+          }
+          className="rounded-lg bg-black px-6 py-3 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {submitting
+            ? "Submitting..."
+            : "Submit Attendance"}
+        </button>
       </div>
     </div>
   );
