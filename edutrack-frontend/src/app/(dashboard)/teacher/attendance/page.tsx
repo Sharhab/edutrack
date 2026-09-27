@@ -2,22 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-
 import SectionCard from "../../../../components/ui/SectionCard";
 import PageLoader from "../../../../components/ui/PageLoader";
 import EmptyState from "../../../../components/ui/EmptyState";
-
 import TeacherClassCards from "../../../../components/teacher/TeacherClassCards";
 import TeacherAttendanceTable from "../../../../components/teacher/TeacherAttendanceTable";
 import TeacherAnnouncementsList from "../../../../components/teacher/TeacherAnnouncementsList";
-
 import {
   getTeacherClassStudents,
   getTeacherPortalOverview,
   getTeacherResultContext,
   submitTeacherAttendance,
 } from "../../../../lib/teacher-portal";
-
 import {
   TeacherAssignedClass,
   TeacherPortalAnnouncement,
@@ -26,92 +22,77 @@ import {
 
 export default function TeacherStudentsPage() {
   const [classes, setClasses] = useState<TeacherAssignedClass[]>([]);
-  const [announcements, setAnnouncements] = useState<
-    TeacherPortalAnnouncement[]
-  >([]);
-
+  const [announcements, setAnnouncements] =
+    useState<TeacherPortalAnnouncement[]>([]);
   const [students, setStudents] = useState<TeacherPortalStudent[]>([]);
   const [selectedClassId, setSelectedClassId] = useState("");
 
-  // =========================================
-  // ACTIVE ACADEMIC SESSION / TERM
-  // =========================================
-
-  const [sessionId, setSessionId] = useState("");
-  const [termId, setTermId] = useState("");
+  const [academicContext, setAcademicContext] = useState<{
+    sessionId: string;
+    termId: string;
+  } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [studentsLoading, setStudentsLoading] = useState(false);
-  const [submittingAttendance, setSubmittingAttendance] =
-    useState(false);
+  const [submittingAttendance, setSubmittingAttendance] = useState(false);
 
   const [pageError, setPageError] = useState("");
   const [studentsError, setStudentsError] = useState("");
-
   const [actionMessage, setActionMessage] = useState("");
-  const [actionSuccess, setActionSuccess] = useState(false);
 
-  // =========================================
-  // LOAD TEACHER OVERVIEW + ACADEMIC CONTEXT
-  // =========================================
+  /* =========================================
+     LOAD ACADEMIC SESSION + TERM
+  ========================================= */
+
+  async function loadAcademicContext() {
+    try {
+      const context = await getTeacherResultContext();
+
+      const sessionId = context?.session?._id;
+      const termId = context?.term?._id;
+
+      if (!sessionId || !termId) {
+        throw new Error(
+          "Active academic session or term was not found."
+        );
+      }
+
+      setAcademicContext({
+        sessionId,
+        termId,
+      });
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setPageError(
+          err.response?.data?.message ||
+            "Failed to load academic session and term."
+        );
+      } else {
+        setPageError(
+          "Failed to load academic session and term."
+        );
+      }
+    }
+  }
+
+  /* =========================================
+     LOAD TEACHER OVERVIEW
+  ========================================= */
 
   async function loadOverview() {
     try {
       setLoading(true);
       setPageError("");
 
-      const [data, context] = await Promise.all([
-        getTeacherPortalOverview(),
-        getTeacherResultContext(),
-      ]);
+      const data = await getTeacherPortalOverview();
 
-      setClasses(data.classes || []);
-      setAnnouncements(data.announcements || []);
+      setClasses(data.classes);
+      setAnnouncements(data.announcements);
 
-      // =========================================
-      // GET ACTIVE SESSION
-      // =========================================
-
-      const activeSession =
-        context?.session?._id ||
-        context?.session?.id ||
-        "";
-
-      // =========================================
-      // GET ACTIVE TERM
-      // =========================================
-
-      const activeTerm =
-        context?.term?._id ||
-        context?.term?.id ||
-        "";
-
-      setSessionId(activeSession);
-      setTermId(activeTerm);
-
-      console.log(
-        "📚 TEACHER ACADEMIC CONTEXT:",
-        {
-          sessionId: activeSession,
-          termId: activeTerm,
-          session: context?.session,
-          term: context?.term,
-        }
-      );
-
-      // =========================================
-      // SELECT FIRST ASSIGNED CLASS
-      // =========================================
-
-      if (data.classes?.length > 0) {
+      if (data.classes.length > 0) {
         setSelectedClassId(data.classes[0]._id);
       }
     } catch (err: unknown) {
-      console.error(
-        "❌ LOAD TEACHER OVERVIEW ERROR:",
-        err
-      );
-
       if (axios.isAxiosError(err)) {
         setPageError(
           err.response?.data?.message ||
@@ -127,9 +108,9 @@ export default function TeacherStudentsPage() {
     }
   }
 
-  // =========================================
-  // LOAD CLASS STUDENTS
-  // =========================================
+  /* =========================================
+     LOAD STUDENTS
+  ========================================= */
 
   async function loadStudents(classId: string) {
     try {
@@ -137,34 +118,16 @@ export default function TeacherStudentsPage() {
       setStudentsError("");
       setActionMessage("");
 
-      const data =
-        await getTeacherClassStudents(classId);
+      const data = await getTeacherClassStudents(classId);
 
-      console.log(
-        "📚 STUDENTS RECEIVED:",
-        data
-      );
-
-      const normalizedStudents =
-        (data || []).map((item) => ({
+      setStudents(
+        data.map((item) => ({
           ...item,
           attendanceStatus:
-            item.attendanceStatus ||
-            "present",
-        }));
-
-      console.log(
-        "📚 NORMALIZED STUDENTS:",
-        normalizedStudents
+            item.attendanceStatus || "present",
+        }))
       );
-
-      setStudents(normalizedStudents);
     } catch (err: unknown) {
-      console.error(
-        "❌ LOAD STUDENTS ERROR",
-        err
-      );
-
       if (axios.isAxiosError(err)) {
         setStudentsError(
           err.response?.data?.message ||
@@ -182,17 +145,18 @@ export default function TeacherStudentsPage() {
     }
   }
 
-  // =========================================
-  // INITIAL LOAD
-  // =========================================
+  /* =========================================
+     INITIAL LOAD
+  ========================================= */
 
   useEffect(() => {
     loadOverview();
+    loadAcademicContext();
   }, []);
 
-  // =========================================
-  // LOAD STUDENTS WHEN CLASS CHANGES
-  // =========================================
+  /* =========================================
+     LOAD STUDENTS WHEN CLASS CHANGES
+  ========================================= */
 
   useEffect(() => {
     if (selectedClassId) {
@@ -200,114 +164,71 @@ export default function TeacherStudentsPage() {
     }
   }, [selectedClassId]);
 
-  // =========================================
-  // TOGGLE ATTENDANCE STATUS
-  // =========================================
+  /* =========================================
+     TOGGLE ATTENDANCE
+  ========================================= */
 
   function handleToggleStatus(
     studentId: string,
     status: "present" | "absent"
   ) {
     setStudents((prev) =>
-      prev.map((student) =>
-        student._id === studentId
+      prev.map((item) =>
+        item._id === studentId
           ? {
-              ...student,
+              ...item,
               attendanceStatus: status,
             }
-          : student
+          : item
       )
     );
   }
 
-  // =========================================
-  // SUBMIT ATTENDANCE
-  // =========================================
+  /* =========================================
+     SUBMIT ATTENDANCE
+  ========================================= */
 
   async function handleSubmitAttendance() {
-    if (
-      !selectedClassId ||
-      students.length === 0
-    ) {
-      return;
-    }
-
-    // =========================================
-    // SESSION + TERM ARE REQUIRED
-    // =========================================
-
-    if (!sessionId || !termId) {
-      setActionSuccess(false);
-
-      setActionMessage(
-        "Active academic session and term could not be found."
-      );
-
-      console.error(
-        "❌ MISSING ACADEMIC CONTEXT:",
-        {
-          sessionId,
-          termId,
-        }
-      );
-
-      return;
-    }
-
     try {
       setSubmittingAttendance(true);
       setActionMessage("");
-      setActionSuccess(false);
 
-      console.log(
-        "📤 SUBMITTING ATTENDANCE:",
-        {
-          classId: selectedClassId,
-          sessionId,
-          termId,
-          students:
-            students.length,
-        }
-      );
+      if (!academicContext) {
+        setActionMessage(
+          "Active academic session and term are not available."
+        );
+        return;
+      }
+
+      if (!selectedClassId) {
+        setActionMessage(
+          "Please select a class before submitting attendance."
+        );
+        return;
+      }
+
+      if (!students.length) {
+        setActionMessage(
+          "There are no students to submit attendance for."
+        );
+        return;
+      }
 
       await submitTeacherAttendance({
         classId: selectedClassId,
-
-        sessionId,
-
-        termId,
-
-        attendance:
-          students.map(
-            (student) => ({
-              studentId:
-                student._id,
-
-              status:
-                student.attendanceStatus ||
-                "present",
-            })
-          ),
+        sessionId: academicContext.sessionId,
+        termId: academicContext.termId,
+        attendance: students.map((item) => ({
+          studentId: item._id,
+          status:
+            item.attendanceStatus || "present",
+        })),
       });
 
-      setActionSuccess(true);
-
       setActionMessage(
-        "✅ Attendance submitted successfully."
-      );
-
-      // Reload students after successful
-      // submission so the page reflects
-      // the saved attendance.
-      await loadStudents(
-        selectedClassId
+        "Attendance submitted successfully."
       );
     } catch (err: unknown) {
-      console.error(
-        "❌ SUBMIT ATTENDANCE ERROR:",
-        err
-      );
-
       if (axios.isAxiosError(err)) {
         setActionMessage(
           err.response?.data?.message ||
@@ -318,41 +239,34 @@ export default function TeacherStudentsPage() {
           "Failed to submit attendance."
         );
       }
-
-      setActionSuccess(false);
     } finally {
       setSubmittingAttendance(false);
     }
   }
 
-  // =========================================
-  // SELECTED CLASS
-  // =========================================
+  /* =========================================
+     SELECTED CLASS
+  ========================================= */
 
   const selectedClass = useMemo(() => {
     return (
       classes.find(
-        (item) =>
-          item._id ===
-          selectedClassId
+        (item) => item._id === selectedClassId
       ) || null
     );
-  }, [
-    classes,
-    selectedClassId,
-  ]);
+  }, [classes, selectedClassId]);
 
-  // =========================================
-  // LOADING
-  // =========================================
+  /* =========================================
+     LOADING
+  ========================================= */
 
   if (loading) {
     return <PageLoader />;
   }
 
-  // =========================================
-  // PAGE ERROR
-  // =========================================
+  /* =========================================
+     PAGE ERROR
+  ========================================= */
 
   if (pageError) {
     return (
@@ -363,40 +277,24 @@ export default function TeacherStudentsPage() {
     );
   }
 
-  // =========================================
-  // PAGE
-  // =========================================
+  /* =========================================
+     PAGE
+  ========================================= */
 
   return (
     <div className="space-y-6">
-      {/* =========================================
-          ASSIGNED CLASSES
-      ========================================= */}
-
       <SectionCard
         title="Assigned Classes"
         subtitle="Select a class to manage attendance and students"
       >
         <TeacherClassCards
           classes={classes}
-          selectedClassId={
-            selectedClassId
-          }
-          onSelect={
-            setSelectedClassId
-          }
+          selectedClassId={selectedClassId}
+          onSelect={setSelectedClassId}
         />
       </SectionCard>
 
-      {/* =========================================
-          ATTENDANCE + ANNOUNCEMENTS
-      ========================================= */}
-
       <div className="grid gap-6 xl:grid-cols-3">
-        {/* =========================================
-            ATTENDANCE
-        ========================================= */}
-
         <div className="xl:col-span-2">
           <SectionCard
             title={
@@ -408,16 +306,11 @@ export default function TeacherStudentsPage() {
             rightAction={
               <button
                 type="button"
-                onClick={
-                  handleSubmitAttendance
-                }
+                onClick={handleSubmitAttendance}
                 disabled={
                   submittingAttendance ||
-                  studentsLoading ||
-                  students.length ===
-                    0 ||
-                  !sessionId ||
-                  !termId
+                  !students.length ||
+                  !academicContext
                 }
                 className="btn-primary"
               >
@@ -427,55 +320,27 @@ export default function TeacherStudentsPage() {
               </button>
             }
           >
-            {/* =========================================
-                ACTION MESSAGE
-            ========================================= */}
-
-            {actionMessage && (
-              <div
-                className={`mb-4 rounded-2xl px-4 py-3 text-sm ${
-                  actionSuccess
-                    ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                    : "border border-red-500/30 bg-red-500/10 text-red-300"
-                }`}
-              >
+            {actionMessage ? (
+              <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
                 {actionMessage}
               </div>
-            )}
-
-            {/* =========================================
-                STUDENTS
-            ========================================= */}
+            ) : null}
 
             {studentsLoading ? (
               <PageLoader />
             ) : studentsError ? (
               <EmptyState
                 title="Unable to load students"
-                description={
-                  studentsError
-                }
-              />
-            ) : students.length ===
-              0 ? (
-              <EmptyState
-                title="No students found"
-                description="There are currently no students assigned to this class."
+                description={studentsError}
               />
             ) : (
               <TeacherAttendanceTable
                 students={students}
-                onToggleStatus={
-                  handleToggleStatus
-                }
+                onToggleStatus={handleToggleStatus}
               />
             )}
           </SectionCard>
         </div>
-
-        {/* =========================================
-            ANNOUNCEMENTS
-        ========================================= */}
 
         <div className="xl:col-span-1">
           <SectionCard
@@ -491,3 +356,4 @@ export default function TeacherStudentsPage() {
     </div>
   );
 }
+
