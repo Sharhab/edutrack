@@ -110,29 +110,38 @@ export default function ReportCardTemplate({
   return (
     <>
       <style jsx global>{`
-        .report-card-page {
-          width: 210mm;
-          min-height: 297mm;
-          margin: 0 auto;
-          padding: 6mm 7mm;
-          box-sizing: border-box;
-          background: #ffffff;
-          font-family:
-            Arial,
-            Helvetica,
-            sans-serif;
-          color: #172033;
-          overflow: hidden;
-        }
+      .report-card-page {
+  width: 210mm !important;
+  min-width: 210mm !important;
+
+  height: 297mm !important;
+  min-height: 297mm !important;
+  max-height: 297mm !important;
+
+  margin: 0 !important;
+  padding: 3mm 5mm !important;
+
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+
+  page-break-before: avoid !important;
+  page-break-after: avoid !important;
+  break-before: avoid !important;
+  break-after: avoid !important;
+}
 
         .report-card-paper {
-          width: 100%;
-          min-height: 100%;
-          box-sizing: border-box;
-          background: #ffffff;
-          border: 1px solid #cbd5e1;
-          overflow: hidden;
-        }
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
 
         /* =================================================
            TOP HEADER
@@ -657,6 +666,108 @@ export default function ReportCardTemplate({
   size: A4 portrait;
   margin: 0;
 }
+
+
+  .report-card-header {
+    min-height: 29mm !important;
+    padding: 2.5mm 3mm !important;
+  }
+
+  .report-content {
+    padding: 2mm 3mm 1mm !important;
+  }
+
+  .section-title {
+    margin-bottom: 1mm !important;
+    padding-bottom: 0.5mm !important;
+  }
+
+  .student-information {
+    margin-bottom: 2mm !important;
+  }
+
+  .student-info-item {
+    padding: 1.2mm 1.6mm !important;
+  }
+
+  /* SUBJECT TABLE — save vertical space */
+  .academic-section {
+    margin-bottom: 2mm !important;
+  }
+
+  .academic-table-wrapper :global(th) {
+    padding: 1.5px 2px !important;
+    font-size: 6.2px !important;
+  }
+
+  .academic-table-wrapper :global(td) {
+    padding: 1.5px 2px !important;
+    font-size: 6.2px !important;
+    line-height: 1 !important;
+  }
+
+  /* SUMMARY + ATTENDANCE */
+  .horizontal-section-row {
+    gap: 2mm !important;
+    margin-bottom: 2mm !important;
+  }
+
+  .report-box-title {
+    min-height: 5.5mm !important;
+    padding: 0 2mm !important;
+    font-size: 6.5px !important;
+  }
+
+  .report-box-body {
+    padding: 1.2mm !important;
+  }
+
+  /* COMMENTS */
+  .comments-row {
+    gap: 2mm !important;
+    margin-bottom: 2mm !important;
+  }
+
+  .comment-box {
+    height: 21mm !important;
+  }
+
+  .comment-content {
+    padding: 1.2mm 2mm !important;
+  }
+
+  .writing-lines {
+    gap: 3mm !important;
+    margin-top: 1mm !important;
+  }
+
+  /* GRADING + APPROVAL */
+  .bottom-grid {
+    gap: 2mm !important;
+    margin-bottom: 0.5mm !important;
+  }
+
+  .grading-table th,
+  .grading-table td {
+    padding: 0.9mm 0.8mm !important;
+    font-size: 5.4px !important;
+  }
+
+  .approval-area {
+    padding: 1.5mm !important;
+    gap: 2mm !important;
+  }
+
+  .signature-space {
+    height: 6mm !important;
+    margin-bottom: 1mm !important;
+  }
+
+  /* FOOTER */
+  .report-footer {
+    margin-top: 0.5mm !important;
+    padding-top: 0.8mm !important;
+  }
       `}</style>
 
       <div className="report-card-page">
