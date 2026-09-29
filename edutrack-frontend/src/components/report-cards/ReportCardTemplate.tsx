@@ -578,14 +578,13 @@ export default function ReportCardTemplate({
            PRINT
         ================================================= */
 
-      
-        @media print {
+      @media print {
   html,
   body {
     margin: 0 !important;
     padding: 0 !important;
-    width: 210mm !important;
-    min-width: 210mm !important;
+    width: auto !important;
+    min-width: 0 !important;
     background: #ffffff !important;
   }
 
@@ -594,88 +593,66 @@ export default function ReportCardTemplate({
     print-color-adjust: exact !important;
   }
 
+  /* ================================
+     ONE COMPLETE A4 SHEET
+  ================================= */
+
   .report-card-page {
     width: 210mm !important;
     min-width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
 
-    height: auto !important;
-    min-height: 0 !important;
-
-    margin: 0 !important;
-    padding: 5mm 6mm !important;
+    margin: 0 auto !important;
+    padding: 3mm 5mm !important;
 
     box-sizing: border-box !important;
+    overflow: hidden !important;
 
-    overflow: visible !important;
-
-    page-break-before: auto !important;
-    page-break-after: auto !important;
-    break-before: auto !important;
-    break-after: auto !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-before: avoid !important;
+    break-after: avoid !important;
   }
 
   .report-card-paper {
     width: 100% !important;
-
-    height: auto !important;
+    height: 100% !important;
     min-height: 0 !important;
+    max-height: 100% !important;
 
     box-sizing: border-box !important;
-
-    overflow: visible !important;
+    overflow: hidden !important;
 
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
   .report-content {
-    overflow: visible !important;
+    overflow: hidden !important;
   }
 
-  .academic-section,
-  .horizontal-section-row,
-  .comments-row,
-  .bottom-grid {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-
-  .report-box,
-  .comment-box {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-
-  .academic-table-wrapper {
-    overflow: visible !important;
-  }
-
-  table {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
-
-  img {
-    max-width: 100% !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-}
-
-@page {
-  size: A4 portrait;
-  margin: 0;
-}
-
+  /* ================================
+     HEADER
+  ================================= */
 
   .report-card-header {
     min-height: 29mm !important;
     padding: 2.5mm 3mm !important;
   }
 
-  .report-content {
-    padding: 2mm 3mm 1mm !important;
+  .school-heading {
+    text-align: center !important;
   }
+
+  .school-address {
+    text-align: center !important;
+  }
+
+  /* ================================
+     CONTENT COMPRESSION
+  ================================= */
 
   .section-title {
     margin-bottom: 1mm !important;
@@ -690,14 +667,39 @@ export default function ReportCardTemplate({
     padding: 1.2mm 1.6mm !important;
   }
 
-  /* SUBJECT TABLE — save vertical space */
+  /* ================================
+     SUBJECT TABLE
+     KEEP IT VISIBLE
+  ================================= */
+
   .academic-section {
     margin-bottom: 2mm !important;
+    overflow: visible !important;
+  }
+
+  .academic-table-wrapper {
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .academic-table-wrapper :global(table) {
+    display: table !important;
+    visibility: visible !important;
+    width: 100% !important;
+  }
+
+  .academic-table-wrapper :global(thead),
+  .academic-table-wrapper :global(tbody),
+  .academic-table-wrapper :global(tr),
+  .academic-table-wrapper :global(th),
+  .academic-table-wrapper :global(td) {
+    visibility: visible !important;
   }
 
   .academic-table-wrapper :global(th) {
     padding: 1.5px 2px !important;
     font-size: 6.2px !important;
+    line-height: 1 !important;
   }
 
   .academic-table-wrapper :global(td) {
@@ -706,7 +708,10 @@ export default function ReportCardTemplate({
     line-height: 1 !important;
   }
 
-  /* SUMMARY + ATTENDANCE */
+  /* ================================
+     SUMMARY + ATTENDANCE
+  ================================= */
+
   .horizontal-section-row {
     gap: 2mm !important;
     margin-bottom: 2mm !important;
@@ -722,7 +727,10 @@ export default function ReportCardTemplate({
     padding: 1.2mm !important;
   }
 
-  /* COMMENTS */
+  /* ================================
+     COMMENTS
+  ================================= */
+
   .comments-row {
     gap: 2mm !important;
     margin-bottom: 2mm !important;
@@ -741,16 +749,27 @@ export default function ReportCardTemplate({
     margin-top: 1mm !important;
   }
 
-  /* GRADING + APPROVAL */
+  /* ================================
+     GRADING + APPROVAL
+  ================================= */
+
   .bottom-grid {
     gap: 2mm !important;
     margin-bottom: 0.5mm !important;
+  }
+
+  .grading-table {
+    display: table !important;
+    visibility: visible !important;
+    width: 100% !important;
   }
 
   .grading-table th,
   .grading-table td {
     padding: 0.9mm 0.8mm !important;
     font-size: 5.4px !important;
+    line-height: 1 !important;
+    visibility: visible !important;
   }
 
   .approval-area {
@@ -763,11 +782,39 @@ export default function ReportCardTemplate({
     margin-bottom: 1mm !important;
   }
 
-  /* FOOTER */
+  /* ================================
+     FOOTER
+  ================================= */
+
   .report-footer {
     margin-top: 0.5mm !important;
     padding-top: 0.8mm !important;
   }
+
+  /* Prevent individual sections from splitting */
+  .academic-section,
+  .horizontal-section-row,
+  .comments-row,
+  .bottom-grid,
+  .report-box,
+  .comment-box,
+  table {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  img {
+    max-width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+       
       `}</style>
 
       <div className="report-card-page">
