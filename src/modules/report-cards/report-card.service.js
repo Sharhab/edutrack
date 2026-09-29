@@ -32,6 +32,265 @@ function calculateAverage(total, count) {
 }
 
 /* =========================================================
+   PERFORMANCE COMMENTS
+   Data-driven comments for report cards
+========================================================= */
+
+const performanceComments = {
+  Excellent: {
+    teacher: [
+      "The student has demonstrated excellent academic performance this term. Continued dedication, discipline, and active participation are highly commendable.",
+      "An outstanding academic performance this term. The student has shown strong understanding, consistency, and commitment to learning.",
+      "The student has performed excellently across the term and demonstrated a commendable attitude towards learning. Continued hard work is encouraged.",
+    ],
+
+    principal: [
+      "An excellent academic performance. The student's commitment and achievement are commendable. We encourage continued excellence.",
+      "The student has demonstrated outstanding academic achievement this term. Sustained effort and discipline should be maintained.",
+      "A highly commendable performance this term. The student is encouraged to maintain this excellent standard in future terms.",
+    ],
+  },
+
+  "Very Good": {
+    teacher: [
+      "The student has demonstrated very good academic performance and a strong understanding of the subjects studied. Continued effort will lead to even greater achievement.",
+      "A very good performance this term. The student has shown consistency and good commitment to academic activities.",
+      "The student has made very good academic progress this term. Continued revision and active participation are encouraged.",
+    ],
+
+    principal: [
+      "A very good academic performance this term. The student is encouraged to remain consistent and continue working towards higher achievement.",
+      "The student has demonstrated very good progress and commitment to learning. Continued diligence is encouraged.",
+      "A commendable performance. With continued dedication, the student can achieve an even higher level of academic success.",
+    ],
+  },
+
+  Good: {
+    teacher: [
+      "The student has demonstrated good academic progress this term. Greater consistency in revision and classroom participation will support further improvement.",
+      "A good performance this term. The student is encouraged to remain focused and put additional effort into areas that require improvement.",
+      "The student has made good progress academically. Continued practice and regular revision will help strengthen overall performance.",
+    ],
+
+    principal: [
+      "The student has achieved a good academic performance this term. Continued commitment and focused study are encouraged.",
+      "A good performance has been recorded this term. Greater consistency will help the student achieve stronger results.",
+      "The student's progress is encouraging. Continued effort and attention to weaker areas should lead to further improvement.",
+    ],
+  },
+
+  Fair: {
+    teacher: [
+      "The student has achieved a fair level of performance this term. More regular revision, concentration, and classroom participation are encouraged.",
+      "The student has made satisfactory progress but requires greater consistency in academic work to improve future results.",
+      "A fair performance this term. The student should devote more time to revision and seek assistance where necessary.",
+    ],
+
+    principal: [
+      "The student has demonstrated satisfactory progress but has room for improvement. Greater commitment to academic work is encouraged.",
+      "A fair performance has been recorded. With increased dedication and regular study, stronger results can be achieved.",
+      "The student's performance is satisfactory. More consistent effort and academic support should help improve future achievement.",
+    ],
+  },
+
+  Pass: {
+    teacher: [
+      "The student has achieved a basic pass this term. More consistent study, concentration, and participation are required for better performance.",
+      "The student has attained a passing level but needs to increase effort and develop stronger study habits.",
+      "The student has made enough progress to achieve a pass. Greater dedication and regular revision are strongly encouraged.",
+    ],
+
+    principal: [
+      "The student has achieved a basic pass. Increased commitment and consistent academic effort are required for improved future results.",
+      "A passing performance has been recorded. The student is encouraged to work harder and seek support in challenging areas.",
+      "The student has made satisfactory progress towards the required standard. Greater diligence is necessary for further improvement.",
+    ],
+  },
+
+  "Needs Improvement": {
+    teacher: [
+      "The student needs significant improvement in academic performance. More regular study, classroom participation, and support are strongly encouraged.",
+      "The student should devote more time to academic work and develop consistent study habits to improve future performance.",
+      "The current performance requires improvement. Regular revision, active participation, and additional academic support are recommended.",
+    ],
+
+    principal: [
+      "The student's academic performance requires improvement. Greater commitment, regular study, and appropriate support are strongly encouraged.",
+      "The student needs to demonstrate greater dedication to academic work. With consistent effort and support, improvement is achievable.",
+      "Further academic improvement is required. The student is encouraged to work closely with teachers and maintain consistent study habits.",
+    ],
+  },
+};
+
+
+/* =========================================================
+   PERFORMANCE LEVEL
+========================================================= */
+
+function getPerformanceLevel(averageScore) {
+  if (averageScore >= 80) return "Excellent";
+
+  if (averageScore >= 70) return "Very Good";
+
+  if (averageScore >= 60) return "Good";
+
+  if (averageScore >= 50) return "Fair";
+
+  if (averageScore >= 40) return "Pass";
+
+  return "Needs Improvement";
+}
+
+
+/* =========================================================
+   COMMENT HELPERS
+========================================================= */
+
+function pickComment(comments, seed = 0) {
+  if (!Array.isArray(comments) || !comments.length) {
+    return "";
+  }
+
+  return comments[Math.abs(seed) % comments.length];
+}
+
+
+/* =========================================================
+   BUILD PERFORMANCE COMMENT
+========================================================= */
+
+function buildReportCardComments({
+  averageScore = 0,
+  results = [],
+  attendance = {},
+  studentId = "",
+}) {
+  const performanceLevel =
+    getPerformanceLevel(averageScore);
+
+  const comments =
+    performanceComments[performanceLevel];
+
+  /*
+   * Use the student ID to consistently select
+   * different comments for different students.
+   */
+  const seed = String(studentId)
+    .split("")
+    .reduce(
+      (sum, char) => sum + char.charCodeAt(0),
+      0
+    );
+
+  let teacherComment = pickComment(
+    comments.teacher,
+    seed
+  );
+
+  let principalComment = pickComment(
+    comments.principal,
+    seed + 1
+  );
+
+  /* =====================================================
+     SUBJECT PERFORMANCE
+  ===================================================== */
+
+  const strongSubjects = results
+    .filter(
+      (result) =>
+        Number(result.total || 0) >= 80
+    )
+    .map(
+      (result) =>
+        result.subjectId?.name
+    )
+    .filter(Boolean);
+
+  const weakSubjects = results
+    .filter(
+      (result) =>
+        Number(result.total || 0) < 50
+    )
+    .map(
+      (result) =>
+        result.subjectId?.name
+    )
+    .filter(Boolean);
+
+  /* =====================================================
+     ATTENDANCE
+  ===================================================== */
+
+  const attendancePercentage =
+    Number(attendance?.percentage || 0);
+
+  /*
+   * Good attendance
+   */
+  if (attendancePercentage >= 90) {
+    teacherComment +=
+      " Attendance has also been very good.";
+
+    principalComment +=
+      " The student's regular attendance is also commendable.";
+  }
+
+  /*
+   * Low attendance
+   */
+  else if (
+    attendancePercentage > 0 &&
+    attendancePercentage < 75
+  ) {
+    teacherComment +=
+      " Improved attendance and regular participation are encouraged.";
+
+    principalComment +=
+      " Improved attendance will be important for sustained academic progress.";
+  }
+
+  /* =====================================================
+     STRONG SUBJECTS
+  ===================================================== */
+
+  if (
+    strongSubjects.length > 0 &&
+    averageScore >= 60
+  ) {
+    const subjects =
+      strongSubjects
+        .slice(0, 2)
+        .join(" and ");
+
+    teacherComment +=
+      ` Strong performance was recorded in ${subjects}.`;
+  }
+
+  /* =====================================================
+     WEAK SUBJECTS
+  ===================================================== */
+
+  if (weakSubjects.length > 0) {
+    const subjects =
+      weakSubjects
+        .slice(0, 2)
+        .join(" and ");
+
+    teacherComment +=
+      ` More attention is needed in ${subjects}.`;
+
+    principalComment +=
+      ` The student should give additional attention to ${subjects}.`;
+  }
+
+  return {
+    performanceLevel,
+    classTeacher: teacherComment,
+    principal: principalComment,
+  };
+}
+/* =========================================================
    ATTENDANCE SUMMARY
 ========================================================= */
 
@@ -463,6 +722,14 @@ export async function generateStudentReportCard({
       results.length
     );
 
+   const comments =
+  buildReportCardComments({
+    averageScore,
+    results,
+    attendance,
+    studentId: studentObjectId,
+  });
+
   /* -------------------------------------------------------
      CLASSMATES
   ------------------------------------------------------- */
@@ -613,20 +880,22 @@ export async function generateStudentReportCard({
       ),
 
       summary: {
-        subjectsCount:
-          results.length,
+  subjectsCount:
+    results.length,
 
-        totalScore,
+  totalScore,
 
-        averageScore,
+  averageScore,
 
-        position,
+  position,
 
-        positionLabel:
-          ordinal(position),
-      },
+  positionLabel:
+    ordinal(position),
+},
 
-      attendance,
+attendance,
+
+comments,
     },
   };
 }
