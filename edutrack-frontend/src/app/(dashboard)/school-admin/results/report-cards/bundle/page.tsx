@@ -221,19 +221,19 @@ export default function ClassReportBundlePage() {
 
           return (
             <div
-              key={rc.student._id || index}
-              className="
-                bg-white
-                shadow-sm
-                rounded-md
-                p-4
-                print:p-0
-                print:shadow-none
-                print:rounded-none
-                print:break-after-page
-                print:min-h-screen
-              "
-            >
+  key={rc.student._id || index}
+  className="
+    bg-white
+    shadow-sm
+    rounded-md
+    p-4
+    print:p-0
+    print:shadow-none
+    print:rounded-none
+    print:break-after-page
+    print:min-h-0
+  "
+>
               <div className="print-report">
 
                 <ReportCardTemplate
