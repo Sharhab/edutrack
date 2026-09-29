@@ -569,47 +569,94 @@ export default function ReportCardTemplate({
            PRINT
         ================================================= */
 
+      
         @media print {
-          html,
-          body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-          }
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+    min-width: 210mm !important;
+    background: #ffffff !important;
+  }
 
-          .report-card-page {
-            width: 210mm;
-            height: 297mm;
-            min-height: 297mm;
-            margin: 0;
-            padding: 5mm 6mm;
-            overflow: hidden;
-            page-break-after: avoid;
-            page-break-before: avoid;
-          }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 
-          .report-card-paper {
-            width: 100%;
-            height: 100%;
-            min-height: 0;
-            page-break-inside: avoid;
-          }
+  .report-card-page {
+    width: 210mm !important;
+    min-width: 210mm !important;
 
-          .report-content,
-          .academic-section,
-          .horizontal-section-row,
-          .comments-row,
-          .bottom-grid,
-          .report-box,
-          .comment-box {
-            page-break-inside: avoid;
-          }
-        }
+    height: auto !important;
+    min-height: 0 !important;
 
-        @page {
-          size: A4 portrait;
-          margin: 0;
-        }
+    margin: 0 !important;
+    padding: 5mm 6mm !important;
+
+    box-sizing: border-box !important;
+
+    overflow: visible !important;
+
+    page-break-before: auto !important;
+    page-break-after: auto !important;
+    break-before: auto !important;
+    break-after: auto !important;
+  }
+
+  .report-card-paper {
+    width: 100% !important;
+
+    height: auto !important;
+    min-height: 0 !important;
+
+    box-sizing: border-box !important;
+
+    overflow: visible !important;
+
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .report-content {
+    overflow: visible !important;
+  }
+
+  .academic-section,
+  .horizontal-section-row,
+  .comments-row,
+  .bottom-grid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .report-box,
+  .comment-box {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .academic-table-wrapper {
+    overflow: visible !important;
+  }
+
+  table {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  img {
+    max-width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
       `}</style>
 
       <div className="report-card-page">
