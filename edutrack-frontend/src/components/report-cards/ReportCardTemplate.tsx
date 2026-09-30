@@ -64,6 +64,7 @@ export default function ReportCardTemplate({
     results,
     summary,
     attendance,
+    comments,
   } = data;
 
   /* =====================================================
@@ -103,9 +104,11 @@ export default function ReportCardTemplate({
     );
 
   const teacherComment =
-    getDefaultComment(
-      performance
-    );
+    comments?.classTeacher ||
+    getDefaultComment(performance);
+
+  const principalComment =
+    comments?.principal || "";
 
   return (
     <>
@@ -1079,8 +1082,11 @@ export default function ReportCardTemplate({
                     Official Comment
                   </span>
 
+                  <div className="comment-text">
+                    {principalComment}
+                  </div>
+
                   <div className="writing-lines">
-                    <div className="writing-line" />
                     <div className="writing-line" />
                     <div className="writing-line" />
                   </div>
