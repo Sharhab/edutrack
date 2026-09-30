@@ -46,6 +46,15 @@ export type ReportCardSummary = {
 };
 
 /* =========================================
+   PERFORMANCE COMMENTS
+========================================= */
+
+export type ReportCardComments = {
+  performanceLevel?: string;
+  classTeacher?: string;
+  principal?: string;
+};
+/* =========================================
    STUDENT
 ========================================= */
 
@@ -80,9 +89,11 @@ export type TermInfo = {
 ========================================= */
 
 export type StudentReportCard = {
+
   student: ReportCardStudent;
 
   session: SessionInfo;
+
   term: TermInfo;
 
   results: ReportCardSubject[];
@@ -90,8 +101,10 @@ export type StudentReportCard = {
   summary: ReportCardSummary;
 
   attendance: AttendanceSummary;
-};
 
+  comments?: ReportCardComments;
+
+};
 /* =========================================
    API RESPONSE WRAPPER
 ========================================= */
