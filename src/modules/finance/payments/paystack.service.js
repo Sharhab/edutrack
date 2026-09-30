@@ -8,31 +8,57 @@ import { ApiError } from "../../../utils/apiError.js";
 const PAYSTACK_BASE_URL = "https://api.paystack.co";
 
 /* =========================================
-   GET SCHOOL SECRET KEY
+   GET EDUTrack PAYSTACK SECRET KEY
 ========================================= */
-async function getSchoolPaystackSecret(schoolId) {
+function getPaystackSecret() {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+
+  if (!secretKey) {
+    throw new ApiError(
+      500,
+      "EduTrack Paystack secret key is not configured"
+    );
+  }
+
+  return secretKey;
+}
+
+/* =========================================
+   GET SCHOOL PAYSTACK SUBACCOUNT
+========================================= */
+async function getSchoolPaystackSubaccount(schoolId) {
   const school = await School.findById(schoolId).select(
-    "settings.paystackSecretKey"
+    "paymentSettings"
   );
 
   if (!school) {
     throw new ApiError(404, "School not found");
   }
 
-  const secret = school?.settings?.paystackSecretKey;
+  const paymentSettings = school.paymentSettings;
 
-  if (!secret) {
+  if (!paymentSettings?.enabled) {
     throw new ApiError(
       400,
-      "School Paystack secret key not configured"
+      "Online payments are not enabled for this school"
     );
   }
 
-  return secret;
+  const subaccountCode =
+    paymentSettings?.paystack?.subaccountCode;
+
+  if (!subaccountCode) {
+    throw new ApiError(
+      400,
+      "School Paystack account is not connected"
+    );
+  }
+
+  return subaccountCode;
 }
 
 /* =========================================
-   INITIALIZE PAYSTACK PAYMENT (FIXED)
+   INITIALIZE PAYSTACK PAYMENT
 ========================================= */
 export async function initializePaystackPayment({
   schoolId,
@@ -51,7 +77,10 @@ export async function initializePaystackPayment({
     throw new ApiError(400, "Valid amount required");
   }
 
-  const secretKey = await getSchoolPaystackSecret(schoolId);
+  const secretKey = getPaystackSecret();
+
+  const subaccountCode =
+    await getSchoolPaystackSubaccount(schoolId);
 
   // =========================================
   // STRICT METADATA ENFORCEMENT
@@ -79,6 +108,11 @@ export async function initializePaystackPayment({
 
         callback_url: callbackUrl,
 
+        // =====================================
+        // SCHOOL'S PAYSTACK SUBACCOUNT
+        // =====================================
+        subaccount: subaccountCode,
+
         metadata: safeMetadata,
       },
       {
@@ -96,7 +130,6 @@ export async function initializePaystackPayment({
       accessCode: data?.access_code,
       reference: data?.reference,
 
-      // 🔥 IMPORTANT: expose metadata for frontend tracking
       metadata: safeMetadata,
     };
   } catch (error) {
@@ -105,19 +138,38 @@ export async function initializePaystackPayment({
       error.response?.data || error.message
     );
 
-    throw new ApiError(500, "Failed to initialize payment");
+    throw new ApiError(
+      500,
+      "Failed to initialize payment"
+    );
   }
 }
 
 /* =========================================
-   VERIFY PAYSTACK PAYMENT (FIXED)
+   VERIFY PAYSTACK PAYMENT
 ========================================= */
-export async function verifyPaystackPayment(reference, schoolId) {
+export async function verifyPaystackPayment(
+  reference,
+  schoolId
+) {
   if (!reference) {
-    throw new ApiError(400, "Payment reference required");
+    throw new ApiError(
+      400,
+      "Payment reference required"
+    );
   }
 
-  const secretKey = await getSchoolPaystackSecret(schoolId);
+  if (!schoolId) {
+    throw new ApiError(
+      400,
+      "School ID required"
+    );
+  }
+
+  const secretKey = getPaystackSecret();
+
+  // Make sure the school exists and is connected.
+  await getSchoolPaystackSubaccount(schoolId);
 
   try {
     const response = await axios.get(
@@ -132,32 +184,46 @@ export async function verifyPaystackPayment(reference, schoolId) {
     const payment = response.data?.data;
 
     if (!payment) {
-      throw new ApiError(400, "Invalid Paystack response");
+      throw new ApiError(
+        400,
+        "Invalid Paystack response"
+      );
     }
 
-    // =========================================
-    // NORMALIZED RESPONSE (IMPORTANT FOR WEBHOOK)
-    // =========================================
     return {
       status: payment.status,
       reference: payment.reference,
 
-      amount: Math.round(Number(payment.amount || 0) / 100),
+      amount: Math.round(
+        Number(payment.amount || 0) / 100
+      ),
 
       paidAt: payment.paid_at,
       channel: payment.channel,
       currency: payment.currency,
 
       metadata: {
-        schoolId: payment.metadata?.schoolId,
-        studentId: payment.metadata?.studentId,
-        studentFeeId: payment.metadata?.studentFeeId,
-        session: payment.metadata?.session,
-        term: payment.metadata?.term,
+        schoolId:
+          payment.metadata?.schoolId,
+
+        studentId:
+          payment.metadata?.studentId,
+
+        studentFeeId:
+          payment.metadata?.studentFeeId,
+
+        session:
+          payment.metadata?.session,
+
+        term:
+          payment.metadata?.term,
       },
 
-      gatewayResponse: payment.gateway_response,
-      customer: payment.customer || {},
+      gatewayResponse:
+        payment.gateway_response,
+
+      customer:
+        payment.customer || {},
     };
   } catch (error) {
     console.log(
@@ -165,6 +231,9 @@ export async function verifyPaystackPayment(reference, schoolId) {
       error.response?.data || error.message
     );
 
-    throw new ApiError(500, "Failed to verify payment");
+    throw new ApiError(
+      500,
+      "Failed to verify payment"
+    );
   }
 }
