@@ -40,6 +40,7 @@ import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
  * SETTINGS
  */
 import schoolProfileRoutes from "../modules/settings/school-profile.routes.js";
+import schoolPaymentRoutes from "../modules/settings/school-payment.routes.js";
 import optionsRoutes from "../modules/options/options.routes.js";
 
 /**
@@ -217,6 +218,11 @@ router.use("/dashboard", dashboardRoutes);
 router.use(
   "/settings/school-profile",
   schoolProfileRoutes
+);
+
+router.use(
+  "/settings/school-payment",
+  schoolPaymentRoutes
 );
 
 router.use("/options", optionsRoutes);
