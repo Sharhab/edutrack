@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { getParentPortalOverview } from "../../../lib/parent-portal";
+import { initializeStudentFeePaystack } from "../../../lib/student-fee-paystack";
 import api from "../../../lib/axios";
 
 declare global {
@@ -97,33 +98,20 @@ export default function ParentDashboardPage() {
   try {
     setPayingFeeId(fee._id);
 
-    console.log("🔥 INIT PAYMENT CLICKED", fee);
-
-    const res = await api.post(
-      "/finance/paystack/initialize",
-      {
-        studentFeeId: fee._id,
-      }
-    );
-
-    console.log("PAYSTACK RESPONSE:", res.data);
-
-    const paymentData = res.data?.data;
+    const response = await initializeStudentFeePaystack(fee._id);
+    const paymentData = response?.data;
 
     if (!paymentData?.authorizationUrl) {
-      alert("Missing authorization URL");
-      return;
+      throw new Error(response?.message || "Missing Paystack authorization URL");
     }
 
-    window.location.href =
-      paymentData.authorizationUrl;
+    window.location.href = paymentData.authorizationUrl;
   } catch (err: any) {
     console.error("PAYMENT ERROR:", err);
-
     alert(
       err?.response?.data?.message ||
         err.message ||
-        "Payment failed (check backend)"
+        "Payment initialization failed."
     );
   } finally {
     setPayingFeeId(null);
