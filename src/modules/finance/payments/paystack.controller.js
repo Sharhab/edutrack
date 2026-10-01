@@ -1,4 +1,8 @@
-import { verifyPaystackPayment, initializePaystackPayment } from "./paystack.service.js";
+
+import {
+  verifyPaystackPayment,
+  initializePaystackPayment,
+} from "./paystack.service.js";
 import { StudentFee } from "../fees/studentFee.model.js";
 import { Student } from "../../students/student.model.js";
 
@@ -118,3 +122,4 @@ export async function verifyPaystackHandler(req, res) {
       message: err.message || "Payment verification failed",
     });
   }
+}
