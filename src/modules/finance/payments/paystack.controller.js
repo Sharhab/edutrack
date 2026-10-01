@@ -9,8 +9,8 @@ import { Student } from "../../students/student.model.js";
 export async function initializePaystackHandler(req, res) {
   try {
     const { studentFeeId } = req.body;
-    const parentId = req.user?._id;
-
+const parentId = req.user?._id || req.user?.id;
+    
     if (!parentId || !req.user?.email) {
       return res.status(401).json({
         success: false,
