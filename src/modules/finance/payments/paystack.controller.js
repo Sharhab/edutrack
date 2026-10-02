@@ -56,7 +56,14 @@ if (!parentId || !email) {
   schoolId: fee.schoolId,
   parentIds: parentId,
 });
-
+    
+console.log("PAYSTACK PARENT LINK DEBUG:", {
+  studentFound: Boolean(child),
+  studentId: child?._id ? String(child._id) : null,
+  parentIds: child?.parentIds?.map((id) => String(id)) || [],
+  loggedInParentId: String(parentId),
+});
+    
 if (!child) {
   return res.status(403).json({
     success: false,
