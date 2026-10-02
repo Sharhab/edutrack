@@ -9,10 +9,18 @@ export async function initializePaystackHandler(req, res) {
   try {
     const { studentFeeId } = req.body || {};
 
-    const parentId = req.user?._id || req.user?.id;
-    const email = req.user?.email?.trim();
+   console.log("PAYSTACK AUTH DEBUG:", {
+  userExists: Boolean(req.user),
+  userKeys: req.user ? Object.keys(req.user) : [],
+  id: req.user?.id,
+  _id: req.user?._id,
+  emailExists: Boolean(req.user?.email),
+});
 
-    if (!parentId || !email) {
+const parentId = req.user?._id || req.user?.id;
+const email = req.user?.email?.trim();
+
+if (!parentId || !email) {
       console.error("PAYSTACK AUTH CONTEXT:", {
         hasUser: Boolean(req.user),
         hasParentId: Boolean(parentId),
