@@ -54,22 +54,10 @@ if (!parentId || !email) {
    const child = await Student.findOne({
   _id: fee.studentId,
   schoolId: fee.schoolId,
+  parentIds: parentId,
 });
 
-console.log("PAYSTACK OWNERSHIP DEBUG:", {
-  feeStudentId: String(fee.studentId),
-  feeSchoolId: String(fee.schoolId),
-  parentId: String(parentId),
-  studentFound: Boolean(child),
-  studentParentId: child?.parentId
-    ? String(child.parentId)
-    : null,
-  studentSchoolId: child?.schoolId
-    ? String(child.schoolId)
-    : null,
-});
-
-if (!child || String(child.parentId) !== String(parentId)) {
+if (!child) {
   return res.status(403).json({
     success: false,
     message: "You are not allowed to pay this student's fee",
