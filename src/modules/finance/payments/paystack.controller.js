@@ -1,7 +1,8 @@
 import {
   verifyPaystackPayment,
   initializePaystackPayment,
-   getPaystackBanks,
+  getPaystackBanks,
+  resolvePaystackAccount,
   createSchoolPaystackSubaccount,
 } from "./paystack.service.js";
 
@@ -27,6 +28,35 @@ export async function getPaystackBanksHandler(req, res) {
 }
 
 /* =========================================
+   RESOLVE SCHOOL BANK ACCOUNT
+   Returns the verified account name.
+   Does not save or connect the account.
+========================================= */
+export async function resolveSchoolPaystackAccountHandler(req, res) {
+  const { bankCode, accountNumber } = req.body || {};
+
+  if (!bankCode || !/^\d{10}$/.test(String(accountNumber || ""))) {
+    return res.status(400).json({
+      success: false,
+      message: "Select a bank and enter a valid 10-digit account number",
+    });
+  }
+
+  const result = await resolvePaystackAccount({
+    bankCode: String(bankCode),
+    accountNumber: String(accountNumber),
+  });
+
+  return res.json({
+    success: true,
+    data: {
+      accountName: result.accountName,
+      accountNumberLast4: String(accountNumber).slice(-4),
+    },
+  });
+}
+
+/* =========================================
    CONNECT SCHOOL PAYSTACK ACCOUNT
 ========================================= */
 export async function connectSchoolPaystackHandler(req, res) {
@@ -47,6 +77,9 @@ export async function connectSchoolPaystackHandler(req, res) {
     });
   }
 
+  const normalizedBankCode = String(bankCode);
+  const normalizedAccountNumber = String(accountNumber);
+
   const school = await School.findById(schoolId);
 
   if (!school) {
@@ -63,10 +96,17 @@ export async function connectSchoolPaystackHandler(req, res) {
     });
   }
 
+  // Always resolve again on the server.
+  // Never trust an account name sent by the frontend.
+  const verifiedAccount = await resolvePaystackAccount({
+    bankCode: normalizedBankCode,
+    accountNumber: normalizedAccountNumber,
+  });
+
   const subaccount = await createSchoolPaystackSubaccount({
     businessName: school.name,
-    bankCode: String(bankCode),
-    accountNumber: String(accountNumber),
+    bankCode: normalizedBankCode,
+    accountNumber: normalizedAccountNumber,
     email: school.email,
     phone: school.phone,
   });
@@ -82,10 +122,13 @@ export async function connectSchoolPaystackHandler(req, res) {
     String(subaccount.id || "");
 
   school.paymentSettings.paystack.settlementBank =
-    subaccount.settlement_bank || "";
+    subaccount.settlement_bank || normalizedBankCode;
+
+  school.paymentSettings.paystack.accountName =
+    verifiedAccount.accountName;
 
   school.paymentSettings.paystack.accountNumberLast4 =
-    String(accountNumber).slice(-4);
+    normalizedAccountNumber.slice(-4);
 
   school.paymentSettings.paystack.connected = true;
   school.paymentSettings.paystack.connectedAt = new Date();
@@ -102,14 +145,17 @@ export async function connectSchoolPaystackHandler(req, res) {
     data: {
       enabled: true,
       connected: true,
-      subaccountCode: subaccount.subaccount_code,
-      settlementBank: subaccount.settlement_bank || "",
-      accountNumberLast4: String(accountNumber).slice(-4),
+      accountName: verifiedAccount.accountName,
+      settlementBank:
+        subaccount.settlement_bank || normalizedBankCode,
+      accountNumberLast4: normalizedAccountNumber.slice(-4),
     },
   });
 }
 
-
+/* =========================================
+   PAYMENT CALLBACK URL
+========================================= */
 function getPaymentCallbackUrl(req, school) {
   const origin = req.get("origin");
 
@@ -151,6 +197,9 @@ function getPaymentCallbackUrl(req, school) {
   )}`;
 }
 
+/* =========================================
+   INITIALIZE PAYSTACK PAYMENT
+========================================= */
 export async function initializePaystackHandler(req, res) {
   try {
     const { studentFeeId } = req.body || {};
@@ -257,6 +306,9 @@ export async function initializePaystackHandler(req, res) {
   }
 }
 
+/* =========================================
+   VERIFY PAYSTACK PAYMENT
+========================================= */
 export async function verifyPaystackHandler(req, res) {
   try {
     const { reference } = req.params;
