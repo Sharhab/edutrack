@@ -52,6 +52,59 @@ export async function getPaystackBanks() {
 }
 
 /* =========================================
+   RESOLVE NIGERIAN BANK ACCOUNT
+========================================= */
+export async function resolvePaystackAccount({
+  bankCode,
+  accountNumber,
+}) {
+  const secretKey = getPaystackSecret();
+
+  if (!bankCode || !/^\d{10}$/.test(String(accountNumber || ""))) {
+    throw new ApiError(400, "Select a bank and enter a valid 10-digit account number");
+  }
+
+  try {
+    const response = await axios.get(
+      `${PAYSTACK_BASE_URL}/bank/resolve`,
+      {
+        params: {
+          account_number: String(accountNumber),
+          bank_code: String(bankCode),
+        },
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+        },
+      }
+    );
+
+    const data = response.data?.data;
+
+    if (!response.data?.status || !data?.account_name) {
+      throw new ApiError(400, "Could not verify this bank account");
+    }
+
+    return {
+      accountName: data.account_name,
+      accountNumber: data.account_number,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+
+    console.error(
+      "PAYSTACK ACCOUNT RESOLUTION ERROR:",
+      error.response?.data || error.message
+    );
+
+    throw new ApiError(
+      error.response?.status === 400 ? 400 : 502,
+      error.response?.data?.message ||
+        "Could not verify this bank account"
+    );
+  }
+}
+
+/* =========================================
    CREATE SCHOOL SUBACCOUNT
 ========================================= */
 export async function createSchoolPaystackSubaccount({
