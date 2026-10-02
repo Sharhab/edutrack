@@ -4,9 +4,11 @@ import { asyncHandler } from "../../../utils/asyncHandler.js";
 import {
   initializePaystackHandler,
   verifyPaystackHandler,
-
+  getPaystackBanksHandler,
+  connectSchoolPaystackHandler,
 } from "./paystack.controller.js";
-import {   paystackWebhookHandler } from "./webhook.controller.js"
+
+import { paystackWebhookHandler } from "./webhook.controller.js";
 import { protect } from "../../../middlewares/auth.middleware.js";
 import { authorize } from "../../../middlewares/role.middleware.js";
 
@@ -14,21 +16,31 @@ const router = express.Router();
 
 /**
  * =========================
- * PUBLIC PAYMENT ROUTES
+ * PARENT PAYMENT ROUTES
  * =========================
  */
+
+// Initialize a parent school-fee payment
 router.post(
   "/initialize",
   protect,
   asyncHandler(initializePaystackHandler)
 );
-// verify payment
+
+// Verify a parent payment after Paystack redirects back
 router.get(
   "/verify/:reference",
+  protect,
   asyncHandler(verifyPaystackHandler)
 );
 
-// webhook (NO AUTH)
+/**
+ * =========================
+ * PAYSTACK WEBHOOK
+ * =========================
+ */
+
+// Paystack calls this directly; no user authentication
 router.post(
   "/webhook",
   express.raw({ type: "application/json" }),
@@ -37,10 +49,22 @@ router.post(
 
 /**
  * =========================
- * ADMIN ONLY (optional)
+ * SCHOOL ADMIN PAYMENT SETTINGS
  * =========================
  */
-router.use(protect);
-router.use(authorize("super_admin"));
+
+router.get(
+  "/banks",
+  protect,
+  authorize("school_admin"),
+  asyncHandler(getPaystackBanksHandler)
+);
+
+router.post(
+  "/connect",
+  protect,
+  authorize("school_admin"),
+  asyncHandler(connectSchoolPaystackHandler)
+);
 
 export default router;
