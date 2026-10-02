@@ -24,6 +24,88 @@ function getPaystackSecret() {
 }
 
 /* =========================================
+   PAYSTACK BANK LIST
+========================================= */
+export async function getPaystackBanks() {
+  const secretKey = getPaystackSecret();
+
+  try {
+    const response = await axios.get(
+      `${PAYSTACK_BASE_URL}/bank`,
+      {
+        params: { country: "nigeria", currency: "NGN" },
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+        },
+      }
+    );
+
+    return response.data?.data || [];
+  } catch (error) {
+    console.error(
+      "PAYSTACK BANK LIST ERROR:",
+      error.response?.data || error.message
+    );
+
+    throw new ApiError(502, "Could not load banks from Paystack");
+  }
+}
+
+/* =========================================
+   CREATE SCHOOL SUBACCOUNT
+========================================= */
+export async function createSchoolPaystackSubaccount({
+  businessName,
+  bankCode,
+  accountNumber,
+  email,
+  phone,
+}) {
+  const secretKey = getPaystackSecret();
+
+  try {
+    const response = await axios.post(
+      `${PAYSTACK_BASE_URL}/subaccount`,
+      {
+        business_name: businessName,
+        settlement_bank: bankCode,
+        account_number: accountNumber,
+        percentage_charge: 0,
+        primary_contact_email: email,
+        primary_contact_phone: phone || undefined,
+        description: `School fee settlement for ${businessName}`,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const data = response.data?.data;
+
+    if (!response.data?.status || !data?.subaccount_code) {
+      throw new ApiError(502, "Paystack did not return a subaccount code");
+    }
+
+    return data;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+
+    console.error(
+      "PAYSTACK SUBACCOUNT ERROR:",
+      error.response?.data || error.message
+    );
+
+    throw new ApiError(
+      error.response?.status === 400 ? 400 : 502,
+      error.response?.data?.message ||
+        "Could not connect this school to Paystack"
+    );
+  }
+}
+/* =========================================
    GET SCHOOL PAYSTACK SUBACCOUNT
 ========================================= */
 async function getSchoolPaystackSubaccount(schoolId) {
