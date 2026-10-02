@@ -2,33 +2,61 @@ import {
   verifyPaystackPayment,
   initializePaystackPayment,
 } from "./paystack.service.js";
+
 import { StudentFee } from "../fees/studentFee.model.js";
 import { Student } from "../../students/student.model.js";
 import { Parent } from "../../parents/parent.model.js";
+import { School } from "../../schools/school.model.js";
+
+function getPaymentCallbackUrl(req, school) {
+  const origin = req.get("origin");
+
+  if (!origin) {
+    throw new Error("Frontend origin is missing");
+  }
+
+  let url;
+
+  try {
+    url = new URL(origin);
+  } catch {
+    throw new Error("Invalid frontend origin");
+  }
+
+  const hostname = url.hostname.toLowerCase();
+
+  if (
+    url.protocol !== "https:" ||
+    !hostname.endsWith(".edutrack.cloud") ||
+    hostname === "www.edutrack.cloud"
+  ) {
+    throw new Error("Untrusted frontend origin");
+  }
+
+  const slug = hostname.split(".")[0];
+  const expectedDomain = `${slug}.edutrack.cloud`;
+
+  const schoolMatches =
+    school.slug === slug ||
+    school.domain?.toLowerCase() === expectedDomain;
+
+  if (!schoolMatches) {
+    throw new Error("Frontend subdomain does not match this school");
+  }
+
+  return `${url.origin}/payment/success?schoolId=${encodeURIComponent(
+    String(school._id)
+  )}`;
+}
+
 export async function initializePaystackHandler(req, res) {
   try {
     const { studentFeeId } = req.body || {};
 
-   console.log("PAYSTACK AUTH DEBUG:", {
-  userExists: Boolean(req.user),
-  userKeys: req.user ? Object.keys(req.user) : [],
-  id: req.user?.id,
-  _id: req.user?._id,
-  emailExists: Boolean(req.user?.email),
-});
+    const userId = req.user?._id || req.user?.id;
+    const email = req.user?.email?.trim();
 
-const parentId = req.user?._id || req.user?.id;
-const email = req.user?.email?.trim();
-
-if (!parentId || !email) {
-      console.error("PAYSTACK AUTH CONTEXT:", {
-        hasUser: Boolean(req.user),
-        hasParentId: Boolean(parentId),
-        hasEmail: Boolean(email),
-        userId: req.user?.id,
-        userObjectId: req.user?._id,
-      });
-
+    if (!userId || !email) {
       return res.status(401).json({
         success: false,
         message: "Authentication required",
@@ -51,30 +79,30 @@ if (!parentId || !email) {
       });
     }
 
-  const parent = await Parent.findOne({
-  userId: parentId,
-  schoolId: fee.schoolId,
-});
+    const parent = await Parent.findOne({
+      userId,
+      schoolId: fee.schoolId,
+    });
 
-if (!parent) {
-  return res.status(403).json({
-    success: false,
-    message: "Parent profile not found for this account",
-  });
-}
+    if (!parent) {
+      return res.status(403).json({
+        success: false,
+        message: "Parent profile not found for this account",
+      });
+    }
 
-const child = await Student.findOne({
-  _id: fee.studentId,
-  schoolId: fee.schoolId,
-  parentIds: parent._id,
-});
+    const child = await Student.findOne({
+      _id: fee.studentId,
+      schoolId: fee.schoolId,
+      parentIds: parent._id,
+    });
 
-if (!child) {
-  return res.status(403).json({
-    success: false,
-    message: "You are not allowed to pay this student's fee",
-  });
-}
+    if (!child) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to pay this student's fee",
+      });
+    }
 
     const amount = Number(fee.balance || 0);
 
@@ -85,22 +113,24 @@ if (!child) {
       });
     }
 
-    const frontendUrl = (process.env.FRONTEND_URL || "").replace(/\/$/, "");
+    const school = await School.findById(fee.schoolId).select(
+      "_id slug domain"
+    );
 
-    if (!frontendUrl) {
-      return res.status(500).json({
+    if (!school) {
+      return res.status(404).json({
         success: false,
-        message: "FRONTEND_URL is not configured",
+        message: "School not found",
       });
     }
+
+    const callbackUrl = getPaymentCallbackUrl(req, school);
 
     const result = await initializePaystackPayment({
       schoolId: fee.schoolId,
       email,
       amount,
-      callbackUrl: `${frontendUrl}/payment/success?schoolId=${encodeURIComponent(
-        String(fee.schoolId)
-      )}`,
+      callbackUrl,
       metadata: {
         source: "student_fee",
         schoolId: String(fee.schoolId),
