@@ -64,6 +64,8 @@ export default function SchoolAdminSettingsPage() {
   const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [connectingPaystack, setConnectingPaystack] = useState(false);
+  const [verifyingAccount, setVerifyingAccount] = useState(false);
+  const [verifiedAccountName, setVerifiedAccountName] = useState("");
   const [paystackMessage, setPaystackMessage] = useState("");
   const [paystackConnected, setPaystackConnected] = useState(false);
 
@@ -150,6 +152,67 @@ export default function SchoolAdminSettingsPage() {
   }, []);
 
   /* =========================================
+     VERIFY PAYSTACK BANK ACCOUNT
+  ========================================= */
+  async function handleVerifyPaystackAccount() {
+    if (!bankCode) {
+      setPaystackMessage("Please select your bank.");
+      return;
+    }
+
+    if (!/^\d{10}$/.test(accountNumber)) {
+      setPaystackMessage(
+        "Enter a valid 10-digit account number."
+      );
+      return;
+    }
+
+    try {
+      setVerifyingAccount(true);
+      setPaystackMessage("");
+      setVerifiedAccountName("");
+
+      const response = await api.post(
+        "/finance/paystack/resolve-account",
+        {
+          bankCode,
+          accountNumber,
+        }
+      );
+
+      const accountName =
+        response.data?.data?.accountName;
+
+      if (!accountName) {
+        setPaystackMessage(
+          "Paystack could not return a verified account name. Please check the details."
+        );
+        return;
+      }
+
+      setVerifiedAccountName(accountName);
+      setPaystackMessage(
+        "Bank account verified. Confirm the account name before connecting."
+      );
+    } catch (err: unknown) {
+      setVerifiedAccountName("");
+
+      if (axios.isAxiosError(err)) {
+        setPaystackMessage(
+          err.response?.data?.message ||
+            "Could not verify this bank account."
+        );
+      } else {
+        setPaystackMessage(
+          "Could not verify this bank account."
+        );
+      }
+    } finally {
+      setVerifyingAccount(false);
+    }
+  }
+
+  /* =========================================
      CONNECT PAYSTACK ACCOUNT
   ========================================= */
   async function handleConnectPaystack() {
@@ -161,6 +224,13 @@ export default function SchoolAdminSettingsPage() {
     if (!/^\d{10}$/.test(accountNumber)) {
       setPaystackMessage(
         "Enter a valid 10-digit account number."
+      );
+      return;
+    }
+
+    if (!verifiedAccountName) {
+      setPaystackMessage(
+        "Please verify the bank account before connecting."
       );
       return;
     }
@@ -179,6 +249,7 @@ export default function SchoolAdminSettingsPage() {
 
       setPaystackConnected(true);
       setAccountNumber("");
+      setVerifiedAccountName("");
 
       setPaystackMessage(
         response.data?.message ||
@@ -250,7 +321,7 @@ export default function SchoolAdminSettingsPage() {
 
       /* =========================================
          1. UPDATE PROFILE INFORMATION
-         ========================================= */
+      ========================================= */
 
       const profilePayload: SchoolProfileFormValues = {
         schoolName: form.schoolName,
@@ -279,7 +350,7 @@ export default function SchoolAdminSettingsPage() {
 
       /* =========================================
          2. UPLOAD NEW LOGO TO CLOUDINARY
-         ========================================= */
+      ========================================= */
 
       if (form.logoFile instanceof File) {
         const logoResult =
@@ -451,10 +522,16 @@ export default function SchoolAdminSettingsPage() {
                 <select
                   id="paystack-bank"
                   value={bankCode}
-                  onChange={(event) =>
-                    setBankCode(event.target.value)
+                  onChange={(event) => {
+                    setBankCode(event.target.value);
+                    setVerifiedAccountName("");
+                    setPaystackMessage("");
+                  }}
+                  disabled={
+                    banksLoading ||
+                    connectingPaystack ||
+                    verifyingAccount
                   }
-                  disabled={banksLoading || connectingPaystack}
                   className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
                 >
                   <option value="">
@@ -489,14 +566,20 @@ export default function SchoolAdminSettingsPage() {
                   autoComplete="off"
                   maxLength={10}
                   value={accountNumber}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setAccountNumber(
                       event.target.value
                         .replace(/\D/g, "")
                         .slice(0, 10)
-                    )
+                    );
+
+                    setVerifiedAccountName("");
+                    setPaystackMessage("");
+                  }}
+                  disabled={
+                    connectingPaystack ||
+                    verifyingAccount
                   }
-                  disabled={connectingPaystack}
                   placeholder="Enter 10-digit account number"
                   className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500"
                 />
@@ -506,27 +589,63 @@ export default function SchoolAdminSettingsPage() {
                 </p>
               </div>
 
+              {verifiedAccountName ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-emerald-300">
+                    Verified account name
+                  </p>
+                  <p className="mt-1 text-base font-semibold text-white">
+                    {verifiedAccountName}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-300">
+                    Please confirm this is the correct settlement account before connecting.
+                  </p>
+                </div>
+              ) : null}
+
               <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
                 EduTrack platform commission:{" "}
                 <strong>0%</strong>. Paystack processing fees still apply.
               </div>
 
-              <button
-                type="button"
-                onClick={handleConnectPaystack}
-                disabled={
-                  connectingPaystack ||
-                  banksLoading ||
-                  banks.length === 0 ||
-                  !bankCode ||
-                  accountNumber.length !== 10
-                }
-                className="rounded-xl bg-cyan-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {connectingPaystack
-                  ? "Connecting account..."
-                  : "Connect Paystack account"}
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleVerifyPaystackAccount}
+                  disabled={
+                    verifyingAccount ||
+                    connectingPaystack ||
+                    banksLoading ||
+                    !bankCode ||
+                    accountNumber.length !== 10
+                  }
+                  className="rounded-xl border border-cyan-500/40 px-5 py-3 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {verifyingAccount
+                    ? "Verifying account..."
+                    : verifiedAccountName
+                    ? "Verify again"
+                    : "Verify account"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleConnectPaystack}
+                  disabled={
+                    connectingPaystack ||
+                    verifyingAccount ||
+                    banksLoading ||
+                    !bankCode ||
+                    accountNumber.length !== 10 ||
+                    !verifiedAccountName
+                  }
+                  className="rounded-xl bg-cyan-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {connectingPaystack
+                    ? "Connecting account..."
+                    : "Connect Paystack account"}
+                </button>
+              </div>
             </>
           )}
         </div>
