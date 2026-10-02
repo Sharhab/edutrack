@@ -51,20 +51,29 @@ if (!parentId || !email) {
       });
     }
 
-   const child = await Student.findOne({
-  _id: fee.studentId,
-  schoolId: fee.schoolId,
-  parentIds: parentId,
-});
-    
-console.log("PAYSTACK PARENT LINK DEBUG:", {
+  const child = await Student.findById(fee.studentId).select(
+  "_id schoolId parentIds firstName lastName"
+);
+
+console.log("PAYSTACK STUDENT LOOKUP:", {
+  feeStudentId: String(fee.studentId),
+  feeSchoolId: String(fee.schoolId),
   studentFound: Boolean(child),
   studentId: child?._id ? String(child._id) : null,
+  studentSchoolId: child?.schoolId
+    ? String(child.schoolId)
+    : null,
   parentIds: child?.parentIds?.map((id) => String(id)) || [],
   loggedInParentId: String(parentId),
 });
-    
-if (!child) {
+
+if (
+  !child ||
+  String(child.schoolId) !== String(fee.schoolId) ||
+  !child.parentIds?.some(
+    (id) => String(id) === String(parentId)
+  )
+) {
   return res.status(403).json({
     success: false,
     message: "You are not allowed to pay this student's fee",
