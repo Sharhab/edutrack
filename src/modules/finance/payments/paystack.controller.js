@@ -4,7 +4,7 @@ import {
 } from "./paystack.service.js";
 import { StudentFee } from "../fees/studentFee.model.js";
 import { Student } from "../../students/student.model.js";
-
+import { Parent } from "../../parents/parent.model.js";
 export async function initializePaystackHandler(req, res) {
   try {
     const { studentFeeId } = req.body || {};
@@ -51,29 +51,25 @@ if (!parentId || !email) {
       });
     }
 
-  const child = await Student.findById(fee.studentId).select(
-  "_id schoolId parentIds firstName lastName"
-);
-
-console.log("PAYSTACK STUDENT LOOKUP:", {
-  feeStudentId: String(fee.studentId),
-  feeSchoolId: String(fee.schoolId),
-  studentFound: Boolean(child),
-  studentId: child?._id ? String(child._id) : null,
-  studentSchoolId: child?.schoolId
-    ? String(child.schoolId)
-    : null,
-  parentIds: child?.parentIds?.map((id) => String(id)) || [],
-  loggedInParentId: String(parentId),
+  const parent = await Parent.findOne({
+  userId: parentId,
+  schoolId: fee.schoolId,
 });
 
-if (
-  !child ||
-  String(child.schoolId) !== String(fee.schoolId) ||
-  !child.parentIds?.some(
-    (id) => String(id) === String(parentId)
-  )
-) {
+if (!parent) {
+  return res.status(403).json({
+    success: false,
+    message: "Parent profile not found for this account",
+  });
+}
+
+const child = await Student.findOne({
+  _id: fee.studentId,
+  schoolId: fee.schoolId,
+  parentIds: parent._id,
+});
+
+if (!child) {
   return res.status(403).json({
     success: false,
     message: "You are not allowed to pay this student's fee",
