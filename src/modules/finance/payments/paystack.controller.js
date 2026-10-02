@@ -1,12 +1,114 @@
 import {
   verifyPaystackPayment,
   initializePaystackPayment,
+   getPaystackBanks,
+  createSchoolPaystackSubaccount,
 } from "./paystack.service.js";
 
 import { StudentFee } from "../fees/studentFee.model.js";
 import { Student } from "../../students/student.model.js";
 import { Parent } from "../../parents/parent.model.js";
 import { School } from "../../schools/school.model.js";
+
+/* =========================================
+   GET PAYSTACK BANKS
+========================================= */
+export async function getPaystackBanksHandler(req, res) {
+  const banks = await getPaystackBanks();
+
+  return res.json({
+    success: true,
+    data: banks.map((bank) => ({
+      name: bank.name,
+      code: bank.code,
+      slug: bank.slug,
+    })),
+  });
+}
+
+/* =========================================
+   CONNECT SCHOOL PAYSTACK ACCOUNT
+========================================= */
+export async function connectSchoolPaystackHandler(req, res) {
+  const schoolId = req.user?.schoolId;
+  const { bankCode, accountNumber } = req.body || {};
+
+  if (!schoolId) {
+    return res.status(403).json({
+      success: false,
+      message: "Your account is not linked to a school",
+    });
+  }
+
+  if (!bankCode || !/^\d{10}$/.test(String(accountNumber || ""))) {
+    return res.status(400).json({
+      success: false,
+      message: "Select a bank and enter a valid 10-digit account number",
+    });
+  }
+
+  const school = await School.findById(schoolId);
+
+  if (!school) {
+    return res.status(404).json({
+      success: false,
+      message: "School not found",
+    });
+  }
+
+  if (school.paymentSettings?.paystack?.subaccountCode) {
+    return res.status(409).json({
+      success: false,
+      message: "This school already has a Paystack account connected",
+    });
+  }
+
+  const subaccount = await createSchoolPaystackSubaccount({
+    businessName: school.name,
+    bankCode: String(bankCode),
+    accountNumber: String(accountNumber),
+    email: school.email,
+    phone: school.phone,
+  });
+
+  school.paymentSettings = school.paymentSettings || {};
+  school.paymentSettings.paystack =
+    school.paymentSettings.paystack || {};
+
+  school.paymentSettings.paystack.subaccountCode =
+    subaccount.subaccount_code;
+
+  school.paymentSettings.paystack.subaccountId =
+    String(subaccount.id || "");
+
+  school.paymentSettings.paystack.settlementBank =
+    subaccount.settlement_bank || "";
+
+  school.paymentSettings.paystack.accountNumberLast4 =
+    String(accountNumber).slice(-4);
+
+  school.paymentSettings.paystack.connected = true;
+  school.paymentSettings.paystack.connectedAt = new Date();
+
+  // Enable only after Paystack has created the subaccount.
+  school.paymentSettings.enabled = true;
+  school.paymentSettings.provider = "paystack";
+
+  await school.save();
+
+  return res.status(201).json({
+    success: true,
+    message: "School Paystack account connected successfully",
+    data: {
+      enabled: true,
+      connected: true,
+      subaccountCode: subaccount.subaccount_code,
+      settlementBank: subaccount.settlement_bank || "",
+      accountNumberLast4: String(accountNumber).slice(-4),
+    },
+  });
+}
+
 
 function getPaymentCallbackUrl(req, school) {
   const origin = req.get("origin");
