@@ -5,6 +5,7 @@ import {
   initializePaystackHandler,
   verifyPaystackHandler,
   getPaystackBanksHandler,
+  resolveSchoolPaystackAccountHandler,
   connectSchoolPaystackHandler,
 } from "./paystack.controller.js";
 
@@ -60,6 +61,15 @@ router.get(
   asyncHandler(getPaystackBanksHandler)
 );
 
+// Verify bank account and retrieve its registered account name
+router.post(
+  "/resolve-account",
+  protect,
+  authorize("school_admin"),
+  asyncHandler(resolveSchoolPaystackAccountHandler)
+);
+
+// Create and connect the school's Paystack subaccount
 router.post(
   "/connect",
   protect,
