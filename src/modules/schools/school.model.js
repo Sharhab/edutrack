@@ -37,56 +37,59 @@ const schoolSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+
     currentSession: {
-  type: String,
-  default: "",
-  trim: true,
-},
+      type: String,
+      default: "",
+      trim: true,
+    },
 
-currentTerm: {
-  type: String,
-  default: "",
-  trim: true,
-},
+    currentTerm: {
+      type: String,
+      default: "",
+      trim: true,
+    },
 
-themeColor: {
-  type: String,
-  default: "#06b6d4",
-},
+    themeColor: {
+      type: String,
+      default: "#06b6d4",
+    },
 
-logo: {
-  type: String,
-  default: "",
-},
+    logo: {
+      type: String,
+      default: "",
+    },
 
-favicon: {
-  type: String,
-  default: "",
-},
+    favicon: {
+      type: String,
+      default: "",
+    },
 
-motto: {
-  type: String,
-  default: "",
-  trim: true,
-},
+    motto: {
+      type: String,
+      default: "",
+      trim: true,
+    },
 
+    fullDomain: { type: String, default: "" },
 
-     fullDomain: { type: String, default: "" }, 
-customDomain: { type: String, default: "" }, // optional future
+    customDomain: { type: String, default: "" }, // optional future
+
     // =========================
     // BILLING (SINGLE SOURCE OF TRUTH)
     // =========================
-   billingStatus: {
-  type: String,
-  enum: [
-    "trial",
-    "active",
-    "pending_payment",
-    "expired",
-    "blocked",
-  ],
-  default: "trial",
-},
+    billingStatus: {
+      type: String,
+      enum: [
+        "trial",
+        "active",
+        "pending_payment",
+        "expired",
+        "blocked",
+      ],
+      default: "trial",
+    },
+
     trialStartAt: { type: Date, default: null },
     trialEndsAt: { type: Date, default: null },
 
@@ -104,35 +107,96 @@ customDomain: { type: String, default: "" }, // optional future
       enum: ["monthly", "quarterly", "yearly"],
       default: "monthly",
     },
+
     onboardingStatus: {
-  type: String,
-  enum: [
-    "pending",
-    "payment_initiated",
-    "active",
-    "suspended",
-  ],
-  default: "pending",
-},
+      type: String,
+      enum: [
+        "pending",
+        "payment_initiated",
+        "active",
+        "suspended",
+      ],
+      default: "pending",
+    },
+
     subscriptionStatus: {
-  type: String,
-  enum: [
-    "trial",
-    "inactive",
-    "pending",
-    "active",
-    "past_due",
-    "expired",
-    "cancelled",
-  ],
-  default: "inactive",
-},
+      type: String,
+      enum: [
+        "trial",
+        "inactive",
+        "pending",
+        "active",
+        "past_due",
+        "expired",
+        "cancelled",
+      ],
+      default: "inactive",
+    },
+
     // =========================
-    // PAYSTACK
+    // PAYSTACK — EDUTRACK SUBSCRIPTION
     // =========================
     paystackCustomerCode: { type: String, default: "" },
     paystackSubscriptionCode: { type: String, default: "" },
     paystackEmailToken: { type: String, default: "" },
+
+    // =========================
+    // SCHOOL FEE PAYMENT SETTINGS
+    // =========================
+    paymentSettings: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+
+      provider: {
+        type: String,
+        enum: ["paystack"],
+        default: "paystack",
+      },
+
+      paystack: {
+        subaccountCode: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        subaccountId: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        settlementBank: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        accountName: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        accountNumberLast4: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        connected: {
+          type: Boolean,
+          default: false,
+        },
+
+        connectedAt: {
+          type: Date,
+          default: null,
+        },
+      },
+    },
 
     // =========================
     // STATUS
