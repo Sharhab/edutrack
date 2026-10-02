@@ -1,4 +1,3 @@
-
 import {
   verifyPaystackPayment,
   initializePaystackPayment,
@@ -8,10 +7,20 @@ import { Student } from "../../students/student.model.js";
 
 export async function initializePaystackHandler(req, res) {
   try {
-    const { studentFeeId } = req.body;
-const parentId = req.user?._id || req.user?.id;
-    
-    if (!parentId || !req.user?.email) {
+    const { studentFeeId } = req.body || {};
+
+    const parentId = req.user?._id || req.user?.id;
+    const email = req.user?.email?.trim();
+
+    if (!parentId || !email) {
+      console.error("PAYSTACK AUTH CONTEXT:", {
+        hasUser: Boolean(req.user),
+        hasParentId: Boolean(parentId),
+        hasEmail: Boolean(email),
+        userId: req.user?.id,
+        userObjectId: req.user?._id,
+      });
+
       return res.status(401).json({
         success: false,
         message: "Authentication required",
@@ -67,7 +76,7 @@ const parentId = req.user?._id || req.user?.id;
 
     const result = await initializePaystackPayment({
       schoolId: fee.schoolId,
-      email: req.user.email,
+      email,
       amount,
       callbackUrl: `${frontendUrl}/payment/success?schoolId=${encodeURIComponent(
         String(fee.schoolId)
