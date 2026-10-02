@@ -1,4 +1,4 @@
-aimport axios from "axios";
+import axios from "axios";
 import { School } from "../../schools/school.model.js";
 import { ApiError } from "../../../utils/apiError.js";
 
