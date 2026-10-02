@@ -17,13 +17,11 @@ const router = express.Router();
  * PUBLIC PAYMENT ROUTES
  * =========================
  */
-
-// initialize payment
 router.post(
   "/initialize",
+  protect,
   asyncHandler(initializePaystackHandler)
 );
-
 // verify payment
 router.get(
   "/verify/:reference",
