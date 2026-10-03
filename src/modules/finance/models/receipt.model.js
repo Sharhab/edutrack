@@ -14,7 +14,7 @@ const receiptSchema = new mongoose.Schema(
     // =====================================
     paymentId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Payment",
+       ref: "FeePayment",
       required: true,
       index: true,
     },
