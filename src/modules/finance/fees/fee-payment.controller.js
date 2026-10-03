@@ -14,8 +14,7 @@ import { ApiError } from "../../../utils/apiError.js";
 import { processFeePayment } from "../service/processFeePayment.service.js";
 import { Receipt } from "../models/receipt.model.js";
 import  generateReceiptPDF  from "../service/receiptPdf.service.js";
-import Payment from "../models/payment.model.js";
-
+import { Payment } from "./fee-payment.model.js";
 export async function getPaymentsHandler(
   req,
   res
