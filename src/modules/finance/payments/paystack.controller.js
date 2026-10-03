@@ -235,6 +235,13 @@ export async function initializePaystackHandler(req, res) {
   feeSchoolId: String(fee.schoolId),
 });
 
+    console.log("PAYMENT REQUEST USER:", {
+  userId: String(userId),
+  role: req.user?.role,
+  schoolId: String(req.user?.schoolId || ""),
+  feeSchoolId: String(fee.schoolId),
+});
+    
     const parent = await Parent.findOne({
       userId,
       schoolId: fee.schoolId,
