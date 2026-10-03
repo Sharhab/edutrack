@@ -230,6 +230,11 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
+    console.log("PAYSTACK PARENT LOOKUP:", {
+  userId: String(userId),
+  feeSchoolId: String(fee.schoolId),
+});
+
     const parent = await Parent.findOne({
       userId,
       schoolId: fee.schoolId,
@@ -241,6 +246,15 @@ export async function initializePaystackHandler(req, res) {
         message: "Parent profile not found for this account",
       });
     }
+
+    console.log("PAYSTACK PARENT FOUND:", parent
+  ? {
+      parentId: String(parent._id),
+      parentUserId: String(parent.userId),
+      parentSchoolId: String(parent.schoolId),
+    }
+  : null
+);
 
     const child = await Student.findOne({
       _id: fee.studentId,
@@ -306,19 +320,7 @@ export async function initializePaystackHandler(req, res) {
   }
 }
 
-console.log("PAYSTACK PARENT LOOKUP:", {
-  userId: String(userId),
-  feeSchoolId: String(fee.schoolId),
-});
 
-console.log("PAYSTACK PARENT FOUND:", parent
-  ? {
-      parentId: String(parent._id),
-      parentUserId: String(parent.userId),
-      parentSchoolId: String(parent.schoolId),
-    }
-  : null
-);
 /* =========================================
    VERIFY PAYSTACK PAYMENT
 ========================================= */
