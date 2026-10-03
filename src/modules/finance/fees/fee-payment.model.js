@@ -75,4 +75,6 @@ studentFeeId: {
 feePaymentSchema.index({ schoolId: 1, studentId: 1 });
 feePaymentSchema.index({ schoolId: 1, invoiceId: 1 });
 
-export const Payment = mongoose.model("Payment", feePaymentSchema);
+export const Payment =
+  mongoose.models.FeePayment ||
+  mongoose.model("FeePayment", feePaymentSchema, "payments");
