@@ -1,6 +1,5 @@
 import { Receipt } from "../models/receipt.model.js";
 import { StudentFee } from "./studentFee.model.js";
-import { Payment } from "./fee-payment.model.js";
 /* =========================================
    GET RECEIPT
 ========================================= */
