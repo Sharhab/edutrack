@@ -44,7 +44,6 @@ router.get(
 // Paystack calls this directly; no user authentication
 router.post(
   "/webhook",
-  express.raw({ type: "application/json" }),
   asyncHandler(paystackWebhookHandler)
 );
 
