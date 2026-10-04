@@ -329,9 +329,7 @@ export async function verifyPaystackPayment(
       status: payment.status,
       reference: payment.reference,
 
-      amount: Math.round(
-        Number(payment.amount || 0) / 100
-      ),
+     amount: Number(payment.amount || 0) / 100,
 
       paidAt: payment.paid_at,
       channel: payment.channel,
