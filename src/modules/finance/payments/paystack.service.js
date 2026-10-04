@@ -10,7 +10,7 @@ const PAYSTACK_BASE_URL = "https://api.paystack.co";
 /* =========================================
    GET EDUTrack PAYSTACK SECRET KEY
 ========================================= */
-function getPaystackSecret() {
+export function getPaystackSecret() {
   const secretKey = process.env.PAYSTACK_SECRET_KEY;
 
   if (!secretKey) {
