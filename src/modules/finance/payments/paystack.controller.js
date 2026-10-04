@@ -4,6 +4,7 @@ import {
   getPaystackBanks,
   resolvePaystackAccount,
   createSchoolPaystackSubaccount,
+  refreshSchoolPaystackSubaccountStatus,
 } from "./paystack.service.js";
 import { processFeePayment } from "../service/processFeePayment.service.js";
 import { StudentFee } from "../fees/studentFee.model.js";
@@ -133,6 +134,17 @@ export async function connectSchoolPaystackHandler(req, res) {
   school.paymentSettings.paystack.connected = true;
   school.paymentSettings.paystack.connectedAt = new Date();
 
+  // Save verification status only when Paystack returns it.
+  school.paymentSettings.paystack.isVerified =
+    typeof subaccount.is_verified === "boolean"
+      ? subaccount.is_verified
+      : false;
+
+  school.paymentSettings.paystack.verificationCheckedAt =
+    typeof subaccount.is_verified === "boolean"
+      ? new Date()
+      : null;
+
   // Enable only after Paystack has created the subaccount.
   school.paymentSettings.enabled = true;
   school.paymentSettings.provider = "paystack";
@@ -149,8 +161,49 @@ export async function connectSchoolPaystackHandler(req, res) {
       settlementBank:
         subaccount.settlement_bank || normalizedBankCode,
       accountNumberLast4: normalizedAccountNumber.slice(-4),
+      isVerified:
+        typeof subaccount.is_verified === "boolean"
+          ? subaccount.is_verified
+          : false,
+      verificationCheckedAt:
+        typeof subaccount.is_verified === "boolean"
+          ? school.paymentSettings.paystack.verificationCheckedAt
+          : null,
     },
   });
+}
+
+/* =========================================
+   REFRESH SCHOOL PAYSTACK VERIFICATION
+========================================= */
+export async function refreshSchoolPaystackStatusHandler(req, res) {
+  try {
+    const schoolId = req.user?.schoolId;
+
+    if (!schoolId) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is not linked to a school",
+      });
+    }
+
+    const status =
+      await refreshSchoolPaystackSubaccountStatus(schoolId);
+
+    return res.json({
+      success: true,
+      message: "Paystack account status refreshed",
+      data: status,
+    });
+  } catch (err) {
+    console.error("PAYSTACK STATUS REFRESH ERROR:", err);
+
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      message:
+        err.message || "Could not refresh Paystack account status",
+    });
+  }
 }
 
 /* =========================================
@@ -231,17 +284,17 @@ export async function initializePaystackHandler(req, res) {
     }
 
     console.log("PAYSTACK PARENT LOOKUP:", {
-  userId: String(userId),
-  feeSchoolId: String(fee.schoolId),
-});
+      userId: String(userId),
+      feeSchoolId: String(fee.schoolId),
+    });
 
     console.log("PAYMENT REQUEST USER:", {
-  userId: String(userId),
-  role: req.user?.role,
-  schoolId: String(req.user?.schoolId || ""),
-  feeSchoolId: String(fee.schoolId),
-});
-    
+      userId: String(userId),
+      role: req.user?.role,
+      schoolId: String(req.user?.schoolId || ""),
+      feeSchoolId: String(fee.schoolId),
+    });
+
     const parent = await Parent.findOne({
       userId,
       schoolId: fee.schoolId,
@@ -254,14 +307,16 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    console.log("PAYSTACK PARENT FOUND:", parent
-  ? {
-      parentId: String(parent._id),
-      parentUserId: String(parent.userId),
-      parentSchoolId: String(parent.schoolId),
-    }
-  : null
-);
+    console.log(
+      "PAYSTACK PARENT FOUND:",
+      parent
+        ? {
+            parentId: String(parent._id),
+            parentUserId: String(parent.userId),
+            parentSchoolId: String(parent.schoolId),
+          }
+        : null
+    );
 
     const child = await Student.findOne({
       _id: fee.studentId,
@@ -326,7 +381,6 @@ export async function initializePaystackHandler(req, res) {
     });
   }
 }
-
 
 /* =========================================
    VERIFY PAYSTACK PAYMENT
