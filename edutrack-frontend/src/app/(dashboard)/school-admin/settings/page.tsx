@@ -68,6 +68,9 @@ export default function SchoolAdminSettingsPage() {
   const [verifiedAccountName, setVerifiedAccountName] = useState("");
   const [paystackMessage, setPaystackMessage] = useState("");
   const [paystackConnected, setPaystackConnected] = useState(false);
+  const [paystackVerified, setPaystackVerified] = useState<boolean | null>(null);
+  const [verificationCheckedAt, setVerificationCheckedAt] = useState<string | null>(null);
+  const [refreshingPaystackStatus, setRefreshingPaystackStatus] = useState(false);
 
   /* =========================================
      LOAD PROFILE
@@ -149,6 +152,55 @@ export default function SchoolAdminSettingsPage() {
 
   useEffect(() => {
     loadPaystackBanks();
+  }, []);
+
+  /* =========================================
+     REFRESH PAYSTACK SUBACCOUNT STATUS
+  ========================================= */
+  async function handleRefreshPaystackStatus() {
+    try {
+      setRefreshingPaystackStatus(true);
+      setPaystackMessage("");
+
+      const response = await api.get(
+        "/finance/paystack/subaccount-status"
+      );
+
+      // Support the standard { success, data } response and direct data responses.
+      const status = response.data?.data ?? response.data;
+
+      const connected = Boolean(status?.connected);
+      setPaystackConnected(connected);
+      setPaystackVerified(
+        typeof status?.isVerified === "boolean"
+          ? status.isVerified
+          : null
+      );
+      setVerificationCheckedAt(
+        status?.verificationCheckedAt || null
+      );
+
+      setPaystackMessage(
+        connected
+          ? "Paystack subaccount status refreshed."
+          : "No Paystack subaccount is connected to this school."
+      );
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setPaystackMessage(
+          err.response?.data?.message ||
+            "Could not refresh Paystack status."
+        );
+      } else {
+        setPaystackMessage("Could not refresh Paystack status.");
+      }
+    } finally {
+      setRefreshingPaystackStatus(false);
+    }
+  }
+
+  useEffect(() => {
+    handleRefreshPaystackStatus();
   }, []);
 
   /* =========================================
@@ -255,6 +307,9 @@ export default function SchoolAdminSettingsPage() {
         response.data?.message ||
           "School Paystack account connected successfully."
       );
+
+      // Fetch Paystack's actual verification status after connection.
+      await handleRefreshPaystackStatus();
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setPaystackMessage(
@@ -501,13 +556,50 @@ export default function SchoolAdminSettingsPage() {
           ) : null}
 
           {paystackConnected ? (
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-              <p className="font-semibold text-emerald-300">
-                Paystack account connected
-              </p>
-              <p className="mt-1 text-sm text-slate-300">
-                Online school-fee payments have been enabled for this school.
-              </p>
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <p className="font-semibold text-emerald-300">
+                  Paystack account connected
+                </p>
+                <p className="mt-1 text-sm text-slate-300">
+                  Online school-fee payments are linked to this school's Paystack subaccount.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-slate-300">Paystack verification:</span>
+                  {paystackVerified === true ? (
+                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 font-semibold text-emerald-300">
+                      Verified
+                    </span>
+                  ) : paystackVerified === false ? (
+                    <span className="rounded-full bg-amber-500/15 px-3 py-1 font-semibold text-amber-300">
+                      Not verified yet
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-white/10 px-3 py-1 font-semibold text-slate-300">
+                      Not checked
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-slate-400">
+                  Verification status comes from Paystack and may differ from connection status.
+                </p>
+                {verificationCheckedAt ? (
+                  <p className="mt-1 text-xs text-slate-400">
+                    Last checked: {new Date(verificationCheckedAt).toLocaleString()}
+                  </p>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRefreshPaystackStatus}
+                disabled={refreshingPaystackStatus}
+                className="rounded-xl border border-cyan-500/40 px-5 py-3 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {refreshingPaystackStatus
+                  ? "Refreshing status..."
+                  : "Refresh Paystack status"}
+              </button>
             </div>
           ) : (
             <>
