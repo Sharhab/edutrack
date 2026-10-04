@@ -91,7 +91,17 @@ app.options(/.*/, cors(corsOptions));
    BODY PARSERS
 ========================================= */
 
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      const requestPath = req.originalUrl?.split("?")[0];
+
+      if (requestPath === "/api/finance/paystack/webhook") {
+        req.rawBody = Buffer.from(buf);
+      }
+    },
+  })
+);
 
 app.use(
   express.urlencoded({
