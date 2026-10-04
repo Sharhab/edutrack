@@ -71,13 +71,20 @@ const schoolSchema = new mongoose.Schema(
       trim: true,
     },
 
-    fullDomain: { type: String, default: "" },
+    fullDomain: {
+      type: String,
+      default: "",
+    },
 
-    customDomain: { type: String, default: "" }, // optional future
+    customDomain: {
+      type: String,
+      default: "",
+    },
 
     // =========================
     // BILLING (SINGLE SOURCE OF TRUTH)
     // =========================
+
     billingStatus: {
       type: String,
       enum: [
@@ -90,11 +97,25 @@ const schoolSchema = new mongoose.Schema(
       default: "trial",
     },
 
-    trialStartAt: { type: Date, default: null },
-    trialEndsAt: { type: Date, default: null },
+    trialStartAt: {
+      type: Date,
+      default: null,
+    },
 
-    subscriptionStartedAt: { type: Date, default: null },
-    subscriptionExpiresAt: { type: Date, default: null },
+    trialEndsAt: {
+      type: Date,
+      default: null,
+    },
+
+    subscriptionStartedAt: {
+      type: Date,
+      default: null,
+    },
+
+    subscriptionExpiresAt: {
+      type: Date,
+      default: null,
+    },
 
     plan: {
       type: String,
@@ -134,15 +155,40 @@ const schoolSchema = new mongoose.Schema(
     },
 
     // =========================
-    // PAYSTACK — EDUTRACK SUBSCRIPTION
+    // EDU TRACK BILLING PAYSTACK
     // =========================
-    paystackCustomerCode: { type: String, default: "" },
-    paystackSubscriptionCode: { type: String, default: "" },
-    paystackEmailToken: { type: String, default: "" },
+    // These are for the school's
+    // EduTrack subscription billing.
+    //
+    // DO NOT confuse these with
+    // school fee payment settings below.
+
+    paystackCustomerCode: {
+      type: String,
+      default: "",
+    },
+
+    paystackSubscriptionCode: {
+      type: String,
+      default: "",
+    },
+
+    paystackEmailToken: {
+      type: String,
+      default: "",
+    },
 
     // =========================
-    // SCHOOL FEE PAYMENT SETTINGS
+    // SCHOOL PAYMENT SETTINGS
     // =========================
+    //
+    // Used when parents/students pay
+    // school fees through EduTrack.
+    //
+    // EduTrack's Paystack secret key
+    // stays ONLY on the backend.
+    // We do NOT store it here.
+
     paymentSettings: {
       enabled: {
         type: Boolean,
@@ -156,36 +202,34 @@ const schoolSchema = new mongoose.Schema(
       },
 
       paystack: {
+        // Paystack subaccount identifier
         subaccountCode: {
           type: String,
           default: "",
-          trim: true,
         },
 
+        // Paystack subaccount ID
         subaccountId: {
           type: String,
           default: "",
-          trim: true,
         },
 
+        // Bank information returned by Paystack
         settlementBank: {
           type: String,
           default: "",
-          trim: true,
         },
 
-        accountName: {
-          type: String,
-          default: "",
-          trim: true,
-        },
-
+        // We only store the last 4 digits.
+        // Never store the full account number.
         accountNumberLast4: {
           type: String,
           default: "",
-          trim: true,
         },
 
+        // Indicates whether the school has
+        // successfully connected its Paystack
+        // settlement account.
         connected: {
           type: Boolean,
           default: false,
@@ -195,17 +239,45 @@ const schoolSchema = new mongoose.Schema(
           type: Date,
           default: null,
         },
+
+        // Latest verification status returned by Paystack.
+        // Never set this to true manually.
+        isVerified: {
+          type: Boolean,
+          default: false,
+        },
+
+        // Last time EduTrack checked the status with Paystack.
+        verificationCheckedAt: {
+          type: Date,
+          default: null,
+        },
       },
     },
 
     // =========================
     // STATUS
     // =========================
-    isActive: { type: Boolean, default: true },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    // =========================
+    // SCHOOL SETTINGS
+    // =========================
 
     settings: {
-      allowStudentLogin: { type: Boolean, default: true },
-      allowParentLogin: { type: Boolean, default: true },
+      allowStudentLogin: {
+        type: Boolean,
+        default: true,
+      },
+
+      allowParentLogin: {
+        type: Boolean,
+        default: true,
+      },
     },
   },
   { timestamps: true }
@@ -213,7 +285,7 @@ const schoolSchema = new mongoose.Schema(
 
 /**
  * =========================
- * INDEXES (FIXED)
+ * INDEXES
  * =========================
  */
 
@@ -221,13 +293,33 @@ const schoolSchema = new mongoose.Schema(
 schoolSchema.index({ email: 1 });
 
 // slug (tenant key)
-schoolSchema.index({ slug: 1 }, { unique: true });
+schoolSchema.index(
+  { slug: 1 },
+  { unique: true }
+);
 
-// domain (sparse unique only ONCE)
-schoolSchema.index({ domain: 1 }, { unique: true, sparse: true });
+// domain (sparse unique)
+schoolSchema.index(
+  { domain: 1 },
+  {
+    unique: true,
+    sparse: true,
+  }
+);
 
 // performance
-schoolSchema.index({ billingStatus: 1 });
+schoolSchema.index({
+  billingStatus: 1,
+});
 
-export const School = mongoose.model("School", schoolSchema);
+// payment lookup
+schoolSchema.index({
+  "paymentSettings.paystack.subaccountCode": 1,
+});
+
+export const School = mongoose.model(
+  "School",
+  schoolSchema
+);
+
 export default School;
