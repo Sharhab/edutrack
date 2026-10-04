@@ -5,7 +5,7 @@ import {
   resolvePaystackAccount,
   createSchoolPaystackSubaccount,
 } from "./paystack.service.js";
-
+import { processFeePayment } from "../service/processFeePayment.service.js";
 import { StudentFee } from "../fees/studentFee.model.js";
 import { Student } from "../../students/student.model.js";
 import { Parent } from "../../parents/parent.model.js";
@@ -343,16 +343,66 @@ export async function verifyPaystackHandler(req, res) {
       });
     }
 
+    // Ask Paystack to verify the transaction.
     const result = await verifyPaystackPayment(reference, schoolId);
+
+    // Do not record a transaction unless Paystack confirms success.
+    if (
+      result.status !== "success" ||
+      result.currency !== "NGN" ||
+      String(result.reference) !== String(reference)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Paystack has not confirmed this payment as successful",
+        data: result,
+      });
+    }
+
+    const metadata = result.metadata || {};
+
+    // Confirm the verified transaction contains the required fee identifiers.
+    if (
+      String(metadata.schoolId) !== String(schoolId) ||
+      !metadata.studentId ||
+      !metadata.studentFeeId
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Verified payment is missing valid student fee information",
+      });
+    }
+
+    // Save the payment using the same processor as the webhook.
+    // This also prevents the webhook and browser callback from recording it twice.
+    const feePayment = await processFeePayment({
+      schoolId,
+      studentId: metadata.studentId,
+      studentFeeId: metadata.studentFeeId,
+      amountPaid: result.amount,
+      method: "paystack",
+      reference: result.reference,
+      metadata,
+    });
 
     return res.json({
       success: true,
-      data: result,
+      message: feePayment.alreadyProcessed
+        ? "Payment was already recorded"
+        : "Payment verified and recorded successfully",
+      data: {
+        ...result,
+        feePayment: {
+          alreadyProcessed: feePayment.alreadyProcessed,
+          paymentId: feePayment.payment?._id,
+          receiptNumber: feePayment.receipt?.receiptNumber,
+        },
+      },
     });
   } catch (err) {
     console.error("PAYSTACK VERIFICATION ERROR:", err);
 
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       message: err.message || "Payment verification failed",
     });
