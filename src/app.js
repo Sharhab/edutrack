@@ -93,7 +93,12 @@ app.options(/.*/, cors(corsOptions));
 app.use(
   express.json({
     verify: (req, res, buf) => {
-      if (req.originalUrl?.split("?")[0] === "/api/finance/paystack/webhook") {
+      const requestPath = req.originalUrl?.split("?")[0];
+
+      if (
+        requestPath === "/api/finance/paystack/webhook" ||
+        requestPath === "/api/finance/fees/payments/paystack/webhook"
+      ) {
         req.rawBody = Buffer.from(buf);
       }
     },
