@@ -158,6 +158,7 @@ export async function createSchoolPaystackSubaccount({
     );
   }
 }
+
 /* =========================================
    GET SCHOOL PAYSTACK SUBACCOUNT
 ========================================= */
@@ -190,6 +191,87 @@ async function getSchoolPaystackSubaccount(schoolId) {
   }
 
   return subaccountCode;
+}
+
+/* =========================================
+   REFRESH SCHOOL PAYSTACK SUBACCOUNT STATUS
+========================================= */
+export async function refreshSchoolPaystackSubaccountStatus(schoolId) {
+  const school = await School.findById(schoolId);
+
+  if (!school) {
+    throw new ApiError(404, "School not found");
+  }
+
+  const paystackSettings =
+    school.paymentSettings?.paystack;
+
+  const subaccountCode = paystackSettings?.subaccountCode;
+
+  if (!subaccountCode) {
+    throw new ApiError(
+      400,
+      "School Paystack account is not connected"
+    );
+  }
+
+  const secretKey = getPaystackSecret();
+
+  try {
+    const response = await axios.get(
+      `${PAYSTACK_BASE_URL}/subaccount/${encodeURIComponent(subaccountCode)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+        },
+      }
+    );
+
+    const subaccount = response.data?.data;
+
+    if (
+      !response.data?.status ||
+      !subaccount ||
+      typeof subaccount.is_verified !== "boolean"
+    ) {
+      throw new ApiError(
+        502,
+        "Paystack returned an invalid subaccount status"
+      );
+    }
+
+    // Save only the verification status returned by Paystack.
+    paystackSettings.isVerified = subaccount.is_verified;
+    paystackSettings.verificationCheckedAt = new Date();
+
+    // Keep the stored subaccount ID updated when Paystack returns it.
+    if (subaccount.id) {
+      paystackSettings.subaccountId = String(subaccount.id);
+    }
+
+    await school.save();
+
+    return {
+      connected: Boolean(paystackSettings.connected),
+      isVerified: subaccount.is_verified,
+      verificationCheckedAt:
+        paystackSettings.verificationCheckedAt,
+      subaccountCode,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+
+    console.error(
+      "PAYSTACK SUBACCOUNT STATUS ERROR:",
+      error.response?.data || error.message
+    );
+
+    throw new ApiError(
+      502,
+      error.response?.data?.message ||
+        "Could not refresh Paystack subaccount status"
+    );
+  }
 }
 
 /* =========================================
@@ -329,7 +411,7 @@ export async function verifyPaystackPayment(
       status: payment.status,
       reference: payment.reference,
 
-     amount: Number(payment.amount || 0) / 100,
+      amount: Number(payment.amount || 0) / 100,
 
       paidAt: payment.paid_at,
       channel: payment.channel,
