@@ -7,6 +7,7 @@ import {
   getPaystackBanksHandler,
   resolveSchoolPaystackAccountHandler,
   connectSchoolPaystackHandler,
+  refreshSchoolPaystackStatusHandler,
 } from "./paystack.controller.js";
 
 import { paystackWebhookHandler } from "./webhook.controller.js";
@@ -74,6 +75,14 @@ router.post(
   protect,
   authorize("school_admin"),
   asyncHandler(connectSchoolPaystackHandler)
+);
+
+// Refresh the school's Paystack subaccount verification status
+router.get(
+  "/subaccount-status",
+  protect,
+  authorize("school_admin"),
+  asyncHandler(refreshSchoolPaystackStatusHandler)
 );
 
 export default router;
