@@ -128,7 +128,7 @@ router.post(
 // Paystack webhook (NO auth usually)
 router.post(
   "/payments/paystack/webhook",
- asycHandler(paystackWebhookHandler)
+ asyncHandler(paystackWebhookHandler)
 );
 /* =========================================
    CANCEL PAYMENT
