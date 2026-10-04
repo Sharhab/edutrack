@@ -45,20 +45,34 @@ export async function processFeePayment({
       reference,
     }).session(session);
 
-    if (existingPayment) {
-      const existingReceipt = await Receipt.findOne({
-        schoolId,
-        paymentId: existingPayment._id,
-      }).session(session);
+   if (existingPayment) {
+  const sameFee =
+    String(existingPayment.studentFeeId) === String(studentFeeId);
+  const sameStudent =
+    String(existingPayment.studentId) === String(studentId);
+  const sameAmount =
+    Math.abs(Number(existingPayment.amount) - paymentAmount) < 0.01;
 
-      await session.commitTransaction();
+  if (!sameFee || !sameStudent || !sameAmount) {
+    throw new ApiError(
+      409,
+      "This Paystack reference is already associated with a different payment"
+    );
+  }
 
-      return {
-        alreadyProcessed: true,
-        payment: existingPayment,
-        receipt: existingReceipt,
-      };
-    }
+  const existingReceipt = await Receipt.findOne({
+    schoolId,
+    paymentId: existingPayment._id,
+  }).session(session);
+
+  await session.commitTransaction();
+
+  return {
+    alreadyProcessed: true,
+    payment: existingPayment,
+    receipt: existingReceipt,
+  };
+}
 
     const studentFee = await StudentFee.findOne({
       _id: studentFeeId,
