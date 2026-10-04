@@ -3,9 +3,8 @@ import express from "express";
 import { protect } from "../../../middlewares/auth.middleware.js";
 import { authorize } from "../../../middlewares/role.middleware.js";
 import { tenantScope } from "../../../middlewares/tenantScope.middleware.js";
-
 import { asyncHandler } from "../../../utils/asyncHandler.js";
-import {   paystackWebhookHandler } from "../payments/webhook.controller.js"
+import { paystackWebhookHandler } from "../payments/webhook.controller.js";
 import {
   createFeePlanHandler,
   assignFeeToStudentHandler,
