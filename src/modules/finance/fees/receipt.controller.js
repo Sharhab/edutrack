@@ -1,8 +1,8 @@
 import { Receipt } from "../models/receipt.model.js";
 import { StudentFee } from "./studentFee.model.js";
-import { Student } from "../students/student.model.js";
-import { Parent } from "../parents/parent.model.js";
-import { School } from "../schools/school.model.js";
+import { Student } from "../../students/student.model.js";
+import { Parent } from "../../parents/parent.model.js";
+import { School } from "../../schools/school.model.js";
 
 /* =========================================
    HELPERS
