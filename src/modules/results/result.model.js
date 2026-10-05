@@ -41,13 +41,41 @@ const resultSchema = new mongoose.Schema(
       ref: "Term",
       required: true,
     },
+   /* =========================================
+   ASSESSMENT SCORES
+   TOTAL = 100
+========================================= */
 
-    ca1: { type: Number, default: 0, min: 0, max: 20 },
-    ca2: { type: Number, default: 0, min: 0, max: 20 },
-    assignment: { type: Number, default: 0, min: 0, max: 10 },
-    exam: { type: Number, default: 0, min: 0, max: 50 },
+ca1: {
+  type: Number,
+  min: 0,
+  max: 10,
+},
 
-    total: { type: Number, default: 0 },
+ca2: {
+  type: Number,
+  min: 0,
+  max: 10,
+},
+
+assignment: {
+  type: Number,
+  min: 0,
+  max: 10,
+},
+
+exam: {
+  type: Number,
+  min: 0,
+  max: 70,
+},
+
+total: {
+  type: Number,
+  default: 0,
+  min: 0,
+  max: 100,
+},
     grade: { type: String, default: "" },
     remark: { type: String, default: "" },
 
