@@ -31,6 +31,7 @@ type Receipt = {
 type ReceiptDetails = {
   receiptId?: string;
   receiptNumber?: string;
+  paymentId?: string;
   amount?: number;
   amountPaid?: number;
   method?: string;
