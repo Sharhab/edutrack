@@ -5,7 +5,6 @@ import { startFinanceScheduler } from "./modules/fees/finance.scheduler.js";
 import { StudentFee } from "./modules/finance/fees/studentFee.model.js";
 import { startBillingCron } from "./jobs/cron.js";
 
-
 async function dropOldIndexSafely() {
   try {
     await StudentFee.collection.dropIndex(
@@ -31,11 +30,12 @@ async function startServer() {
 
     // ✅ run AFTER connection is stable
     await dropOldIndexSafely();
-      startBillingCron();
+
+    startBillingCron();
     startFinanceScheduler();
 
-    app.listen(env.PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${env.PORT}`);
+    app.listen(env.PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${env.PORT}`);
     });
   } catch (error) {
     console.error("❌ Server failed to start:", error.message);
