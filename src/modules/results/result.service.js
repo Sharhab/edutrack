@@ -1,21 +1,112 @@
 import mongoose from "mongoose";
+
 import { Result } from "./result.model.js";
+
 import { computeGrade } from "./grade.utils.js";
+
 import { ApiError } from "../../utils/apiError.js";
+
 import { Teacher } from "../teachers/teacher.model.js";
 
 /* =========================================
    CORE UTILS (SINGLE SOURCE OF TRUTH)
 ========================================= */
 
-function calculateResultFields(payload) {
-  const ca1 = Number(payload.ca1 || 0);
-  const ca2 = Number(payload.ca2 || 0);
-  const assignment = Number(payload.assignment || 0);
-  const exam = Number(payload.exam || 0);
+/**
+ * Score limits
+ *
+ * CA1        = 10
+ * CA2        = 10
+ * Assignment = 10
+ * Exam       = 70
+ * Total      = 100
+ */
+const SCORE_LIMITS = {
+  ca1: 10,
+  ca2: 10,
+  assignment: 10,
+  exam: 70,
+};
 
-  const total = ca1 + ca2 + assignment + exam;
-  const { grade, remark } = computeGrade(total);
+/**
+ * Convert a score safely.
+ *
+ * IMPORTANT:
+ * - undefined/null/"" stays null
+ * - 0 stays 0
+ * - valid numbers stay numbers
+ */
+function normalizeScore(value, max) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const score = Number(value);
+
+  if (!Number.isFinite(score)) {
+    return null;
+  }
+
+  return Math.min(Math.max(score, 0), max);
+}
+
+function calculateResultFields(payload) {
+  const ca1 = normalizeScore(
+    payload.ca1,
+    SCORE_LIMITS.ca1
+  );
+
+  const ca2 = normalizeScore(
+    payload.ca2,
+    SCORE_LIMITS.ca2
+  );
+
+  const assignment = normalizeScore(
+    payload.assignment,
+    SCORE_LIMITS.assignment
+  );
+
+  const exam = normalizeScore(
+    payload.exam,
+    SCORE_LIMITS.exam
+  );
+
+  /*
+   * Only entered scores contribute to the total.
+   *
+   * Example:
+   * CA1 = 8
+   * CA2 = blank
+   * Assignment = blank
+   * Exam = blank
+   *
+   * Total = 8
+   *
+   * If everything is blank:
+   * total = 0
+   * grade/remark remain blank.
+   */
+  const total =
+    (ca1 ?? 0) +
+    (ca2 ?? 0) +
+    (assignment ?? 0) +
+    (exam ?? 0);
+
+  const hasAnyScore =
+    ca1 !== null ||
+    ca2 !== null ||
+    assignment !== null ||
+    exam !== null;
+
+  let grade = "";
+  let remark = "";
+
+  if (hasAnyScore) {
+    const computed = computeGrade(total);
+
+    grade = computed.grade;
+    remark = computed.remark;
+  }
 
   return {
     ca1,
@@ -37,11 +128,15 @@ function formatResult(result) {
     _id: result._id,
 
     studentId: result.studentId?._id || "",
+
     studentName: result.studentId
-      ? `${result.studentId.firstName || ""} ${result.studentId.lastName || ""}`.trim()
+      ? `${result.studentId.firstName || ""} ${
+          result.studentId.lastName || ""
+        }`.trim()
       : "Unknown Student",
 
-    admissionNumber: result.studentId?.admissionNumber || "",
+    admissionNumber:
+      result.studentId?.admissionNumber || "",
 
     classId: result.classId?._id || "",
     className: result.classId?.name || "",
@@ -56,21 +151,53 @@ function formatResult(result) {
     termId: result.termId?._id || "",
     termName: result.termId?.name || "",
 
-    ca1: result.ca1 || 0,
-    ca2: result.ca2 || 0,
-    assignment: result.assignment || 0,
-    exam: result.exam || 0,
+    /*
+     * IMPORTANT:
+     * Do NOT use || 0 here.
+     *
+     * This preserves:
+     * - null = not entered
+     * - 0 = explicitly entered zero
+     */
+    ca1:
+      result.ca1 === undefined || result.ca1 === null
+        ? null
+        : result.ca1,
 
-    total: result.total || 0,
+    ca2:
+      result.ca2 === undefined || result.ca2 === null
+        ? null
+        : result.ca2,
+
+    assignment:
+      result.assignment === undefined ||
+      result.assignment === null
+        ? null
+        : result.assignment,
+
+    exam:
+      result.exam === undefined || result.exam === null
+        ? null
+        : result.exam,
+
+    total:
+      result.total === undefined || result.total === null
+        ? 0
+        : result.total,
+
     grade: result.grade || "",
     remark: result.remark || "",
 
     status: result.status || "draft",
+
     published: result.published || false,
+
     locked: result.locked || false,
 
     enteredBy: result.enteredBy
-      ? `${result.enteredBy.firstName || ""} ${result.enteredBy.lastName || ""}`.trim()
+      ? `${result.enteredBy.firstName || ""} ${
+          result.enteredBy.lastName || ""
+        }`.trim()
       : "",
 
     createdAt: result.createdAt,
@@ -81,6 +208,7 @@ function formatResult(result) {
 /* =========================================
    TEACHER VALIDATION (STANDARDIZED)
 ========================================= */
+
 export async function ensureTeacherCanEnter({
   user,
   schoolId,
@@ -155,14 +283,19 @@ export async function ensureTeacherCanEnter({
     "You are not assigned to this subject"
   );
 }
+
 /* =========================================
    UPSERT (SINGLE RESULT)
 ========================================= */
 
-export async function createOrUpdateResult(payload, user) {
+export async function createOrUpdateResult(
+  payload,
+  user
+) {
   const schoolId = user.schoolId;
 
-  const computed = calculateResultFields(payload);
+  const computed =
+    calculateResultFields(payload);
 
   await ensureTeacherCanEnter({
     user,
@@ -175,13 +308,14 @@ export async function createOrUpdateResult(payload, user) {
      PREVENT EDITING LOCKED RESULTS
   ========================================= */
 
-  const existingResult = await Result.findOne({
-    schoolId,
-    studentId: payload.studentId,
-    subjectId: payload.subjectId,
-    sessionId: payload.sessionId,
-    termId: payload.termId,
-  });
+  const existingResult =
+    await Result.findOne({
+      schoolId,
+      studentId: payload.studentId,
+      subjectId: payload.subjectId,
+      sessionId: payload.sessionId,
+      termId: payload.termId,
+    });
 
   if (existingResult?.status === "locked") {
     throw new ApiError(
@@ -194,44 +328,53 @@ export async function createOrUpdateResult(payload, user) {
      UPSERT RESULT
   ========================================= */
 
-  const result = await Result.findOneAndUpdate(
-    {
-      schoolId,
-      studentId: payload.studentId,
-      subjectId: payload.subjectId,
-      sessionId: payload.sessionId,
-      termId: payload.termId,
-    },
-    {
-      $set: {
+  const result =
+    await Result.findOneAndUpdate(
+      {
         schoolId,
         studentId: payload.studentId,
-        classId: payload.classId,
         subjectId: payload.subjectId,
         sessionId: payload.sessionId,
         termId: payload.termId,
-
-        ...computed,
-
-        status: "draft",
-
-        enteredBy: user._id || user.id,
       },
-    },
-    {
-      new: true,
-      upsert: true,
-    }
-  )
-    .populate("studentId", "firstName lastName admissionNumber")
-    .populate("classId", "name")
-    .populate("subjectId", "name code")
-    .populate("sessionId", "name")
-    .populate("termId", "name")
-    .populate("enteredBy", "firstName lastName");
+      {
+        $set: {
+          schoolId,
+          studentId: payload.studentId,
+          classId: payload.classId,
+          subjectId: payload.subjectId,
+          sessionId: payload.sessionId,
+          termId: payload.termId,
+
+          ...computed,
+
+          status: "draft",
+
+          enteredBy:
+            user._id || user.id,
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+      }
+    )
+      .populate(
+        "studentId",
+        "firstName lastName admissionNumber"
+      )
+      .populate("classId", "name")
+      .populate("subjectId", "name code")
+      .populate("sessionId", "name")
+      .populate("termId", "name")
+      .populate(
+        "enteredBy",
+        "firstName lastName"
+      );
 
   return formatResult(result);
 }
+
 /* =========================================
    BULK UPSERT (FAST ENTRY)
 ========================================= */
@@ -246,11 +389,17 @@ export async function bulkUpsertResults({
   user,
 }) {
   if (!Array.isArray(results)) {
-    throw new ApiError(400, "Results must be an array");
+    throw new ApiError(
+      400,
+      "Results must be an array"
+    );
   }
 
   if (!user) {
-    throw new ApiError(401, "User not authenticated");
+    throw new ApiError(
+      401,
+      "User not authenticated"
+    );
   }
 
   await ensureTeacherCanEnter({
@@ -265,21 +414,30 @@ export async function bulkUpsertResults({
    * PREVENT LOCKED RESULTS UPDATE
    * =========================================
    */
-  const studentIds = results.map((r) => r.studentId);
 
-  const lockedResults = await Result.find({
-    schoolId,
-    subjectId,
-    sessionId,
-    termId,
-    status: "locked",
-    studentId: { $in: studentIds },
-  });
+  const studentIds = results.map(
+    (r) => r.studentId
+  );
+
+  const lockedResults =
+    await Result.find({
+      schoolId,
+      subjectId,
+      sessionId,
+      termId,
+      status: "locked",
+      studentId: {
+        $in: studentIds,
+      },
+    });
 
   if (lockedResults.length > 0) {
-    const lockedStudents = lockedResults
-      .map((r) => r.studentId.toString())
-      .join(", ");
+    const lockedStudents =
+      lockedResults
+        .map((r) =>
+          r.studentId.toString()
+        )
+        .join(", ");
 
     throw new ApiError(
       400,
@@ -292,8 +450,10 @@ export async function bulkUpsertResults({
    * BUILD BULK OPS
    * =========================================
    */
+
   const operations = results.map((r) => {
-    const computed = calculateResultFields(r);
+    const computed =
+      calculateResultFields(r);
 
     return {
       updateOne: {
@@ -304,6 +464,7 @@ export async function bulkUpsertResults({
           sessionId,
           termId,
         },
+
         update: {
           $set: {
             schoolId,
@@ -316,9 +477,11 @@ export async function bulkUpsertResults({
             ...computed,
 
             status: "draft",
+
             enteredBy: user._id,
           },
         },
+
         upsert: true,
       },
     };
@@ -326,10 +489,14 @@ export async function bulkUpsertResults({
 
   /**
    * =========================================
-   * EXECUTE BULK WRITE (🔥 MISSING PART FIXED)
+   * EXECUTE BULK WRITE
    * =========================================
    */
-  const result = await Result.bulkWrite(operations);
+
+  const result =
+    await Result.bulkWrite(
+      operations
+    );
 
   return {
     success: true,
@@ -342,6 +509,7 @@ export async function bulkUpsertResults({
 /* =========================================
    GENERATE CLASS RESULTS
 ========================================= */
+
 /* =========================================
    GENERATE CLASS RESULTS
 ========================================= */
@@ -363,13 +531,14 @@ export async function generateClassResults({
      BLOCK LOCKED RESULTS
   ========================================= */
 
-  const lockedCount = await Result.countDocuments({
-    schoolId,
-    classId,
-    sessionId,
-    termId,
-    status: "locked",
-  });
+  const lockedCount =
+    await Result.countDocuments({
+      schoolId,
+      classId,
+      sessionId,
+      termId,
+      status: "locked",
+    });
 
   console.log(
     "LOCKED RESULTS FOUND:",
@@ -387,12 +556,13 @@ export async function generateClassResults({
      LOAD RESULTS
   ========================================= */
 
-  const results = await Result.find({
-    schoolId,
-    classId,
-    sessionId,
-    termId,
-  });
+  const results =
+    await Result.find({
+      schoolId,
+      classId,
+      sessionId,
+      termId,
+    });
 
   console.log(
     "RESULTS FOUND:",
@@ -448,13 +618,14 @@ export async function publishClassResults({
      BLOCK LOCKED RESULTS
   ========================================= */
 
-  const lockedCount = await Result.countDocuments({
-    schoolId,
-    classId,
-    sessionId,
-    termId,
-    status: "locked",
-  });
+  const lockedCount =
+    await Result.countDocuments({
+      schoolId,
+      classId,
+      sessionId,
+      termId,
+      status: "locked",
+    });
 
   console.log(
     "LOCKED RESULTS FOUND:",
@@ -486,21 +657,24 @@ export async function publishClassResults({
   );
 
   const beforeCount =
-    await Result.countDocuments(filter);
+    await Result.countDocuments(
+      filter
+    );
 
   console.log(
     "GENERATED RESULTS FOUND:",
     beforeCount
   );
 
-  const res = await Result.updateMany(
-    filter,
-    {
-      $set: {
-        status: "published",
-      },
-    }
-  );
+  const res =
+    await Result.updateMany(
+      filter,
+      {
+        $set: {
+          status: "published",
+        },
+      }
+    );
 
   console.log(
     "PUBLISHED RESULTS UPDATED:",
@@ -533,15 +707,18 @@ export async function publishClassResults({
    LOCK / UNLOCK
 ========================================= */
 
-export async function lockClassResults(params) {
-  const res = await Result.updateMany(
-    params,
-    {
-      $set: {
-        status: "locked",
-      },
-    }
-  );
+export async function lockClassResults(
+  params
+) {
+  const res =
+    await Result.updateMany(
+      params,
+      {
+        $set: {
+          status: "locked",
+        },
+      }
+    );
 
   return {
     success: true,
@@ -549,15 +726,18 @@ export async function lockClassResults(params) {
   };
 }
 
-export async function unlockClassResults(params) {
-  const res = await Result.updateMany(
-    params,
-    {
-      $set: {
+export async function unlockClassResults(
+  params
+) {
+  const res =
+    await Result.updateMany(
+      params,
+      {
+        $set: {
           status: "published",
-      },
-    }
-  );
+        },
+      }
+    );
 
   return {
     success: true,
@@ -568,93 +748,113 @@ export async function unlockClassResults(params) {
 /* =========================================
    ADMIN SUMMARY (PROGRESS ENGINE FIXED)
 ========================================= */
+
 export async function getAdminResultSummary({
   schoolId,
   sessionId,
   termId,
 }) {
   const match = {
-    schoolId: new mongoose.Types.ObjectId(schoolId),
+    schoolId:
+      new mongoose.Types.ObjectId(
+        schoolId
+      ),
   };
 
   if (sessionId) {
-    match.sessionId = new mongoose.Types.ObjectId(sessionId);
+    match.sessionId =
+      new mongoose.Types.ObjectId(
+        sessionId
+      );
   }
 
   if (termId) {
-    match.termId = new mongoose.Types.ObjectId(termId);
+    match.termId =
+      new mongoose.Types.ObjectId(
+        termId
+      );
   }
 
-  const summary = await Result.aggregate([
-    {
-      $match: match,
-    },
+  const summary =
+    await Result.aggregate([
+      {
+        $match: match,
+      },
 
-    {
-      $group: {
-        _id: {
-          classId: "$classId",
+      {
+        $group: {
+          _id: {
+            classId: "$classId",
 
-          status: {
-            $ifNull: ["$status", "draft"],
+            status: {
+              $ifNull: [
+                "$status",
+                "draft",
+              ],
+            },
+          },
+
+          total: {
+            $sum: 1,
           },
         },
+      },
 
-        total: {
-          $sum: 1,
+      {
+        $lookup: {
+          from: "classes",
+          localField: "_id.classId",
+          foreignField: "_id",
+          as: "class",
         },
       },
-    },
 
-    {
-      $lookup: {
-        from: "classes",
-        localField: "_id.classId",
-        foreignField: "_id",
-        as: "class",
-      },
-    },
-
-    {
-      $unwind: {
-        path: "$class",
-        preserveNullAndEmptyArrays: true,
-      },
-    },
-
-    {
-      $project: {
-        _id: 0,
-
-        classId: "$_id.classId",
-        className: "$class.name",
-
-        status: {
-          $toLower: "$_id.status",
+      {
+        $unwind: {
+          path: "$class",
+          preserveNullAndEmptyArrays: true,
         },
-
-        total: 1,
       },
-    },
-  ]);
+
+      {
+        $project: {
+          _id: 0,
+
+          classId: "$_id.classId",
+          className: "$class.name",
+
+          status: {
+            $toLower: "$_id.status",
+          },
+
+          total: 1,
+        },
+      },
+    ]);
 
   console.log(
     "RESULT SUMMARY RAW:",
-    JSON.stringify(summary, null, 2)
+    JSON.stringify(
+      summary,
+      null,
+      2
+    )
   );
 
   const grouped = {};
 
   for (const item of summary) {
     const key =
-      item.classId?.toString() || "unknown";
+      item.classId?.toString() ||
+      "unknown";
 
     if (!grouped[key]) {
       grouped[key] = {
         classId: item.classId,
 
         className:
-          item.className || "Unknown Class",
+          item.className ||
+          "Unknown Class",
 
         draft: 0,
         generated: 0,
@@ -680,39 +880,47 @@ export async function getAdminResultSummary({
         `Unknown status "${status}" found`
       );
 
-      grouped[key].draft += item.total;
+      grouped[key].draft +=
+        item.total;
     } else {
-      grouped[key][status] = item.total;
+      grouped[key][status] =
+        item.total;
     }
 
-    grouped[key].totalResults += item.total;
+    grouped[key].totalResults +=
+      item.total;
   }
 
-  const result = Object.values(grouped).map(
-    (item) => {
-      const completed =
-        item.generated +
-        item.published +
-        item.locked;
+  const result =
+    Object.values(grouped).map(
+      (item) => {
+        const completed =
+          item.generated +
+          item.published +
+          item.locked;
 
-      return {
-        ...item,
+        return {
+          ...item,
 
-        progress:
-          item.totalResults > 0
-            ? Math.round(
-                (completed /
-                  item.totalResults) *
-                  100
-              )
-            : 0,
-      };
-    }
-  );
+          progress:
+            item.totalResults > 0
+              ? Math.round(
+                  (completed /
+                    item.totalResults) *
+                    100
+                )
+              : 0,
+        };
+      }
+    );
 
   console.log(
     "RESULT SUMMARY FINAL:",
-    JSON.stringify(result, null, 2)
+    JSON.stringify(
+      result,
+      null,
+      2
+    )
   );
 
   return result;
@@ -722,48 +930,113 @@ export async function getAdminResultSummary({
    LIST RESULTS
 ========================================= */
 
-export async function listResults(query, user) {
-  const filter = { schoolId: user.schoolId };
+export async function listResults(
+  query,
+  user
+) {
+  const filter = {
+    schoolId: user.schoolId,
+  };
 
-  if (query.classId) filter.classId = query.classId;
-  if (query.studentId) filter.studentId = query.studentId;
-  if (query.subjectId) filter.subjectId = query.subjectId;
-  if (query.sessionId) filter.sessionId = query.sessionId;
-  if (query.termId) filter.termId = query.termId;
+  if (query.classId)
+    filter.classId =
+      query.classId;
 
-  const results = await Result.find(filter)
-    .populate("studentId", "firstName lastName admissionNumber")
-    .populate("classId", "name")
-    .populate("subjectId", "name code")
-    .populate("sessionId", "name")
-    .populate("termId", "name")
-    .populate("enteredBy", "firstName lastName")
-    .sort({ createdAt: -1 });
+  if (query.studentId)
+    filter.studentId =
+      query.studentId;
 
-  return results.map(formatResult);
+  if (query.subjectId)
+    filter.subjectId =
+      query.subjectId;
+
+  if (query.sessionId)
+    filter.sessionId =
+      query.sessionId;
+
+  if (query.termId)
+    filter.termId =
+      query.termId;
+
+  const results =
+    await Result.find(filter)
+      .populate(
+        "studentId",
+        "firstName lastName admissionNumber"
+      )
+      .populate("classId", "name")
+      .populate(
+        "subjectId",
+        "name code"
+      )
+      .populate(
+        "sessionId",
+        "name"
+      )
+      .populate(
+        "termId",
+        "name"
+      )
+      .populate(
+        "enteredBy",
+        "firstName lastName"
+      )
+      .sort({
+        createdAt: -1,
+      });
+
+  return results.map(
+    formatResult
+  );
 }
 
 /* =========================================
    STUDENT RESULTS
 ========================================= */
 
-export async function getStudentResults(studentId, user) {
+export async function getStudentResults(
+  studentId,
+  user
+) {
   if (user.role === "parent") {
-    await ensureParentOwnsStudent(user, studentId);
+    await ensureParentOwnsStudent(
+      user,
+      studentId
+    );
   }
 
-  const results = await Result.find({
-    schoolId: user.schoolId,
-    studentId,
-  })
-    .populate("subjectId", "name code")
-    .populate("classId", "name")
-    .populate("sessionId", "name")
-    .populate("termId", "name")
-    .populate("enteredBy", "firstName lastName")
-    .sort({ createdAt: -1 });
+  const results =
+    await Result.find({
+      schoolId: user.schoolId,
+      studentId,
+    })
+      .populate(
+        "subjectId",
+        "name code"
+      )
+      .populate(
+        "classId",
+        "name"
+      )
+      .populate(
+        "sessionId",
+        "name"
+      )
+      .populate(
+        "termId",
+        "name"
+      )
+      .populate(
+        "enteredBy",
+        "firstName lastName"
+      )
+      .sort({
+        createdAt: -1,
+      });
 
-  return results.map(formatResult);
+  return results.map(
+    formatResult
+  );
 }
 
 /* =========================================
@@ -775,27 +1048,52 @@ export async function getAdminResultsOverview({
   sessionId,
   termId,
 }) {
-  const filter = { schoolId };
+  const filter = {
+    schoolId,
+  };
 
-  if (sessionId) filter.sessionId = sessionId;
-  if (termId) filter.termId = termId;
+  if (sessionId)
+    filter.sessionId =
+      sessionId;
 
-  const results = await Result.find(filter);
+  if (termId)
+    filter.termId =
+      termId;
 
-  const totalResults = results.length;
+  const results =
+    await Result.find(filter);
 
-  const totalStudents = new Set(
-    results.map((r) => String(r.studentId))
-  ).size;
+  const totalResults =
+    results.length;
 
-const publishedResults = results.filter((r) => r.status === "published").length;
-const lockedResults = results.filter((r) => r.status === "locked").length;
+  const totalStudents =
+    new Set(
+      results.map((r) =>
+        String(r.studentId)
+      )
+    ).size;
+
+  const publishedResults =
+    results.filter(
+      (r) =>
+        r.status === "published"
+    ).length;
+
+  const lockedResults =
+    results.filter(
+      (r) =>
+        r.status === "locked"
+    ).length;
 
   const averageScore =
     totalResults > 0
       ? (
-          results.reduce((sum, r) => sum + (r.total || 0), 0) /
-          totalResults
+          results.reduce(
+            (sum, r) =>
+              sum +
+              (r.total || 0),
+            0
+          ) / totalResults
         ).toFixed(2)
       : 0;
 
