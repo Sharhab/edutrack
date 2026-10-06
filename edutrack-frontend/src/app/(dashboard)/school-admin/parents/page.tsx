@@ -84,10 +84,8 @@ type ParentView = Parent & {
   email: string;
   phone: string;
   isActive: boolean;
-
-  studentIds: ApiParentStudent[];
+  studentIds: (ApiParentStudent | string)[];
 };
-
 /* ================= NORMALIZE API RESPONSE ================= */
 
 function normalizeParent(parent: ApiParent): ParentView {
