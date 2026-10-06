@@ -275,20 +275,23 @@ export default function ParentsPage() {
       const phone =
         parent.phone.toLowerCase();
 
-      const studentText =
-        parent.studentIds
-          .map((student) => {
-            return [
-              student.firstName,
-              student.lastName,
-              student.fullName,
-              student.admissionNumber,
-            ]
-              .filter(Boolean)
-              .join(" ");
-          })
-          .join(" ")
-          .toLowerCase();
+     const studentText = parent.studentIds
+  .map((student) => {
+    if (typeof student === "string") {
+      return student;
+    }
+
+    return [
+      student.firstName,
+      student.lastName,
+      student.fullName,
+      student.admissionNumber,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  })
+  .join(" ")
+  .toLowerCase();
 
       return (
         parentName.includes(q) ||
