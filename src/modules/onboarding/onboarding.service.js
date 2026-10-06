@@ -256,7 +256,6 @@ await sendSchoolWelcomeEmail({
     school._id.toString(),
 });
 
-   const tenantBaseUrl = `https://${school.slug}.edutrack.cloud`;
 
 return {
   school: {
