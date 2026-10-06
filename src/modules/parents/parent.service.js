@@ -376,9 +376,32 @@ export async function bulkCreateParents(rows, schoolId) {
         );
       }
 
-      await session.commitTransaction();
+           await session.commitTransaction();
       session.endSession();
 
+      const school = await School.findById(schoolId)
+        .select("name slug");
+
+      const loginUrl = school
+        ? `https://${school.slug}.edutrack.cloud/login`
+        : `${process.env.FRONTEND_URL || ""}/login`;
+
+      await sendParentWelcomeEmail({
+        firstName: user.firstName,
+        email: user.email,
+        schoolName: school?.name || "Your School",
+        loginUrl,
+        parentId: parent._id.toString(),
+      });
+
+      result.summary.created++;
+
+      result.createdParents.push({
+        index: i,
+        parentId: parent._id,
+        email,
+        status: "created",
+      });
       result.summary.created++;
 
       result.createdParents.push({
