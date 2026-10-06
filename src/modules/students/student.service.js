@@ -824,7 +824,7 @@ existing.classId = classId;
           action: "created",
         });
       }
-   } catch (error) {
+  } catch (error) {
   failed++;
 
   results.push({
