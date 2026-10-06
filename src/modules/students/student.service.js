@@ -2,6 +2,8 @@ import { Student } from "./student.model.js";
 import { ClassModel } from "../classes/class.model.js";
 import { Parent } from "../parents/parent.model.js";
 import { ApiError } from "../../utils/apiError.js";
+import { Session } from "../sessions/session.model.js";
+import { Term } from "../terms/term.model.js";
 
 async function validateClassId(classId, schoolId) {
   const classDoc = await ClassModel.findOne({
