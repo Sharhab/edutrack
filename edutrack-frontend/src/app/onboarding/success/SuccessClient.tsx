@@ -35,8 +35,7 @@ export default function OnboardingSuccessClient() {
 
       const baseURL =
         process.env.NEXT_PUBLIC_API_URL ||
-        "http://localhost:4000";
-
+  "https://edutrack-dpui.onrender.com/api",
       const response = await axios.get(
         `${baseURL}/api/onboarding/paystack/verify/${ref}`
       );
