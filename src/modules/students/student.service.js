@@ -662,10 +662,13 @@ export async function deleteStudent(id, schoolId) {
  * RESOLVE CLASS BY NAME (ENTERPRISE SAFE)
  * =========================================
  */
-async function resolveClassId({
-  schoolId,
-  classId,
-}) {
+async function resolveClassId({ schoolId, classId }) {
+  console.log("========== RESOLVE CLASS ==========");
+  console.log("schoolId:", schoolId);
+  console.log("classId:", classId);
+  console.log("classId type:", typeof classId);
+  console.log("===================================");
+
   if (!classId) {
     throw new ApiError(400, "classId is required");
   }
