@@ -1,3 +1,7 @@
+import {
+  sendParentWelcomeEmail,
+} from "../../services/email.service.js";
+import { School } from "../schools/school.model.js";
 import { Parent } from "./parent.model.js";
 import { User } from "../users/user.model.js";
 import { ApiError } from "../../utils/apiError.js";
@@ -92,12 +96,41 @@ export async function createParent(payload, schoolId) {
       );
     }
 
-    await session.commitTransaction();
-    session.endSession();
+  await session.commitTransaction();
+session.endSession();
 
-    return Parent.findById(parentId)
-      .populate("userId", "firstName lastName email phone isActive role")
-      .populate("studentIds", "firstName lastName admissionNumber");
+const school = await School.findById(schoolId)
+  .select("name slug");
+
+const loginUrl = school
+  ? `https://${school.slug}.edutrack.cloud/login`
+  : `${process.env.FRONTEND_URL || ""}/login`;
+
+await sendParentWelcomeEmail({
+  firstName:
+    user[0].firstName,
+
+  email:
+    user[0].email,
+
+  schoolName:
+    school?.name || "Your School",
+
+  loginUrl,
+
+  parentId:
+    parentId.toString(),
+});
+
+return Parent.findById(parentId)
+  .populate(
+    "userId",
+    "firstName lastName email phone isActive role"
+  )
+  .populate(
+    "studentIds",
+    "firstName lastName admissionNumber"
+  ); 
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
