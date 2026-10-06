@@ -16,7 +16,12 @@ import {
 export async function bulkUpsertStudentsHandler(req, res, next) {
   try {
     const schoolId = req.user.schoolId;
+  const { students } = req.body;
 
+console.log("========== BULK STUDENTS REQUEST ==========");
+console.log("STUDENTS:", JSON.stringify(students, null, 2));
+console.log("FIRST STUDENT CLASS ID:", students?.[0]?.classId);
+console.log("==========================================");
     const parsed = bulkUpsertStudentSchema.parse(req.body);
 
     const result = await bulkUpsertStudents(
