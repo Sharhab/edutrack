@@ -1087,15 +1087,14 @@ export default function ParentsPage() {
               {actionError}
             </div>
           )}
-
-         <p className="text-sm text-slate-400">
+          <p className="text-sm text-slate-400">
   Are you sure you want to delete{" "}
   {selectedParent
     ? `${selectedParent.firstName} ${selectedParent.lastName}`
     : "this parent"}
   ?
 </p>
-
+        
           <button
             onClick={handleDelete}
             disabled={submitting}
