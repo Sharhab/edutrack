@@ -1,25 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../../../../lib/axios";
+
+type ClassItem = {
+  _id: string;
+  name: string;
+};
+
+type StudentItem = {
+  _id: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  admissionNumber?: string;
+  classId?: string;
+};
+
+type StudentFeeItem = {
+  _id: string;
+  studentId?: string | { _id?: string };
+  feeStructureId?: string | { _id?: string };
+  title?: string;
+  name?: string;
+  amount?: number;
+  totalAmount?: number;
+  amountPaid?: number;
+  balance?: number;
+  status?: string;
+};
 
 export default function ManualPaymentModal({
   onClose,
   onSuccess,
 }: any) {
-  const [classes, setClasses] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
-  const [fees, setFees] = useState<any[]>([]);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [students, setStudents] = useState<StudentItem[]>([]);
+  const [studentFees, setStudentFees] = useState<StudentFeeItem[]>([]);
 
-  const [loadingClasses, setLoadingClasses] =
-    useState(false);
-
-  const [loadingStudents, setLoadingStudents] =
-    useState(false);
-
-  const [loadingFees, setLoadingFees] =
-    useState(false);
-
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [loadingFees, setLoadingFees] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
@@ -31,11 +52,9 @@ export default function ManualPaymentModal({
     note: "",
   });
 
-  /* =========================
-     LOAD CLASSES
-  ========================= */
+  /* ================= LOAD CLASSES ================= */
 
-  async function loadClasses() {
+  const loadClasses = async () => {
     try {
       setLoadingClasses(true);
 
@@ -43,28 +62,17 @@ export default function ManualPaymentModal({
 
       setClasses(res.data?.data || []);
     } catch (err) {
-      console.error(
-        "LOAD CLASSES ERROR:",
-        err
-      );
-
+      console.error("CLASSES LOAD ERROR:", err);
       setClasses([]);
     } finally {
       setLoadingClasses(false);
     }
-  }
+  };
 
-  /* =========================
-     LOAD STUDENTS BY CLASS
-  ========================= */
+  /* ================= LOAD STUDENTS BY CLASS ================= */
 
-  async function loadStudents(classId: string) {
+  const loadStudentsByClass = async (classId: string) => {
     try {
-      if (!classId) {
-        setStudents([]);
-        return;
-      }
-
       setLoadingStudents(true);
 
       const res = await api.get("/students", {
@@ -73,180 +81,151 @@ export default function ManualPaymentModal({
         },
       });
 
-      setStudents(
-        res.data?.data || []
-      );
+      setStudents(res.data?.data || []);
     } catch (err) {
-      console.error(
-        "LOAD STUDENTS ERROR:",
-        err
-      );
-
+      console.error("STUDENTS LOAD ERROR:", err);
       setStudents([]);
     } finally {
       setLoadingStudents(false);
     }
-  }
+  };
 
-  /* =========================
-     LOAD STUDENT FEES
-  ========================= */
+  /* ================= LOAD FEES BY STUDENT ================= */
 
-  async function loadStudentFees(
-    studentId: string
-  ) {
+  const loadStudentFees = async (studentId: string) => {
     try {
-      if (!studentId) {
-        setFees([]);
-        return;
-      }
-
       setLoadingFees(true);
 
       const res = await api.get(
-        `/finance/fees/student-fees?studentId=${studentId}`
+        "/finance/fees/student-fees",
+        {
+          params: {
+            studentId,
+          },
+        }
       );
 
-      const data =
-        res.data?.data || [];
+      const fees = res.data?.data || [];
 
-      // Only show unpaid / outstanding fees
-      setFees(
-        data.filter(
-          (fee: any) =>
+      setStudentFees(
+        fees.filter(
+          (fee: StudentFeeItem) =>
             fee.status !== "paid" &&
             Number(fee.balance || 0) > 0
         )
       );
     } catch (err) {
-      console.error(
-        "LOAD STUDENT FEES ERROR:",
-        err
-      );
-
-      setFees([]);
+      console.error("STUDENT FEES LOAD ERROR:", err);
+      setStudentFees([]);
     } finally {
       setLoadingFees(false);
     }
-  }
+  };
 
-  /* =========================
-     INITIAL LOAD
-  ========================= */
+  /* ================= INITIAL LOAD ================= */
 
   useEffect(() => {
     loadClasses();
   }, []);
 
-  /* =========================
-     CLASS CHANGE
-  ========================= */
+  /* ================= CLASS CHANGED ================= */
 
-  async function handleClassChange(
-    classId: string
-  ) {
+  useEffect(() => {
+    if (!form.classId) {
+      setStudents([]);
+      setStudentFees([]);
+
+      setForm((prev) => ({
+        ...prev,
+        studentId: "",
+        studentFeeId: "",
+        amount: "",
+      }));
+
+      return;
+    }
+
+    setStudents([]);
+    setStudentFees([]);
+
     setForm((prev) => ({
       ...prev,
-      classId,
       studentId: "",
       studentFeeId: "",
       amount: "",
     }));
 
-    setFees([]);
+    loadStudentsByClass(form.classId);
+  }, [form.classId]);
 
-    await loadStudents(classId);
-  }
+  /* ================= STUDENT CHANGED ================= */
 
-  /* =========================
-     STUDENT CHANGE
-  ========================= */
+  useEffect(() => {
+    if (!form.studentId) {
+      setStudentFees([]);
 
-  async function handleStudentChange(
-    studentId: string
-  ) {
+      setForm((prev) => ({
+        ...prev,
+        studentFeeId: "",
+        amount: "",
+      }));
+
+      return;
+    }
+
+    setStudentFees([]);
+
     setForm((prev) => ({
       ...prev,
-      studentId,
       studentFeeId: "",
       amount: "",
     }));
 
-    await loadStudentFees(studentId);
-  }
+    loadStudentFees(form.studentId);
+  }, [form.studentId]);
 
-  /* =========================
-     FEE CHANGE
-  ========================= */
+  /* ================= SELECTED FEE ================= */
 
-  function handleFeeChange(
-    studentFeeId: string
-  ) {
-    const selectedFee = fees.find(
-      (fee: any) =>
-        fee._id === studentFeeId
+  const selectedFee = useMemo(() => {
+    return studentFees.find(
+      (fee) => fee._id === form.studentFeeId
     );
+  }, [studentFees, form.studentFeeId]);
 
-    setForm((prev) => ({
-      ...prev,
-      studentFeeId,
-      amount: selectedFee
-        ? String(
-            selectedFee.balance || 0
-          )
-        : "",
-    }));
-  }
+  /* ================= FEE BALANCE ================= */
 
-  /* =========================
-     SUBMIT
-  ========================= */
+  const feeBalance = Number(
+    selectedFee?.balance || 0
+  );
+
+  /* ================= SUBMIT ================= */
 
   async function submit() {
     try {
       if (!form.classId) {
-        return alert(
-          "Please select a class"
-        );
+        return alert("Select class");
       }
 
       if (!form.studentId) {
-        return alert(
-          "Please select a student"
-        );
+        return alert("Select student");
       }
 
       if (!form.studentFeeId) {
-        return alert(
-          "Please select a fee"
-        );
+        return alert("Select fee");
       }
 
-      const amount = Number(
-        form.amount
-      );
+      const amountNum = Number(form.amount);
 
-      if (!amount || amount <= 0) {
-        return alert(
-          "Please enter a valid amount"
-        );
+      if (!amountNum || amountNum <= 0) {
+        return alert("Enter a valid amount");
       }
-
-      const selectedFee = fees.find(
-        (fee: any) =>
-          fee._id ===
-          form.studentFeeId
-      );
 
       if (
         selectedFee &&
-        amount >
-          Number(
-            selectedFee.balance || 0
-          )
+        amountNum > feeBalance
       ) {
         return alert(
-          "Amount exceeds the remaining balance"
+          `Amount exceeds the remaining balance of ₦${feeBalance.toLocaleString()}`
         );
       }
 
@@ -255,24 +234,15 @@ export default function ManualPaymentModal({
       await api.post(
         "/finance/fees/payments/manual",
         {
-          studentId:
-            form.studentId,
-
-          studentFeeId:
-            form.studentFeeId,
-
-          amount,
-
-          method:
-            form.method,
-
-          note:
-            form.note.trim(),
+          studentId: form.studentId,
+          studentFeeId: form.studentFeeId,
+          amount: amountNum,
+          method: form.method,
+          note: form.note.trim(),
         }
       );
 
       onSuccess?.();
-
       onClose?.();
     } catch (err: any) {
       console.error(
@@ -291,41 +261,38 @@ export default function ManualPaymentModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-
       <div className="w-full max-w-[480px] rounded-2xl bg-[#0f172a] p-5 space-y-4 shadow-2xl">
-
         {/* HEADER */}
 
         <div>
-          <h2 className="text-white font-semibold text-lg">
+          <h2 className="text-white text-lg font-semibold">
             Record Manual Payment
           </h2>
 
           <p className="text-slate-400 text-sm mt-1">
-            Select the class first, then the
-            student and their outstanding fee.
+            Select the class first to avoid choosing
+            the wrong student.
           </p>
         </div>
 
         {/* CLASS */}
 
-        <div className="space-y-1">
-
-          <label className="text-sm text-slate-300">
+        <div>
+          <label className="block text-sm text-slate-300 mb-1">
             Class
           </label>
 
           <select
             value={form.classId}
-            disabled={loadingClasses}
             onChange={(e) =>
-              handleClassChange(
-                e.target.value
-              )
+              setForm((prev) => ({
+                ...prev,
+                classId: e.target.value,
+              }))
             }
-            className="w-full p-3 rounded-lg bg-white/5 text-white border border-white/10 outline-none disabled:opacity-50"
+            disabled={loadingClasses || loading}
+            className="w-full p-2.5 rounded-lg bg-white/5 border border-white/10 text-white outline-none"
           >
-
             <option
               value=""
               className="bg-[#0f172a]"
@@ -335,44 +302,40 @@ export default function ManualPaymentModal({
                 : "Select Class"}
             </option>
 
-            {classes.map(
-              (classItem: any) => (
-                <option
-                  key={classItem._id}
-                  value={classItem._id}
-                  className="bg-[#0f172a]"
-                >
-                  {classItem.name}
-                </option>
-              )
-            )}
-
+            {classes.map((classItem) => (
+              <option
+                key={classItem._id}
+                value={classItem._id}
+                className="bg-[#0f172a]"
+              >
+                {classItem.name}
+              </option>
+            ))}
           </select>
-
         </div>
 
         {/* STUDENT */}
 
-        <div className="space-y-1">
-
-          <label className="text-sm text-slate-300">
+        <div>
+          <label className="block text-sm text-slate-300 mb-1">
             Student
           </label>
 
           <select
             value={form.studentId}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                studentId: e.target.value,
+              }))
+            }
             disabled={
               !form.classId ||
-              loadingStudents
+              loadingStudents ||
+              loading
             }
-            onChange={(e) =>
-              handleStudentChange(
-                e.target.value
-              )
-            }
-            className="w-full p-3 rounded-lg bg-white/5 text-white border border-white/10 outline-none disabled:opacity-50"
+            className="w-full p-2.5 rounded-lg bg-white/5 border border-white/10 text-white outline-none"
           >
-
             <option
               value=""
               className="bg-[#0f172a]"
@@ -386,51 +349,54 @@ export default function ManualPaymentModal({
                 : "Select Student"}
             </option>
 
-            {students.map(
-              (student: any) => (
+            {students.map((student) => {
+              const fullName = [
+                student.firstName,
+                student.middleName,
+                student.lastName,
+              ]
+                .filter(Boolean)
+                .join(" ");
+
+              return (
                 <option
                   key={student._id}
                   value={student._id}
                   className="bg-[#0f172a]"
                 >
-                  {student.firstName}{" "}
-                  {student.middleName
-                    ? `${student.middleName} `
-                    : ""}
-                  {student.lastName}
+                  {fullName ||
+                    "Unnamed Student"}
                   {student.admissionNumber
-                    ? ` • ${student.admissionNumber}`
+                    ? ` — ${student.admissionNumber}`
                     : ""}
                 </option>
-              )
-            )}
-
+              );
+            })}
           </select>
-
         </div>
 
         {/* FEE */}
 
-        <div className="space-y-1">
-
-          <label className="text-sm text-slate-300">
+        <div>
+          <label className="block text-sm text-slate-300 mb-1">
             Fee
           </label>
 
           <select
             value={form.studentFeeId}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                studentFeeId: e.target.value,
+              }))
+            }
             disabled={
               !form.studentId ||
-              loadingFees
+              loadingFees ||
+              loading
             }
-            onChange={(e) =>
-              handleFeeChange(
-                e.target.value
-              )
-            }
-            className="w-full p-3 rounded-lg bg-white/5 text-white border border-white/10 outline-none disabled:opacity-50"
+            className="w-full p-2.5 rounded-lg bg-white/5 border border-white/10 text-white outline-none"
           >
-
             <option
               value=""
               className="bg-[#0f172a]"
@@ -439,146 +405,95 @@ export default function ManualPaymentModal({
                 ? "Select student first"
                 : loadingFees
                 ? "Loading fees..."
-                : fees.length === 0
+                : studentFees.length === 0
                 ? "No outstanding fees"
                 : "Select Fee"}
             </option>
 
-            {fees.map(
-              (fee: any) => (
+            {studentFees.map((fee) => {
+              const feeName =
+                fee.title ||
+                fee.name ||
+                "School Fee";
+
+              const balance = Number(
+                fee.balance || 0
+              );
+
+              return (
                 <option
                   key={fee._id}
                   value={fee._id}
                   className="bg-[#0f172a]"
                 >
-                  {fee.title} • Balance ₦
-                  {Number(
-                    fee.balance || 0
-                  ).toLocaleString()}
+                  {feeName} — Balance ₦
+                  {balance.toLocaleString()}
                 </option>
-              )
-            )}
-
+              );
+            })}
           </select>
-
         </div>
 
-        {/* SELECTED FEE INFO */}
+        {/* BALANCE */}
 
-        {form.studentFeeId &&
-          (() => {
-            const fee = fees.find(
-              (item: any) =>
-                item._id ===
-                form.studentFeeId
-            );
+        {selectedFee && (
+          <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-400">
+                Outstanding Balance
+              </span>
 
-            if (!fee) return null;
-
-            return (
-              <div className="rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-3">
-
-                <p className="text-white font-medium">
-                  {fee.title}
-                </p>
-
-                <div className="grid grid-cols-3 gap-2 mt-2 text-sm">
-
-                  <div>
-                    <p className="text-slate-400">
-                      Total
-                    </p>
-
-                    <p className="text-white">
-                      ₦
-                      {Number(
-                        fee.totalAmount ||
-                          0
-                      ).toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-slate-400">
-                      Paid
-                    </p>
-
-                    <p className="text-white">
-                      ₦
-                      {Number(
-                        fee.amountPaid ||
-                          0
-                      ).toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-slate-400">
-                      Balance
-                    </p>
-
-                    <p className="text-yellow-400 font-semibold">
-                      ₦
-                      {Number(
-                        fee.balance || 0
-                      ).toLocaleString()}
-                    </p>
-                  </div>
-
-                </div>
-
-              </div>
-            );
-          })()}
+              <span className="text-cyan-400 font-semibold">
+                ₦{feeBalance.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* AMOUNT */}
 
-        <div className="space-y-1">
-
-          <label className="text-sm text-slate-300">
+        <div>
+          <label className="block text-sm text-slate-300 mb-1">
             Amount
           </label>
 
           <input
+            placeholder="Enter amount"
             type="number"
             min="1"
+            max={selectedFee ? feeBalance : undefined}
             value={form.amount}
             disabled={
-              !form.studentFeeId
+              !form.studentFeeId || loading
             }
-            placeholder="Amount"
-            className="w-full p-3 rounded-lg bg-white/5 text-white border border-white/10 outline-none disabled:opacity-50"
+            className="w-full p-2.5 rounded-lg bg-white/5 border border-white/10 text-white outline-none"
             onChange={(e) =>
               setForm((prev) => ({
                 ...prev,
-                amount:
-                  e.target.value,
+                amount: e.target.value,
               }))
             }
           />
-
         </div>
 
-        {/* PAYMENT METHOD */}
+        {/* METHOD */}
 
-        <div className="space-y-1">
-
-          <label className="text-sm text-slate-300">
+        <div>
+          <label className="block text-sm text-slate-300 mb-1">
             Payment Method
           </label>
 
           <select
             value={form.method}
+            disabled={loading}
             onChange={(e) =>
               setForm((prev) => ({
                 ...prev,
-                method:
-                  e.target.value,
+                method: e.target.value,
               }))
             }
-            className="w-full p-3 rounded-lg bg-white/5 text-white border border-white/10 outline-none"
+            className="w-full p-2.5 rounded-lg bg-white/5 border border-white/10 text-white outline-none"
           >
-
             <option
               value="cash"
               className="bg-[#0f172a]"
@@ -599,46 +514,45 @@ export default function ManualPaymentModal({
             >
               POS
             </option>
-
-            <option
-              value="paystack"
-              className="bg-[#0f172a]"
-            >
-              Paystack
-            </option>
-
           </select>
-
         </div>
 
         {/* NOTE */}
 
-        <textarea
-          placeholder="Note (optional)"
-          value={form.note}
-          className="w-full p-3 rounded-lg bg-white/5 text-white border border-white/10 outline-none resize-none"
-          rows={3}
-          onChange={(e) =>
-            setForm((prev) => ({
-              ...prev,
-              note: e.target.value,
-            }))
-          }
-        />
+        <div>
+          <label className="block text-sm text-slate-300 mb-1">
+            Note
+          </label>
+
+          <textarea
+            placeholder="Optional note"
+            value={form.note}
+            disabled={loading}
+            rows={3}
+            className="w-full p-2.5 rounded-lg bg-white/5 border border-white/10 text-white outline-none resize-none"
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                note: e.target.value,
+              }))
+            }
+          />
+        </div>
 
         {/* BUTTONS */}
 
         <div className="flex justify-end gap-2 pt-2">
-
           <button
+            type="button"
             onClick={onClose}
             disabled={loading}
-            className="text-slate-400 px-4 py-2 hover:text-white disabled:opacity-50"
+            className="text-slate-400 px-4 py-2 rounded-lg hover:bg-white/5"
           >
             Cancel
           </button>
 
           <button
+            type="button"
             onClick={submit}
             disabled={
               loading ||
@@ -646,15 +560,13 @@ export default function ManualPaymentModal({
               !form.studentId ||
               !form.studentFeeId
             }
-            className="bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white"
+            className="bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-white font-medium"
           >
             {loading
               ? "Saving..."
-              : "Save Payment"}
+              : "Record Payment"}
           </button>
-
         </div>
-
       </div>
     </div>
   );
