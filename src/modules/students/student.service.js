@@ -664,34 +664,22 @@ export async function deleteStudent(id, schoolId) {
  */
 async function resolveClassId({
   schoolId,
-  className,
-  sessionId,
-  termId,
+  classId,
 }) {
-  if (!className) {
-    throw new ApiError(400, "className is required");
+  if (!classId) {
+    throw new ApiError(400, "classId is required");
   }
 
-  let cls = await ClassModel.findOne({
+  const classDoc = await ClassModel.findOne({
+    _id: classId,
     schoolId,
-    name: className.trim(),
   });
 
-  // OPTIONAL: AUTO-CREATE CLASS IF NOT FOUND
-  if (!cls) {
-    cls = await ClassModel.create({
-      schoolId,
-      name: className.trim(),
-      slug: className.toLowerCase().replace(/\s+/g, "-"),
-      sessionId: sessionId || null,
-      termId: termId || null,
-      level: "primary",
-      capacity: 40,
-      isActive: true,
-    });
+  if (!classDoc) {
+    throw new ApiError(400, "Selected class is invalid");
   }
 
-  return cls._id;
+  return classDoc._id;
 }
 
 /**
@@ -721,12 +709,12 @@ export async function bulkUpsertStudents(rows, schoolId) {
 
   for (const row of rows) {
     try {
-      const classId = await resolveClassId({
-        schoolId,
-        className: row.className,
-        sessionId: currentSession?._id,
-        termId: currentTerm?._id,
-      });
+     const classId = await resolveClassId({
+  schoolId,
+  className: row.className,
+  sessionId: currentSession?._id,
+  termId: currentTerm?._id,
+});
 
       const existing = await Student.findOne({
         schoolId,
