@@ -1,4 +1,8 @@
-import { createStudentSchema, updateStudentSchema } from "./student.validation.js";
+import {
+  createStudentSchema,
+  updateStudentSchema,
+  bulkUpsertStudentSchema,
+} from "./student.validation.js";
 import {
   createStudent,
   deleteStudent,
@@ -12,9 +16,13 @@ import {
 export async function bulkUpsertStudentsHandler(req, res, next) {
   try {
     const schoolId = req.user.schoolId;
-    const { students } = req.body;
 
-    const result = await bulkUpsertStudents(students, schoolId);
+    const parsed = bulkUpsertStudentSchema.parse(req.body);
+
+    const result = await bulkUpsertStudents(
+      parsed.students,
+      schoolId
+    );
 
     return res.status(200).json({
       success: true,
