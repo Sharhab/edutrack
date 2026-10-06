@@ -34,11 +34,13 @@ export default function OnboardingSuccessClient() {
       setLoading(true);
 
       const baseURL =
-        process.env.NEXT_PUBLIC_API_URL ||
-  "https://edutrack-dpui.onrender.com/api",
-      const response = await axios.get(
-        `${baseURL}/api/onboarding/paystack/verify/${ref}`
-      );
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://edutrack-dpui.onrender.com/api";
+
+const response = await axios.get(
+  `${baseURL}/onboarding/paystack/verify/${ref}`
+);
+  
 
       const data = response.data?.data;
 
