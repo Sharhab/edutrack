@@ -9,7 +9,10 @@ import { ApiError } from "../../utils/apiError.js";
 import { initializePaystackPayment } from "../billing/paystack.service.js";
 import { generateUniqueSlug } from "../../utils/slug.js";
 import { verifyPaystackPayment }
-  from "../billing/paystack.service.js";
+from "../billing/paystack.service.js";
+import {
+  sendSchoolWelcomeEmail,
+} from "../../services/email.service.js";
 /**
  * =========================
  * HELPERS
@@ -89,8 +92,13 @@ export async function syncSchoolBilling(schoolId, subscription) {
 
 export async function completeOnboarding(payload) {
   try {
-    log("START ONBOARDING", payload);
-
+  log("START ONBOARDING", {
+  schoolName: payload.schoolName,
+  adminEmail: payload.adminEmail,
+  plan: payload.plan,
+  billingCycle: payload.billingCycle,
+  isTrial: payload.isTrial,
+});
     await ensureUniqueSchool(payload);
 
     const email = normalizeEmail(payload.adminEmail);
@@ -225,6 +233,28 @@ export async function completeOnboarding(payload) {
     await bootstrapSchoolData(
       school._id
     );
+
+    const tenantBaseUrl =
+  `https://${school.slug}.edutrack.cloud`;
+
+const loginUrl =
+  `${tenantBaseUrl}/login`;
+
+await sendSchoolWelcomeEmail({
+  adminFirstName:
+    adminUser.firstName,
+
+  adminEmail:
+    adminUser.email,
+
+  schoolName:
+    school.name,
+
+  loginUrl,
+
+  schoolId:
+    school._id.toString(),
+});
 
    const tenantBaseUrl = `https://${school.slug}.edutrack.cloud`;
 
