@@ -38,12 +38,10 @@ const initialForm: ParentFormValues = {
   studentIds: [],
 };
 
-/* =================
-   API STUDENT SHAPE
-================= */
+/* ================= API TYPES ================= */
 
-type ParentStudent = {
-  _id?: string;
+type ApiParentStudent = {
+  _id: string;
   id?: string;
   admissionNumber?: string;
   firstName?: string;
@@ -51,140 +49,134 @@ type ParentStudent = {
   fullName?: string;
 };
 
-/* =================
-   HELPERS
-================= */
+type ApiParent = {
+  _id: string;
+  schoolId: string;
 
-/**
- * The parent API may return studentIds as:
+  userId?: {
+    _id: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+    isActive?: boolean;
+  };
+
+  studentIds?: ApiParentStudent[];
+
+  occupation?: string;
+  address?: string;
+  relationshipToStudent?: string;
+
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+/*
+ * Frontend-normalized parent.
  *
- * ["studentId1", "studentId2"]
- *
- * OR populated objects:
- *
- * [
- *   {
- *     _id: "...",
- *     admissionNumber: "0090",
- *     firstName: "shafa",
- *     lastName: "shafa",
- *     fullName: "shafa shafa"
- *   }
- * ]
- *
- * Normalize both forms so the UI remains compatible.
+ * This is what the page actually consumes.
  */
-function getParentStudents(parent: Parent): ParentStudent[] {
-  const rawStudentIds = (parent as any)?.studentIds;
+type ParentView = Parent & {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  isActive: boolean;
 
-  if (!Array.isArray(rawStudentIds)) {
-    return [];
-  }
+  studentIds: ApiParentStudent[];
+};
 
-  return rawStudentIds
-    .map((student: string | ParentStudent) => {
-      if (typeof student === "string") {
-        return {
-          _id: student,
-          id: student,
-        };
-      }
+/* ================= NORMALIZE API RESPONSE ================= */
 
-      return student || {};
-    })
-    .filter(
-      (student: ParentStudent) =>
-        !!student._id || !!student.id
-    );
+function normalizeParent(parent: ApiParent): ParentView {
+  return {
+    ...(parent as Parent),
+
+    /*
+     * Parent identity comes from userId.
+     */
+    firstName:
+      parent.userId?.firstName || "",
+
+    lastName:
+      parent.userId?.lastName || "",
+
+    email:
+      parent.userId?.email || "",
+
+    phone:
+      parent.userId?.phone || "",
+
+    isActive:
+      parent.userId?.isActive ?? true,
+
+    /*
+     * Keep the populated student objects.
+     */
+    studentIds:
+      Array.isArray(parent.studentIds)
+        ? parent.studentIds
+        : [],
+  } as ParentView;
 }
 
-/**
- * Safely get the student ID whether the API returns
- * a string or a populated student object.
- */
+/* ================= STUDENT ID HELPER ================= */
+
 function getStudentId(
-  student: string | ParentStudent
+  student: ApiParentStudent | string
 ): string {
   if (typeof student === "string") {
     return student;
   }
 
-  return student?._id || student?.id || "";
+  return student._id || student.id || "";
 }
 
-/**
- * Some APIs return parent user information directly:
- *
- * firstName
- * lastName
- * email
- * phone
- *
- * while another response shape may return:
- *
- * userId: {
- *   firstName,
- *   lastName,
- *   email,
- *   ...
- * }
- *
- * Support both without changing the backend contract.
- */
-function getParentUser(parent: Parent) {
-  const raw = parent as any;
-
-  return {
-    firstName:
-      raw.firstName ||
-      raw.userId?.firstName ||
-      "",
-
-    lastName:
-      raw.lastName ||
-      raw.userId?.lastName ||
-      "",
-
-    email:
-      raw.email ||
-      raw.userId?.email ||
-      "",
-
-    phone:
-      raw.phone ||
-      raw.userId?.phone ||
-      "",
-
-    isActive:
-      raw.isActive ??
-      raw.userId?.isActive ??
-      true,
-  };
-}
+/* ================= COMPONENT ================= */
 
 export default function ParentsPage() {
-  const [parents, setParents] = useState<Parent[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [parents, setParents] =
+    useState<ParentView[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [students, setStudents] =
+    useState<Student[]>([]);
 
-  const [pageError, setPageError] = useState("");
-  const [actionError, setActionError] = useState("");
+  const [loading, setLoading] =
+    useState(true);
 
-  const [search, setSearch] = useState("");
+  const [loadingOptions, setLoadingOptions] =
+    useState(true);
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [pageError, setPageError] =
+    useState("");
 
-  const [submitting, setSubmitting] = useState(false);
+  const [actionError, setActionError] =
+    useState("");
+
+  const [search, setSearch] =
+    useState("");
+
+  const [createOpen, setCreateOpen] =
+    useState(false);
+
+  const [editOpen, setEditOpen] =
+    useState(false);
+
+  const [deleteOpen, setDeleteOpen] =
+    useState(false);
+
+  const [submitting, setSubmitting] =
+    useState(false);
 
   const [form, setForm] =
-    useState<ParentFormValues>(initialForm);
+    useState<ParentFormValues>(
+      initialForm
+    );
 
   const [selectedParent, setSelectedParent] =
-    useState<Parent | null>(null);
+    useState<ParentView | null>(null);
 
   /* ================= LOAD PARENTS ================= */
 
@@ -197,7 +189,29 @@ export default function ParentsPage() {
         search: search.trim(),
       });
 
-      setParents(result || []);
+      /*
+       * IMPORTANT:
+       *
+       * getParents() is returning:
+       *
+       * {
+       *   userId: {
+       *     firstName,
+       *     lastName,
+       *     email,
+       *     isActive
+       *   },
+       *   studentIds: [...]
+       * }
+       *
+       * Normalize that response before
+       * giving it to the UI.
+       */
+      const normalized = (
+        (result || []) as unknown as ApiParent[]
+      ).map(normalizeParent);
+
+      setParents(normalized);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setPageError(
@@ -205,7 +219,9 @@ export default function ParentsPage() {
             "Failed to load parents."
         );
       } else {
-        setPageError("Failed to load parents.");
+        setPageError(
+          "Failed to load parents."
+        );
       }
     } finally {
       setLoading(false);
@@ -231,6 +247,8 @@ export default function ParentsPage() {
     }
   }
 
+  /* ================= INITIAL LOAD ================= */
+
   useEffect(() => {
     loadParents();
     loadStudents();
@@ -239,36 +257,45 @@ export default function ParentsPage() {
   /* ================= FILTER ================= */
 
   const filteredParents = useMemo(() => {
-    if (!search.trim()) return parents;
+    const q = search
+      .trim()
+      .toLowerCase();
 
-    const q = search.toLowerCase();
+    if (!q) {
+      return parents;
+    }
 
-    return parents.filter((p) => {
-      const user = getParentUser(p);
+    return parents.filter((parent) => {
+      const parentName =
+        `${parent.firstName} ${parent.lastName}`
+          .toLowerCase();
 
-      const studentNames = getParentStudents(p)
-        .map(
-          (student) =>
-            student.fullName ||
-            `${student.firstName || ""} ${
-              student.lastName || ""
-            }`
-        )
-        .join(" ");
+      const email =
+        parent.email.toLowerCase();
+
+      const phone =
+        parent.phone.toLowerCase();
+
+      const studentText =
+        parent.studentIds
+          .map((student) => {
+            return [
+              student.firstName,
+              student.lastName,
+              student.fullName,
+              student.admissionNumber,
+            ]
+              .filter(Boolean)
+              .join(" ");
+          })
+          .join(" ")
+          .toLowerCase();
 
       return (
-        `${user.firstName} ${user.lastName}`
-          .toLowerCase()
-          .includes(q) ||
-        user.email
-          .toLowerCase()
-          .includes(q) ||
-        user.phone
-          .toLowerCase()
-          .includes(q) ||
-        studentNames
-          .toLowerCase()
-          .includes(q)
+        parentName.includes(q) ||
+        email.includes(q) ||
+        phone.includes(q) ||
+        studentText.includes(q)
       );
     });
   }, [parents, search]);
@@ -287,18 +314,27 @@ export default function ParentsPage() {
 
   /* ================= STUDENT TOGGLE ================= */
 
-  function toggleStudent(studentId: string) {
+  function toggleStudent(
+    studentId: string
+  ) {
     setForm((prev) => {
       const exists =
-        prev.studentIds.includes(studentId);
+        prev.studentIds.includes(
+          studentId
+        );
 
       return {
         ...prev,
+
         studentIds: exists
           ? prev.studentIds.filter(
-              (id) => id !== studentId
+              (id) =>
+                id !== studentId
             )
-          : [...prev.studentIds, studentId],
+          : [
+              ...prev.studentIds,
+              studentId,
+            ],
       };
     });
   }
@@ -331,14 +367,25 @@ export default function ParentsPage() {
         setActionError(
           "Required fields missing"
         );
+
         return;
       }
 
       const created =
         await createParent(form);
 
+      /*
+       * The create endpoint may return the same
+       * populated structure. Normalize it before
+       * inserting into the list.
+       */
+      const normalized =
+        normalizeParent(
+          created as unknown as ApiParent
+        );
+
       setParents((prev) => [
-        created,
+        normalized,
         ...prev,
       ]);
 
@@ -363,7 +410,9 @@ export default function ParentsPage() {
   /* ================= EDIT ================= */
 
   async function handleEdit() {
-    if (!selectedParent?._id) return;
+    if (!selectedParent?._id) {
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -375,11 +424,20 @@ export default function ParentsPage() {
           form
         );
 
+      /*
+       * Normalize updated response too.
+       */
+      const normalized =
+        normalizeParent(
+          updated as unknown as ApiParent
+        );
+
       setParents((prev) =>
-        prev.map((p) =>
-          p._id === selectedParent._id
-            ? updated
-            : p
+        prev.map((parent) =>
+          parent._id ===
+          selectedParent._id
+            ? normalized
+            : parent
         )
       );
 
@@ -404,7 +462,9 @@ export default function ParentsPage() {
   /* ================= DELETE ================= */
 
   async function handleDelete() {
-    if (!selectedParent?._id) return;
+    if (!selectedParent?._id) {
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -416,8 +476,9 @@ export default function ParentsPage() {
 
       setParents((prev) =>
         prev.filter(
-          (p) =>
-            p._id !== selectedParent._id
+          (parent) =>
+            parent._id !==
+            selectedParent._id
         )
       );
 
@@ -441,7 +502,9 @@ export default function ParentsPage() {
 
   /* ================= LOADING ================= */
 
-  if (loading) return <PageLoader />;
+  if (loading) {
+    return <PageLoader />;
+  }
 
   if (pageError) {
     return (
@@ -459,12 +522,16 @@ export default function ParentsPage() {
       <div className="space-y-6">
 
         {/* HEADER */}
+
         <SectionCard
           title="Parents"
           subtitle="Manage parent accounts and link students"
           rightAction={
             <div className="flex gap-2">
-              <Link href="/school-admin/parents/bulk">
+
+              <Link
+                href="/school-admin/parents/bulk"
+              >
                 <button className="btn-secondary">
                   Bulk Upload
                 </button>
@@ -481,230 +548,278 @@ export default function ParentsPage() {
                   size={16}
                   className="mr-2"
                 />
+
                 Add Parent
               </button>
+
             </div>
           }
         >
 
           {/* SEARCH */}
+
           <div className="relative max-w-md mb-5">
+
             <Search
               size={18}
               className="pointer-events-none absolute left-4 top-11 text-slate-400"
             />
 
             <div className="[&_input]:pl-11">
+
               <FormInput
                 name="search"
                 label="Search Parents"
                 value={search}
-                placeholder="Search by name, email, phone, student..."
+                placeholder="Search by name, email, phone or student..."
                 onChange={setSearch}
               />
+
             </div>
           </div>
 
           {/* LIST */}
+
           {filteredParents.length === 0 ? (
             <EmptyState
               title="No parents found"
               description="Create a parent account to get started"
             />
           ) : (
+
             <div className="space-y-3">
 
-              {filteredParents.map((p) => {
-                const user =
-                  getParentUser(p);
+              {filteredParents.map(
+                (parent) => {
 
-                const parentStudents =
-                  getParentStudents(p);
+                  const linkedStudents =
+                    Array.isArray(
+                      parent.studentIds
+                    )
+                      ? parent.studentIds
+                      : [];
 
-                return (
-                  <div
-                    key={p._id}
-                    className="p-4 rounded-xl bg-white/5 border border-white/10 flex justify-between gap-4"
-                  >
+                  return (
+                    <div
+                      key={parent._id}
+                      className="p-4 rounded-xl bg-white/5 border border-white/10 flex justify-between gap-4"
+                    >
 
-                    {/* PARENT INFORMATION */}
-                    <div className="min-w-0 flex-1">
+                      {/* PARENT DATA */}
 
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold">
-                          {user.firstName}{" "}
-                          {user.lastName}
-                        </p>
+                      <div className="min-w-0 flex-1">
 
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full ${
-                            user.isActive
-                              ? "bg-green-500/10 text-green-300 border border-green-500/20"
-                              : "bg-red-500/10 text-red-300 border border-red-500/20"
-                          }`}
-                        >
-                          {user.isActive
-                            ? "Active"
-                            : "Inactive"}
-                        </span>
-                      </div>
+                        <div className="flex items-center gap-2">
 
-                      {user.email && (
-                        <p className="text-sm text-slate-400 mt-1">
-                          {user.email}
-                        </p>
-                      )}
-
-                      {user.phone && (
-                        <p className="text-xs text-slate-500 mt-1">
-                          {user.phone}
-                        </p>
-                      )}
-
-                      {/* STUDENTS */}
-                      <div className="mt-3">
-                        <p className="text-xs text-slate-500 mb-1">
-                          Students (
-                          {parentStudents.length})
-                        </p>
-
-                        {parentStudents.length ===
-                        0 ? (
-                          <p className="text-xs text-slate-600">
-                            No students linked
+                          <p className="font-bold">
+                            {parent.firstName}{" "}
+                            {parent.lastName}
                           </p>
-                        ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {parentStudents.map(
-                              (student, index) => {
-                                const name =
-                                  student.fullName ||
-                                  `${student.firstName || ""} ${
-                                    student.lastName || ""
-                                  }`.trim();
 
-                                return (
-                                  <span
-                                    key={
-                                      student._id ||
-                                      student.id ||
-                                      index
-                                    }
-                                    className="text-xs px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300"
-                                    title={
-                                      student.admissionNumber
-                                        ? `Admission: ${student.admissionNumber}`
-                                        : undefined
-                                    }
-                                  >
-                                    {name ||
-                                      student.admissionNumber ||
-                                      "Student"}
-                                  </span>
-                                );
-                              }
-                            )}
-                          </div>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                              parent.isActive
+                                ? "bg-green-500/10 text-green-300 border-green-500/20"
+                                : "bg-red-500/10 text-red-300 border-red-500/20"
+                            }`}
+                          >
+                            {parent.isActive
+                              ? "Active"
+                              : "Inactive"}
+                          </span>
+
+                        </div>
+
+                        <p className="text-sm text-slate-400 mt-1">
+                          {parent.email ||
+                            "No email"}
+                        </p>
+
+                        {parent.phone && (
+                          <p className="text-xs text-slate-500 mt-1">
+                            {parent.phone}
+                          </p>
                         )}
-                      </div>
-                    </div>
 
-                    {/* ACTIONS */}
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        onClick={() => {
-                          setSelectedParent(p);
+                        {/* STUDENTS */}
 
-                          /*
-                           * Convert populated student
-                           * objects back into IDs for
-                           * the edit form.
-                           */
-                          const rawStudents =
-                            Array.isArray(
-                              (p as any)
-                                ?.studentIds
+                        <div className="mt-3">
+
+                          <p className="text-xs text-slate-500 mb-2">
+                            Linked Students (
+                            {
+                              linkedStudents.length
+                            }
                             )
-                              ? (p as any)
-                                  .studentIds
-                              : [];
+                          </p>
 
-                          const studentIds =
-                            rawStudents
-                              .map(
+                          {linkedStudents.length ===
+                          0 ? (
+                            <p className="text-xs text-slate-600">
+                              No students linked
+                            </p>
+                          ) : (
+
+                            <div className="flex flex-wrap gap-2">
+
+                              {linkedStudents.map(
                                 (
-                                  student:
-                                    | string
-                                    | ParentStudent
-                                ) =>
-                                  getStudentId(
+                                  student,
+                                  index
+                                ) => {
+
+                                  const name =
+                                    student.fullName ||
+                                    `${student.firstName || ""} ${
+                                      student.lastName || ""
+                                    }`.trim() ||
+                                    "Student";
+
+                                  const id =
+                                    getStudentId(
+                                      student
+                                    );
+
+                                  return (
+                                    <div
+                                      key={
+                                        id ||
+                                        index
+                                      }
+                                      className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20"
+                                    >
+
+                                      <div className="text-xs text-cyan-300">
+                                        {name}
+                                      </div>
+
+                                      {student.admissionNumber && (
+                                        <div className="text-[10px] text-slate-500">
+                                          Adm:{" "}
+                                          {
+                                            student.admissionNumber
+                                          }
+                                        </div>
+                                      )}
+
+                                    </div>
+                                  );
+                                }
+                              )}
+
+                            </div>
+                          )}
+
+                        </div>
+
+                      </div>
+
+                      {/* ACTIONS */}
+
+                      <div className="flex gap-2 shrink-0">
+
+                        <button
+                          onClick={() => {
+
+                            setSelectedParent(
+                              parent
+                            );
+
+                            /*
+                             * IMPORTANT:
+                             *
+                             * API returns populated
+                             * student objects.
+                             *
+                             * Edit form needs only
+                             * their IDs.
+                             */
+                            const studentIds =
+                              linkedStudents
+                                .map(
+                                  (
                                     student
-                                  )
-                              )
-                              .filter(Boolean);
+                                  ) =>
+                                    getStudentId(
+                                      student
+                                    )
+                                )
+                                .filter(
+                                  Boolean
+                                );
 
-                          setForm({
-                            firstName:
-                              user.firstName ||
-                              "",
-                            lastName:
-                              user.lastName ||
-                              "",
-                            email:
-                              user.email ||
-                              "",
-                            phone:
-                              user.phone ||
-                              "",
-                            password: "",
+                            setForm({
+                              firstName:
+                                parent.firstName ||
+                                "",
 
-                            occupation:
-                              (p as any)
-                                .occupation ||
-                              "",
+                              lastName:
+                                parent.lastName ||
+                                "",
 
-                            address:
-                              (p as any)
-                                .address ||
-                              "",
+                              email:
+                                parent.email ||
+                                "",
 
-                            relationshipToStudent:
-                              (p as any)
-                                .relationshipToStudent ||
-                              "",
+                              phone:
+                                parent.phone ||
+                                "",
 
-                            studentIds,
-                          });
+                              password: "",
 
-                          setActionError("");
-                          setEditOpen(true);
-                        }}
-                        className="btn-secondary"
-                      >
-                        Edit
-                      </button>
+                              occupation:
+                                parent.occupation ||
+                                "",
 
-                      <button
-                        onClick={() => {
-                          setSelectedParent(p);
-                          setActionError("");
-                          setDeleteOpen(true);
-                        }}
-                        className="btn-danger"
-                      >
-                        Delete
-                      </button>
+                              address:
+                                parent.address ||
+                                "",
+
+                              relationshipToStudent:
+                                parent.relationshipToStudent ||
+                                "",
+
+                              studentIds,
+                            });
+
+                            setActionError("");
+                            setEditOpen(true);
+                          }}
+                          className="btn-secondary"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setSelectedParent(
+                              parent
+                            );
+
+                            setActionError("");
+                            setDeleteOpen(true);
+                          }}
+                          className="btn-danger"
+                        >
+                          Delete
+                        </button>
+
+                      </div>
+
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                }
+              )}
 
             </div>
           )}
+
         </SectionCard>
+
       </div>
 
-      {/* CREATE MODAL */}
+      {/* ================= CREATE MODAL ================= */}
+
       <Modal
         open={createOpen}
         title="Create Parent"
@@ -712,6 +827,7 @@ export default function ParentsPage() {
           setCreateOpen(false)
         }
       >
+
         <div className="space-y-3">
 
           {actionError && (
@@ -781,37 +897,49 @@ export default function ParentsPage() {
           />
 
           {/* STUDENTS */}
+
           <div>
+
             <p className="text-sm text-slate-300 mb-2">
               Link Students
             </p>
 
             {loadingOptions ? (
+
               <div className="text-sm text-slate-500">
                 Loading students...
               </div>
+
             ) : (
+
               <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-                {students.map((s) => (
+
+                {students.map((student) => (
+
                   <div
-                    key={s._id}
+                    key={student._id}
                     onClick={() =>
-                      toggleStudent(s._id)
+                      toggleStudent(
+                        student._id
+                      )
                     }
                     className={`p-2 rounded-lg cursor-pointer transition ${
                       form.studentIds.includes(
-                        s._id
+                        student._id
                       )
                         ? "bg-green-600"
                         : "bg-white/10 hover:bg-white/15"
                     }`}
                   >
-                    {s.firstName}{" "}
-                    {s.lastName}
+                    {student.firstName}{" "}
+                    {student.lastName}
                   </div>
+
                 ))}
+
               </div>
             )}
+
           </div>
 
           <button
@@ -823,10 +951,13 @@ export default function ParentsPage() {
               ? "Creating..."
               : "Create Parent"}
           </button>
+
         </div>
+
       </Modal>
 
-      {/* EDIT MODAL */}
+      {/* ================= EDIT MODAL ================= */}
+
       <Modal
         open={editOpen}
         title="Edit Parent"
@@ -834,6 +965,7 @@ export default function ParentsPage() {
           setEditOpen(false)
         }
       >
+
         <div className="space-y-3">
 
           {actionError && (
@@ -879,37 +1011,49 @@ export default function ParentsPage() {
           />
 
           {/* EDIT STUDENTS */}
+
           <div>
+
             <p className="text-sm text-slate-300 mb-2">
               Linked Students
             </p>
 
             {loadingOptions ? (
+
               <div className="text-sm text-slate-500">
                 Loading students...
               </div>
+
             ) : (
+
               <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-                {students.map((s) => (
+
+                {students.map((student) => (
+
                   <div
-                    key={s._id}
+                    key={student._id}
                     onClick={() =>
-                      toggleStudent(s._id)
+                      toggleStudent(
+                        student._id
+                      )
                     }
                     className={`p-2 rounded-lg cursor-pointer transition ${
                       form.studentIds.includes(
-                        s._id
+                        student._id
                       )
                         ? "bg-green-600"
                         : "bg-white/10 hover:bg-white/15"
                     }`}
                   >
-                    {s.firstName}{" "}
-                    {s.lastName}
+                    {student.firstName}{" "}
+                    {student.lastName}
                   </div>
+
                 ))}
+
               </div>
             )}
+
           </div>
 
           <button
@@ -921,10 +1065,13 @@ export default function ParentsPage() {
               ? "Saving..."
               : "Save Changes"}
           </button>
+
         </div>
+
       </Modal>
 
-      {/* DELETE MODAL */}
+      {/* ================= DELETE MODAL ================= */}
+
       <Modal
         open={deleteOpen}
         title="Delete Parent"
@@ -932,6 +1079,7 @@ export default function ParentsPage() {
           setDeleteOpen(false)
         }
       >
+
         <div className="space-y-3">
 
           {actionError && (
@@ -944,13 +1092,8 @@ export default function ParentsPage() {
             Are you sure you want to delete{" "}
             <span className="text-white font-medium">
               {selectedParent
-                ? `${getParentUser(
-                    selectedParent
-                  ).firstName} ${getParentUser(
-                    selectedParent
-                  ).lastName}`
+                ? `${selectedParent.firstName} ${selectedParent.lastName}`
                 : "this parent"}
-            </span>
             ?
           </p>
 
@@ -963,7 +1106,9 @@ export default function ParentsPage() {
               ? "Deleting..."
               : "Delete"}
           </button>
+
         </div>
+
       </Modal>
     </>
   );
