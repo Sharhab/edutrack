@@ -908,7 +908,7 @@ export async function bulkUpsertTeachers(
 
           await teacher.save();
         }
-
+       
         updated++;
 
         results.push({
@@ -1034,6 +1034,20 @@ export async function bulkUpsertTeachers(
             "active",
         });
 
+       const school = await School.findById(schoolId)
+          .select("name slug");
+
+        const loginUrl = school
+          ? `https://${school.slug}.edutrack.cloud/login`
+          : `${process.env.FRONTEND_URL || ""}/login`;
+
+        await sendTeacherWelcomeEmail({
+          firstName: newUser.firstName,
+          email: newUser.email,
+          schoolName: school?.name || "Your School",
+          loginUrl,
+          teacherId: newTeacher._id.toString(),
+        });
         created++;
 
         results.push({
