@@ -824,17 +824,16 @@ existing.classId = classId;
           action: "created",
         });
       }
-    } catch (error) {
-      failed++;
+   } catch (error) {
+  failed++;
 
-     results.push({
-  admissionNumber:
-    row.admissionNumber,
-  student:
-    `${row.firstName} ${row.lastName}`,
-  action: "updated",
-});
-    }
+  results.push({
+    admissionNumber: row.admissionNumber,
+    student: `${row.firstName} ${row.lastName}`,
+    action: "failed",
+    error: error?.message || "Unknown error",
+  });
+}
   }
 
   return {
