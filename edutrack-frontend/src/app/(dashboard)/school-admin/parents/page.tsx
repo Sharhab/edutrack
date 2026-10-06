@@ -1088,14 +1088,13 @@ export default function ParentsPage() {
             </div>
           )}
 
-          <p className="text-sm text-slate-400">
-            Are you sure you want to delete{" "}
-            <span className="text-white font-medium">
-              {selectedParent
-                ? `${selectedParent.firstName} ${selectedParent.lastName}`
-                : "this parent"}
-            ?
-          </p>
+         <p className="text-sm text-slate-400">
+  Are you sure you want to delete{" "}
+  {selectedParent
+    ? `${selectedParent.firstName} ${selectedParent.lastName}`
+    : "this parent"}
+  ?
+</p>
 
           <button
             onClick={handleDelete}
