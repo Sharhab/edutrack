@@ -11,43 +11,43 @@ import {
 import { School } from "../schools/school.model.js";
 
 async function validateSubjectIds(
-subjectIds,
-schoolId
+  subjectIds,
+  schoolId
 ) {
-if (!subjectIds?.length) return;
+  if (!subjectIds?.length) return;
 
-const count =
-await SubjectModel.countDocuments({
-_id: { $in: subjectIds },
-schoolId,
-});
+  const count =
+    await SubjectModel.countDocuments({
+      _id: { $in: subjectIds },
+      schoolId,
+    });
 
-if (count !== subjectIds.length) {
-throw new ApiError(
-400,
-"One or more subject IDs are invalid"
-);
-}
+  if (count !== subjectIds.length) {
+    throw new ApiError(
+      400,
+      "One or more subject IDs are invalid"
+    );
+  }
 }
 
 async function validateClassIds(
-classIds,
-schoolId
+  classIds,
+  schoolId
 ) {
-if (!classIds?.length) return;
+  if (!classIds?.length) return;
 
-const count =
-await ClassModel.countDocuments({
-_id: { $in: classIds },
-schoolId,
-});
+  const count =
+    await ClassModel.countDocuments({
+      _id: { $in: classIds },
+      schoolId,
+    });
 
-if (count !== classIds.length) {
-throw new ApiError(
-400,
-"One or more class IDs are invalid"
-);
-}
+  if (count !== classIds.length) {
+    throw new ApiError(
+      400,
+      "One or more class IDs are invalid"
+    );
+  }
 }
 
 
@@ -214,29 +214,30 @@ export async function createTeacher(
             : "inactive"
         ),
     });
-const school = await School.findById(schoolId)
-  .select("name slug");
 
-const loginUrl = school
-  ? `https://${school.slug}.edutrack.cloud/login`
-  : `${process.env.FRONTEND_URL || ""}/login`;
+  const school = await School.findById(schoolId)
+    .select("name slug");
 
-await sendTeacherWelcomeEmail({
-  firstName:
-    user.firstName,
+  const loginUrl = school
+    ? `https://${school.slug}.edutrack.cloud/login`
+    : `${process.env.FRONTEND_URL || ""}/login`;
 
-  email:
-    user.email,
+  await sendTeacherWelcomeEmail({
+    firstName:
+      user.firstName,
 
-  schoolName:
-    school?.name || "Your School",
+    email:
+      user.email,
 
-  loginUrl,
+    schoolName:
+      school?.name || "Your School",
 
-  teacherId:
-    teacher._id.toString(),
-});
-  
+    loginUrl,
+
+    teacherId:
+      teacher._id.toString(),
+  });
+
   return teacherPopulate(
     Teacher.findById(
       teacher._id
@@ -245,30 +246,28 @@ await sendTeacherWelcomeEmail({
 }
 
 /**
-
-* ==================================================
-* LIST
-* ==================================================
-  */
-  export async function listTeachers(
+ * ==================================================
+ * LIST
+ * ==================================================
+ */
+export async function listTeachers(
   schoolId
-  ) {
+) {
   return teacherPopulate(
-  Teacher.find({
-  schoolId,
-  }).sort({
-  createdAt: -1,
-  })
+    Teacher.find({
+      schoolId,
+    }).sort({
+      createdAt: -1,
+    })
   );
-  }
+}
 
 /**
-
-* ==================================================
-* GET
-* ==================================================
-  */
- function teacherPopulate(query) {
+ * ==================================================
+ * GET
+ * ==================================================
+ */
+function teacherPopulate(query) {
   return query
     .populate(
       "userId",
@@ -411,12 +410,12 @@ export async function getTeacherById(
       teacher.updatedAt,
   };
 }
-/**
 
-* ==================================================
-* UPDATE
-* ==================================================
-  */
+/**
+ * ==================================================
+ * UPDATE
+ * ==================================================
+ */
 export async function updateTeacher(
   id,
   payload,
@@ -698,48 +697,46 @@ export async function updateTeacher(
 }
 
 /**
-
-* ==================================================
-* DELETE
-* ==================================================
-  */
-  export async function deleteTeacher(
+ * ==================================================
+ * DELETE
+ * ==================================================
+ */
+export async function deleteTeacher(
   id,
   schoolId
-  ) {
+) {
   const teacher =
-  await Teacher.findOne({
-  _id: id,
-  schoolId,
+    await Teacher.findOne({
+      _id: id,
+      schoolId,
+    });
+
+  if (!teacher) {
+    throw new ApiError(
+      404,
+      "Teacher not found"
+    );
+  }
+
+  await User.findOneAndDelete({
+    _id: teacher.userId,
+    schoolId,
   });
 
-if (!teacher) {
-throw new ApiError(
-404,
-"Teacher not found"
-);
-}
+  await Teacher.deleteOne({
+    _id: id,
+  });
 
-await User.findOneAndDelete({
-_id: teacher.userId,
-schoolId,
-});
-
-await Teacher.deleteOne({
-_id: id,
-});
-
-return {
-deleted: true,
-};
+  return {
+    deleted: true,
+  };
 }
 
 /**
-
-* ==================================================
-* BULK UPSERT
-* ==================================================
-  */
+ * ==================================================
+ * BULK UPSERT
+ * ==================================================
+ */
 export async function bulkUpsertTeachers(
   rows = [],
   schoolId
@@ -908,7 +905,7 @@ export async function bulkUpsertTeachers(
 
           await teacher.save();
         }
-       
+
         updated++;
 
         results.push({
@@ -944,97 +941,98 @@ export async function bulkUpsertTeachers(
               "inactive",
           });
 
-        await Teacher.create({
-          schoolId,
-          userId: newUser._id,
+        const newTeacher =
+          await Teacher.create({
+            schoolId,
+            userId: newUser._id,
 
-          employeeId:
-            row.employeeId || "",
+            employeeId:
+              row.employeeId || "",
 
-          qualification:
-            row.qualification || "",
+            qualification:
+              row.qualification || "",
 
-          designation:
-            row.designation || "",
+            designation:
+              row.designation || "",
 
-          gender:
-            row.gender || "male",
+            gender:
+              row.gender || "male",
 
-          address:
-            row.address || "",
+            address:
+              row.address || "",
 
-          dateOfBirth:
-            row.dateOfBirth || null,
+            dateOfBirth:
+              row.dateOfBirth || null,
 
-          employmentDate:
-            row.employmentDate ||
-            null,
+            employmentDate:
+              row.employmentDate ||
+              null,
 
-          employmentType:
-            row.employmentType ||
-            "full_time",
+            employmentType:
+              row.employmentType ||
+              "full_time",
 
-          maritalStatus:
-            row.maritalStatus ||
-            "",
+            maritalStatus:
+              row.maritalStatus ||
+              "",
 
-          stateOfOrigin:
-            row.stateOfOrigin ||
-            "",
+            stateOfOrigin:
+              row.stateOfOrigin ||
+              "",
 
-          lga:
-            row.lga || "",
+            lga:
+              row.lga || "",
 
-          nationality:
-            row.nationality ||
-            "Nigerian",
+            nationality:
+              row.nationality ||
+              "Nigerian",
 
-          staffCategory:
-            row.staffCategory ||
-            "",
+            staffCategory:
+              row.staffCategory ||
+              "",
 
-          emergencyName:
-            row.emergencyName ||
-            "",
+            emergencyName:
+              row.emergencyName ||
+              "",
 
-          emergencyPhone:
-            row.emergencyPhone ||
-            "",
+            emergencyPhone:
+              row.emergencyPhone ||
+              "",
 
-          bloodGroup:
-            row.bloodGroup ||
-            "",
+            bloodGroup:
+              row.bloodGroup ||
+              "",
 
-          genotype:
-            row.genotype ||
-            "",
+            genotype:
+              row.genotype ||
+              "",
 
-          nin:
-            row.nin || "",
+            nin:
+              row.nin || "",
 
-          photo:
-            row.photo || "",
+            photo:
+              row.photo || "",
 
-          subjectIds:
-            Array.isArray(
-              row.subjectIds
-            )
-              ? row.subjectIds
-              : [],
+            subjectIds:
+              Array.isArray(
+                row.subjectIds
+              )
+                ? row.subjectIds
+                : [],
 
-          classIds:
-            Array.isArray(
-              row.classIds
-            )
-              ? row.classIds
-              : [],
+            classIds:
+              Array.isArray(
+                row.classIds
+              )
+                ? row.classIds
+                : [],
 
-          status:
-            row.status ||
-            "active",
-        });
+            status:
+              row.status ||
+              "active",
+          });
 
-       const school = await School.findById(schoolId)
+        const school = await School.findById(schoolId)
           .select("name slug");
 
         const loginUrl = school
@@ -1048,6 +1046,7 @@ export async function bulkUpsertTeachers(
           loginUrl,
           teacherId: newTeacher._id.toString(),
         });
+
         created++;
 
         results.push({
