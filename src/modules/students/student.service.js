@@ -712,13 +712,14 @@ export async function bulkUpsertStudents(rows, schoolId) {
 
   for (const row of rows) {
     try {
-     const classId = await resolveClassId({
-  schoolId,
-  className: row.className,
-  sessionId: currentSession?._id,
-  termId: currentTerm?._id,
-});
+      console.log("🚨 BULK ROW BEFORE CLASS RESOLUTION:", row);
+console.log("🚨 ROW CLASS ID:", row.classId);
 
+const classId = await resolveClassId({
+  schoolId,
+  classId: row.classId,
+});
+   
       const existing = await Student.findOne({
         schoolId,
         admissionNumber: row.admissionNumber,
