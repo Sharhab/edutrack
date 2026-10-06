@@ -102,23 +102,7 @@ export default function ParentBulkEntryPage() {
         ...prev,
         [index]: students,
       }));
-
-      // auto select ONLY SAFE students (not already linked)
-      const safeStudents = students.filter(
-        (s) => !s.parentIds || s.parentIds.length === 0
-      );
-
-      setRows((prev) =>
-        prev.map((row, i) =>
-          i === index
-            ? {
-                ...row,
-                studentIds: safeStudents.map((s) => s._id),
-              }
-            : row
-        )
-      );
-
+     
       // conflict list (show real owners)
       const blocked = students.filter(
         (s) => s.parentIds && s.parentIds.length > 0
@@ -165,19 +149,22 @@ export default function ParentBulkEntryPage() {
     );
   }
 
-  function toggleStudent(index: number, studentId: string) {
-   setRows((prev) =>
-  prev.map((row, i) =>
-    i === index
-      ? {
-          ...row,
-          studentIds: [], // 👈 DO NOT AUTO LINK
-        }
-      : row
-  )
-);
-  }
+ function toggleStudent(index: number, studentId: string) {
+  setRows((prev) =>
+    prev.map((row, i) => {
+      if (i !== index) return row;
 
+      const alreadySelected = row.studentIds.includes(studentId);
+
+      return {
+        ...row,
+        studentIds: alreadySelected
+          ? row.studentIds.filter((id) => id !== studentId)
+          : [...row.studentIds, studentId],
+      };
+    })
+  );
+}
   /* =========================
      VALIDATION (STRICT MODE)
   ========================= */
@@ -190,6 +177,8 @@ export default function ParentBulkEntryPage() {
       if (!row.phone.trim()) return "Phone required";
       if (!row.password.trim()) return "Password required";
       if (!row.classIds.length) return "Select at least one class";
+      if (!row.studentIds.length) return "Select at least one student";
+
     }
 
     // BLOCK IF ANY ROW HAS CONFLICTS
