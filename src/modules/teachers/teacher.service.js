@@ -4,6 +4,11 @@ import { SubjectModel } from "../subjects/subject.model.js";
 import { ClassModel } from "../classes/class.model.js";
 import { ApiError } from "../../utils/apiError.js";
 import { hashPassword } from "../../utils/hash.js";
+import {
+  sendTeacherWelcomeEmail,
+} from "../../services/email.service.js";
+
+import { School } from "../schools/school.model.js";
 
 async function validateSubjectIds(
 subjectIds,
@@ -209,7 +214,29 @@ export async function createTeacher(
             : "inactive"
         ),
     });
+const school = await School.findById(schoolId)
+  .select("name slug");
 
+const loginUrl = school
+  ? `https://${school.slug}.edutrack.cloud/login`
+  : `${process.env.FRONTEND_URL || ""}/login`;
+
+await sendTeacherWelcomeEmail({
+  firstName:
+    user.firstName,
+
+  email:
+    user.email,
+
+  schoolName:
+    school?.name || "Your School",
+
+  loginUrl,
+
+  teacherId:
+    teacher._id.toString(),
+});
+  
   return teacherPopulate(
     Teacher.findById(
       teacher._id
