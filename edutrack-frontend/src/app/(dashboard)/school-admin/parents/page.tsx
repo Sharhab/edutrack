@@ -92,8 +92,7 @@ type ParentView = Parent & {
 
 function normalizeParent(parent: ApiParent): ParentView {
   return {
-    ...(parent as Parent),
-
+...(parent as unknown as Parent),
     /*
      * Parent identity comes from userId.
      */
