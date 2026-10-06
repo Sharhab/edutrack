@@ -13,7 +13,7 @@ import { useTenant } from "../../components/tenant/TenantProvider";
 const api = axios.create({
  baseURL:
   process.env.NEXT_PUBLIC_API_URL ||
-  "https://edutrack-dpui.onrender.com/api";
+  "https://edutrack-dpui.onrender.com/api",
   withCredentials: true,
 });
 
