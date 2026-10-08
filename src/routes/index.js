@@ -34,6 +34,7 @@ import teacherTimetableRoutes from "../modules/timetables/teacher-timetable.rout
 import timetableRoutes from "../modules/timetables/timetable.routes.js";
 import classTimetableRoutes from "../modules/timetables/class-timetable.routes.js";
 import studentTimetableRoutes from "../modules/timetables/student-timetable.routes.js";
+import parentTimetableRoutes from "../modules/timetables/parent-timetable.routes.js";
 import teacherRoutes from "../modules/teachers/teacher.routes.js";
 import parentRoutes from "../modules/parents/parent.routes.js";
 import studentRoutes from "../modules/students/student.routes.js";
@@ -191,6 +192,7 @@ router.use(
   classTimetableRoutes
 );
 router.use("/student/timetable", studentTimetableRoutes);
+router.use("/parent/timetable", parentTimetableRoutes);
 router.use("/teachers", teacherRoutes);
 router.use("/parents", parentRoutes);
 router.use("/students", studentRoutes);
