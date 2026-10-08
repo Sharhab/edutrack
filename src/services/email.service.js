@@ -2,8 +2,21 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+/**
+ * Email sender
+ *
+ * Recommended Render environment variable:
+ * EMAIL_FROM=EduTrack <noreply@edutrack.cloud>
+ *
+ * Falls back to the verified Resend domain if EMAIL_FROM
+ * is not configured.
+ */
 const EMAIL_FROM =
-  process.env.EMAIL_FROM || from: "EduTrack <noreply@edutrack.cloud>"
+  process.env.EMAIL_FROM || "EduTrack <noreply@edutrack.cloud>";
+
+/* =========================================
+   HTML ESCAPE
+========================================= */
 
 function escapeHtml(value = "") {
   return String(value)
@@ -13,6 +26,10 @@ function escapeHtml(value = "") {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+/* =========================================
+   EMAIL LAYOUT
+========================================= */
 
 function emailLayout({
   title,
@@ -24,98 +41,137 @@ function emailLayout({
 }) {
   return `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
   <title>${escapeHtml(title)}</title>
 </head>
 
-<body style="
-  margin:0;
-  padding:0;
-  background:#f1f5f9;
-  font-family:Arial,Helvetica,sans-serif;
-">
+<body
+  style="
+    margin:0;
+    padding:0;
+    background:#f1f5f9;
+    font-family:Arial,Helvetica,sans-serif;
+  "
+>
 
-  <div style="
-    max-width:600px;
-    margin:40px auto;
-    background:#ffffff;
-    border-radius:16px;
-    overflow:hidden;
-    box-shadow:0 10px 30px rgba(15,23,42,.08);
-  ">
+  <div
+    style="
+      max-width:600px;
+      margin:40px auto;
+      background:#ffffff;
+      border-radius:16px;
+      overflow:hidden;
+      box-shadow:0 10px 30px rgba(15,23,42,.08);
+    "
+  >
 
-    <div style="
-      background:#06b6d4;
-      padding:28px;
-      text-align:center;
-    ">
-      <h1 style="
-        margin:0;
-        color:#ffffff;
-        font-size:28px;
-      ">
+    <!-- HEADER -->
+
+    <div
+      style="
+        background:#06b6d4;
+        padding:28px;
+        text-align:center;
+      "
+    >
+
+      <h1
+        style="
+          margin:0;
+          color:#ffffff;
+          font-size:28px;
+        "
+      >
         EduTrack
       </h1>
 
-      <p style="
-        margin:8px 0 0;
-        color:#e0f2fe;
-        font-size:14px;
-      ">
+      <p
+        style="
+          margin:8px 0 0;
+          color:#e0f2fe;
+          font-size:14px;
+        "
+      >
         School Management Platform
       </p>
+
     </div>
+
+    <!-- CONTENT -->
 
     <div style="padding:32px">
 
-      <h2 style="
-        margin:0 0 16px;
-        color:#0f172a;
-        font-size:22px;
-      ">
+      <h2
+        style="
+          margin:0 0 16px;
+          color:#0f172a;
+          font-size:22px;
+        "
+      >
         ${escapeHtml(title)}
       </h2>
 
-      <p style="
-        color:#334155;
-        font-size:16px;
-        line-height:1.6;
-      ">
+      <p
+        style="
+          color:#334155;
+          font-size:16px;
+          line-height:1.6;
+        "
+      >
         Hello <strong>${escapeHtml(name)}</strong>,
       </p>
 
-      <p style="
-        color:#475569;
-        font-size:15px;
-        line-height:1.7;
-      ">
+      <p
+        style="
+          color:#475569;
+          font-size:15px;
+          line-height:1.7;
+        "
+      >
         Your EduTrack account has been created successfully.
       </p>
 
       ${
         schoolName
           ? `
-      <div style="
-        background:#f8fafc;
-        border:1px solid #e2e8f0;
-        border-radius:12px;
-        padding:18px;
-        margin:24px 0;
-      ">
+      <!-- SCHOOL -->
 
-        <p style="margin:0 0 8px;color:#64748b;font-size:13px;">
+      <div
+        style="
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
+          border-radius:12px;
+          padding:18px;
+          margin:24px 0;
+        "
+      >
+
+        <p
+          style="
+            margin:0 0 8px;
+            color:#64748b;
+            font-size:13px;
+          "
+        >
           SCHOOL
         </p>
 
-        <p style="
-          margin:0;
-          color:#0f172a;
-          font-size:17px;
-          font-weight:bold;
-        ">
+        <p
+          style="
+            margin:0;
+            color:#0f172a;
+            font-size:17px;
+            font-weight:bold;
+          "
+        >
           ${escapeHtml(schoolName)}
         </p>
 
@@ -124,52 +180,73 @@ function emailLayout({
           : ""
       }
 
-      <div style="
-        background:#f8fafc;
-        border:1px solid #e2e8f0;
-        border-radius:12px;
-        padding:20px;
-        margin:24px 0;
-      ">
+      <!-- LOGIN DETAILS -->
 
-        <p style="
-          margin:0 0 10px;
-          color:#64748b;
-          font-size:13px;
-        ">
+      <div
+        style="
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
+          border-radius:12px;
+          padding:20px;
+          margin:24px 0;
+        "
+      >
+
+        <p
+          style="
+            margin:0 0 10px;
+            color:#64748b;
+            font-size:13px;
+          "
+        >
           LOGIN DETAILS
         </p>
 
-        <p style="
-          margin:8px 0;
-          color:#0f172a;
-          font-size:15px;
-        ">
+        <p
+          style="
+            margin:8px 0;
+            color:#0f172a;
+            font-size:15px;
+          "
+        >
           <strong>Email:</strong>
           ${escapeHtml(email)}
         </p>
 
-        <p style="
-          margin:8px 0;
-          color:#0f172a;
-          font-size:15px;
-        ">
+        <p
+          style="
+            margin:8px 0;
+            color:#0f172a;
+            font-size:15px;
+          "
+        >
           <strong>Role:</strong>
           ${escapeHtml(role)}
         </p>
 
       </div>
 
-      <p style="
-        color:#475569;
-        font-size:14px;
-        line-height:1.7;
-      ">
+      <!-- PASSWORD MESSAGE -->
+
+      <p
+        style="
+          color:#475569;
+          font-size:14px;
+          line-height:1.7;
+        "
+      >
         Use the password provided to you when your account was created.
         You can change your password after signing in.
       </p>
 
-      <div style="text-align:center;margin:30px 0">
+      <!-- LOGIN BUTTON -->
+
+      <div
+        style="
+          text-align:center;
+          margin:30px 0;
+        "
+      >
 
         <a
           href="${escapeHtml(loginUrl)}"
@@ -189,31 +266,43 @@ function emailLayout({
 
       </div>
 
-      <p style="
-        color:#94a3b8;
-        font-size:12px;
-        line-height:1.6;
-        text-align:center;
-      ">
+      <!-- SECURITY MESSAGE -->
+
+      <p
+        style="
+          color:#94a3b8;
+          font-size:12px;
+          line-height:1.6;
+          text-align:center;
+        "
+      >
         If you did not expect this account, please contact your school
         administrator.
       </p>
 
     </div>
 
-    <div style="
-      padding:20px;
-      background:#f8fafc;
-      text-align:center;
-      border-top:1px solid #e2e8f0;
-    ">
-      <p style="
-        margin:0;
-        color:#94a3b8;
-        font-size:12px;
-      ">
+    <!-- FOOTER -->
+
+    <div
+      style="
+        padding:20px;
+        background:#f8fafc;
+        text-align:center;
+        border-top:1px solid #e2e8f0;
+      "
+    >
+
+      <p
+        style="
+          margin:0;
+          color:#94a3b8;
+          font-size:12px;
+        "
+      >
         © ${new Date().getFullYear()} EduTrack
       </p>
+
     </div>
 
   </div>
@@ -223,12 +312,20 @@ function emailLayout({
 `;
 }
 
+/* =========================================
+   SEND EMAIL
+========================================= */
+
 async function sendEmail({
   to,
   subject,
   html,
   idempotencyKey,
 }) {
+  /* -----------------------------------------
+     CHECK RESEND API KEY
+  ----------------------------------------- */
+
   if (!process.env.RESEND_API_KEY) {
     console.warn(
       "⚠️ RESEND_API_KEY is not configured. Email was not sent."
@@ -237,8 +334,13 @@ async function sendEmail({
     return {
       success: false,
       skipped: true,
+      reason: "RESEND_API_KEY_MISSING",
     };
   }
+
+  /* -----------------------------------------
+     CHECK RECIPIENT
+  ----------------------------------------- */
 
   if (!to) {
     console.warn(
@@ -248,6 +350,7 @@ async function sendEmail({
     return {
       success: false,
       skipped: true,
+      reason: "RECIPIENT_MISSING",
     };
   }
 
@@ -266,17 +369,22 @@ async function sendEmail({
         : undefined
     );
 
+    /* -----------------------------------------
+       RESEND ERROR
+    ----------------------------------------- */
+
     if (error) {
-      console.error(
-        "❌ RESEND ERROR:",
-        error
-      );
+      console.error("❌ RESEND ERROR:", error);
 
       return {
         success: false,
         error,
       };
     }
+
+    /* -----------------------------------------
+       SUCCESS
+    ----------------------------------------- */
 
     console.log(
       `✅ Email sent to ${to}`,
@@ -322,8 +430,11 @@ export async function sendSchoolWelcomeEmail({
 
   return sendEmail({
     to: adminEmail,
+
     subject: `Welcome to EduTrack - ${schoolName}`,
+
     html,
+
     idempotencyKey: schoolId
       ? `school-welcome-${schoolId}`
       : undefined,
@@ -352,8 +463,11 @@ export async function sendTeacherWelcomeEmail({
 
   return sendEmail({
     to: email,
+
     subject: `Your EduTrack Teacher Account - ${schoolName}`,
+
     html,
+
     idempotencyKey: teacherId
       ? `teacher-welcome-${teacherId}`
       : undefined,
@@ -382,8 +496,11 @@ export async function sendParentWelcomeEmail({
 
   return sendEmail({
     to: email,
+
     subject: `Your EduTrack Parent Account - ${schoolName}`,
+
     html,
+
     idempotencyKey: parentId
       ? `parent-welcome-${parentId}`
       : undefined,
