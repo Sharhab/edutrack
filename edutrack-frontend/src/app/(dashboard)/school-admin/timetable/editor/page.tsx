@@ -8,7 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import api from "../../../../../../lib/axios";
+import api from "../../../../../lib/axios";
 
 type Session = {
   _id: string;
