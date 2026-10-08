@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, BookOpen } from "lucide-react";
 
-import api from "../../../../../lib/axios";
+import api from "../../../../lib/axios";
 
 type SubjectRow = {
   name: string;
