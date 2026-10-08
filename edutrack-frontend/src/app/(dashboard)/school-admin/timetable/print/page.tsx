@@ -1,22 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import api from "../../../../../lib/axios";
 import {
   CalendarDays,
   ChevronDown,
   Loader2,
   Printer,
 } from "lucide-react";
-
-const baseURL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://edutrack-dpui.onrender.com/api";
-
-const api = axios.create({
-  baseURL,
-  withCredentials: true,
-});
 
 const DAYS = [
   "Monday",
