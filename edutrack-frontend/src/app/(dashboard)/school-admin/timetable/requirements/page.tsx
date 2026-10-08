@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, Save, RefreshCw } from "lucide-react";
-import api from "../../../../../../lib/axios";
+import api from "../../../../../lib/axios";
 
 type Session = {
   _id: string;
