@@ -13,82 +13,38 @@ import {
 
 const router = express.Router();
 
-/*
-=========================================
-AUTHENTICATION
-=========================================
-*/
-
 router.use(protect);
 
 /*
-=========================================
-SCHOOL ADMIN ONLY
-=========================================
-*/
-
-router.use(
-  authorize("school_admin")
-);
-
-/*
-=========================================
-GET SETTINGS
-
-GET /api/timetables/settings?sessionId=...&termId=...
-=========================================
-*/
-
-router.get(
-  "/",
-  asyncHandler(
-    getTimetableSettingHandler
-  )
-);
-
-/*
-=========================================
-CREATE SETTINGS
-
-POST /api/timetables/settings
-=========================================
-*/
-
+ * School administrators can create, update and delete
+ * timetable settings.
+ */
 router.post(
   "/",
-  asyncHandler(
-    createTimetableSettingHandler
-  )
+  authorize("school_admin"),
+  asyncHandler(createTimetableSettingHandler)
 );
-
-/*
-=========================================
-UPDATE SETTINGS
-
-PUT /api/timetables/settings/:id
-=========================================
-*/
 
 router.put(
   "/:id",
-  asyncHandler(
-    updateTimetableSettingHandler
-  )
+  authorize("school_admin"),
+  asyncHandler(updateTimetableSettingHandler)
 );
-
-/*
-=========================================
-DELETE SETTINGS
-
-DELETE /api/timetables/settings/:id
-=========================================
-*/
 
 router.delete(
   "/:id",
-  asyncHandler(
-    deleteTimetableSettingHandler
-  )
+  authorize("school_admin"),
+  asyncHandler(deleteTimetableSettingHandler)
+);
+
+/*
+ * School administrators and teachers can read
+ * timetable settings.
+ */
+router.get(
+  "/",
+  authorize("school_admin", "teacher"),
+  asyncHandler(getTimetableSettingHandler)
 );
 
 export default router;
