@@ -104,13 +104,18 @@ const navByRole: Record<
   { label: "Result Entry", href: "/teacher/results/entry", icon: BookOpen },
   { label: "Announcements", href: "/teacher/announcements", icon: Bell },
 ],
-  parent: [
-    { label: "Dashboard", href: "/parent", icon: LayoutDashboard },
-    { label: "My Children", href: "/parent/children", icon: GraduationCap },
-    { label: "Results", href: "/parent/results", icon: BookOpen },
-      { label: "Receipts", href: "/parent/receipts", icon: CreditCard },
-    { label: "Announcements", href: "/parent/announcements", icon: Bell },
-  ],
+ parent: [
+  { label: "Dashboard", href: "/parent", icon: LayoutDashboard },
+  { label: "My Children", href: "/parent/children", icon: GraduationCap },
+  {
+    label: "My Children's Timetable",
+    href: "/parent/timetable",
+    icon: CalendarDays,
+  },
+  { label: "Results", href: "/parent/results", icon: BookOpen },
+  { label: "Receipts", href: "/parent/receipts", icon: CreditCard },
+  { label: "Announcements", href: "/parent/announcements", icon: Bell },
+],
 
  student: [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
