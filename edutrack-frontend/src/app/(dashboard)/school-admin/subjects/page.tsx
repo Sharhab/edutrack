@@ -1,37 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  BookOpen,
-  Check,
-  ChevronDown,
-  Loader2,
-  Plus,
-  Save,
-  Trash2,
-  X,
-} from "lucide-react";
-import api from "../../../../lib/axios";
-import { useTenant } from "../../../../components/tenant/TenantProvider";
+import { Plus, Trash2, BookOpen } from "lucide-react";
 
-type Subject = {
-  _id: string;
-  name: string;
-  code?: string;
-  description?: string;
-  category?: string;
-  isCore?: boolean;
-  isActive?: boolean;
-  classIds?: string[];
-  teacherIds?: string[];
-  createdAt?: string;
-};
+import api from "../../../../../lib/axios";
 
 type SubjectRow = {
   name: string;
   code: string;
   category: string;
   isCore: boolean;
+  isActive: boolean;
+};
+
+type Subject = SubjectRow & {
+  _id: string;
+};
+
+const emptyRow: SubjectRow = {
+  name: "",
+  code: "",
+  category: "general",
+  isCore: false,
+  isActive: true,
 };
 
 const categories = [
@@ -44,166 +35,87 @@ const categories = [
   { value: "elective", label: "Elective" },
 ];
 
-const emptyRow = (): SubjectRow => ({
-  name: "",
-  code: "",
-  category: "general",
-  isCore: false,
-});
-
 export default function SubjectsPage() {
-  const { tenant } = useTenant();
-
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showBulkModal, setShowBulkModal] = useState(false);
-
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const [form, setForm] = useState<SubjectRow>(
-    emptyRow()
-  );
-
-  const [bulkRows, setBulkRows] = useState<
-    SubjectRow[]
-  >([
-    emptyRow(),
-    emptyRow(),
-    emptyRow(),
+  const [rows, setRows] = useState<SubjectRow[]>([
+    { ...emptyRow },
   ]);
 
-  const [message, setMessage] = useState("");
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [error, setError] = useState("");
 
-  const themeColor =
-    tenant?.themeColor || "#06b6d4";
+  // ==============================
+  // LOAD SUBJECTS
+  // ==============================
 
-  /* =========================================
-     FETCH SUBJECTS
-  ========================================= */
-
-  async function fetchSubjects() {
+  async function loadSubjects() {
     try {
-      setLoading(true);
+      setLoadingSubjects(true);
       setError("");
 
-      const response =
-        await api.get("/subjects");
+      const res = await api.get("/subjects");
 
-      setSubjects(
-        response.data?.data || []
-      );
+      const data = res?.data?.data;
+
+      if (Array.isArray(data)) {
+        setSubjects(data);
+      } else if (Array.isArray(data?.subjects)) {
+        setSubjects(data.subjects);
+      } else {
+        setSubjects([]);
+      }
     } catch (err: any) {
-      console.error(
-        "❌ SUBJECTS FETCH ERROR:",
-        err
-      );
+      console.error("Failed to load subjects", err);
 
       setError(
         err?.response?.data?.message ||
-          "Failed to load subjects."
+          "Failed to load subjects"
       );
     } finally {
-      setLoading(false);
+      setLoadingSubjects(false);
     }
   }
 
   useEffect(() => {
-    fetchSubjects();
+    loadSubjects();
   }, []);
 
-  /* =========================================
-     RESET
-  ========================================= */
+  // ==============================
+  // ROW MANAGEMENT
+  // ==============================
 
-  function resetMessages() {
-    setMessage("");
-    setError("");
-  }
-
-  function closeAddModal() {
-    setShowAddModal(false);
-    setForm(emptyRow());
-    resetMessages();
-  }
-
-  function closeBulkModal() {
-    setShowBulkModal(false);
-    setBulkRows([
-      emptyRow(),
-      emptyRow(),
-      emptyRow(),
+  function addRow() {
+    setRows((prev) => [
+      ...prev,
+      {
+        ...emptyRow,
+      },
     ]);
-    resetMessages();
   }
 
-  /* =========================================
-     CREATE SINGLE SUBJECT
-  ========================================= */
+  function removeRow(index: number) {
+    setRows((prev) => {
+      if (prev.length === 1) {
+        return [
+          {
+            ...emptyRow,
+          },
+        ];
+      }
 
-  async function handleCreateSubject(
-    e: React.FormEvent
-  ) {
-    e.preventDefault();
-
-    if (!form.name.trim()) {
-      setError(
-        "Subject name is required."
-      );
-      return;
-    }
-
-    try {
-      setSaving(true);
-      resetMessages();
-
-      await api.post("/subjects", {
-        name: form.name.trim(),
-        code: form.code.trim(),
-        category: form.category,
-        isCore: form.isCore,
-        isActive: true,
-      });
-
-      setMessage(
-        "Subject created successfully."
-      );
-
-      await fetchSubjects();
-
-      setTimeout(() => {
-        closeAddModal();
-      }, 700);
-    } catch (err: any) {
-      console.error(
-        "❌ CREATE SUBJECT ERROR:",
-        err
-      );
-
-      setError(
-        err?.response?.data?.message ||
-          "Failed to create subject."
-      );
-    } finally {
-      setSaving(false);
-    }
+      return prev.filter((_, i) => i !== index);
+    });
   }
 
-  /* =========================================
-     BULK ROW UPDATE
-  ========================================= */
-
-  function updateBulkRow(
+  function updateRow(
     index: number,
     field: keyof SubjectRow,
     value: string | boolean
   ) {
-    setBulkRows((current) =>
-      current.map((row, rowIndex) =>
-        rowIndex === index
+    setRows((prev) =>
+      prev.map((row, i) =>
+        i === index
           ? {
               ...row,
               [field]: value,
@@ -213,1002 +125,684 @@ export default function SubjectsPage() {
     );
   }
 
-  /* =========================================
-     ADD BULK ROW
-  ========================================= */
+  // ==============================
+  // VALIDATION
+  // ==============================
 
-  function addBulkRow() {
-    setBulkRows((current) => [
-      ...current,
-      emptyRow(),
-    ]);
-  }
-
-  /* =========================================
-     REMOVE BULK ROW
-  ========================================= */
-
-  function removeBulkRow(index: number) {
-    setBulkRows((current) => {
-      if (current.length === 1) {
-        return [emptyRow()];
+  function validate() {
+    for (const row of rows) {
+      if (!row.name.trim()) {
+        return "Subject name is required";
       }
+    }
 
-      return current.filter(
-        (_, rowIndex) =>
-          rowIndex !== index
-      );
-    });
+    return "";
   }
 
-  /* =========================================
-     BULK CREATE
-  ========================================= */
+  // ==============================
+  // SAVE BULK SUBJECTS
+  // ==============================
 
-  async function handleBulkCreate(
-    e: React.FormEvent
-  ) {
-    e.preventDefault();
+  async function saveAllSubjects() {
+    const validationError = validate();
 
-    const validRows = bulkRows.filter(
-      (row) => row.name.trim()
-    );
-
-    if (!validRows.length) {
-      setError(
-        "Enter at least one subject."
-      );
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     try {
-      setSaving(true);
-      resetMessages();
-
-      const response =
-        await api.post(
-          "/subjects/bulk",
-          {
-            subjects:
-              validRows.map((row) => ({
-                name: row.name.trim(),
-                code: row.code.trim(),
-                category: row.category,
-                isCore: row.isCore,
-                isActive: true,
-              })),
-          }
-        );
-
-      const result =
-        response.data?.data;
-
-      const created =
-        result?.summary?.created || 0;
-
-      const skipped =
-        result?.summary?.skipped || 0;
-
-      const failed =
-        result?.summary?.failed || 0;
-
-      setMessage(
-        `${created} subject${
-          created === 1 ? "" : "s"
-        } created${
-          skipped
-            ? `, ${skipped} skipped`
-            : ""
-        }${
-          failed
-            ? `, ${failed} failed`
-            : ""
-        }.`
-      );
-
-      await fetchSubjects();
-
-      setTimeout(() => {
-        closeBulkModal();
-      }, 1200);
-    } catch (err: any) {
-      console.error(
-        "❌ BULK SUBJECT ERROR:",
-        err
-      );
-
-      setError(
-        err?.response?.data?.message ||
-          "Failed to create subjects."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /* =========================================
-     DELETE SUBJECT
-  ========================================= */
-
-  async function handleDeleteSubject(
-    id: string
-  ) {
-    const confirmed =
-      window.confirm(
-        "Are you sure you want to delete this subject?"
-      );
-
-    if (!confirmed) return;
-
-    try {
-      setDeletingId(id);
+      setLoading(true);
       setError("");
 
-      await api.delete(
-        `/subjects/${id}`
+      const payload = rows.map((row) => ({
+        name: row.name.trim(),
+        code: row.code.trim(),
+        category: row.category,
+        isCore: row.isCore,
+        isActive: row.isActive,
+      }));
+
+      const res = await api.post("/subjects/bulk", {
+        subjects: payload,
+      });
+
+      const stats = res?.data?.data;
+
+      alert(
+        `Created: ${stats?.created ?? 0}\n` +
+          `Skipped: ${stats?.skipped ?? 0}\n` +
+          `Failed: ${stats?.failed ?? 0}`
       );
 
-      setSubjects((current) =>
-        current.filter(
-          (subject) =>
-            subject._id !== id
-        )
-      );
+      setRows([
+        {
+          ...emptyRow,
+        },
+      ]);
 
-      setMessage(
-        "Subject deleted successfully."
-      );
+      await loadSubjects();
     } catch (err: any) {
-      console.error(
-        "❌ DELETE SUBJECT ERROR:",
-        err
-      );
+      console.error("Bulk subject creation failed", err);
 
       setError(
         err?.response?.data?.message ||
-          "Failed to delete subject."
+          "Subject import failed"
       );
     } finally {
-      setDeletingId(null);
+      setLoading(false);
     }
   }
 
-  /* =========================================
-     CATEGORY LABEL
-  ========================================= */
+  // ==============================
+  // SINGLE SUBJECT
+  // ==============================
 
-  function getCategoryLabel(
-    value?: string
-  ) {
-    return (
-      categories.find(
-        (category) =>
-          category.value === value
-      )?.label ||
-      "General"
+  async function addSingleSubject() {
+    const row = rows[0];
+
+    if (!row.name.trim()) {
+      setError("Subject name is required");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      await api.post("/subjects", {
+        name: row.name.trim(),
+        code: row.code.trim(),
+        category: row.category,
+        isCore: row.isCore,
+        isActive: row.isActive,
+      });
+
+      alert("Subject created successfully");
+
+      setRows([
+        {
+          ...emptyRow,
+        },
+      ]);
+
+      await loadSubjects();
+    } catch (err: any) {
+      console.error("Failed to create subject", err);
+
+      setError(
+        err?.response?.data?.message ||
+          "Failed to create subject"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ==============================
+  // DELETE SUBJECT
+  // ==============================
+
+  async function deleteSubject(id: string) {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this subject?"
     );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setError("");
+
+      await api.delete(`/subjects/${id}`);
+
+      await loadSubjects();
+    } catch (err: any) {
+      console.error("Failed to delete subject", err);
+
+      setError(
+        err?.response?.data?.message ||
+          "Failed to delete subject"
+      );
+    }
   }
 
   return (
-    <div className="min-h-full bg-slate-50 p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-7xl">
-        {/* =====================================
-            HEADER
-        ===================================== */}
+    <div className="space-y-6 text-white">
 
-        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg"
-                style={{
-                  backgroundColor:
-                    themeColor,
-                }}
-              >
-                <BookOpen size={24} />
-              </div>
+      {/* ==============================
+          HEADER
+      ============================== */}
 
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                  Subjects
-                </h1>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Manage subjects for{" "}
-                  {tenant?.schoolName ||
-                    "your school"}.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => {
-                resetMessages();
-                setShowBulkModal(true);
-              }}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
-              <Plus size={18} />
-              Bulk Add
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                resetMessages();
-                setShowAddModal(true);
-              }}
-              className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
-              style={{
-                backgroundColor:
-                  themeColor,
-              }}
-            >
-              <Plus size={18} />
-              Add Subject
-            </button>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/5 border border-white/10">
+          <BookOpen size={22} />
         </div>
 
-        {/* =====================================
-            ALERTS
-        ===================================== */}
+        <div>
+          <h1 className="text-2xl font-bold">
+            Subjects
+          </h1>
 
-        {message && (
-          <div className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
-            <Check size={18} />
-            {message}
-          </div>
-        )}
-
-        {error && !showAddModal && !showBulkModal && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {error}
-          </div>
-        )}
-
-        {/* =====================================
-            SUMMARY CARDS
-        ===================================== */}
-
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Total Subjects
-            </p>
-
-            <p className="mt-2 text-3xl font-bold text-slate-900">
-              {subjects.length}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Core Subjects
-            </p>
-
-            <p className="mt-2 text-3xl font-bold text-slate-900">
-              {
-                subjects.filter(
-                  (subject) =>
-                    subject.isCore
-                ).length
-              }
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Active Subjects
-            </p>
-
-            <p className="mt-2 text-3xl font-bold text-slate-900">
-              {
-                subjects.filter(
-                  (subject) =>
-                    subject.isActive !==
-                    false
-                ).length
-              }
-            </p>
-          </div>
-        </div>
-
-        {/* =====================================
-            SUBJECT TABLE
-        ===================================== */}
-
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
-            <h2 className="font-semibold text-slate-900">
-              All Subjects
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Subjects available in your school.
-            </p>
-          </div>
-
-          {loading ? (
-            <div className="flex min-h-[300px] items-center justify-center">
-              <div className="flex items-center gap-3 text-sm text-slate-500">
-                <Loader2
-                  size={20}
-                  className="animate-spin"
-                />
-                Loading subjects...
-              </div>
-            </div>
-          ) : subjects.length === 0 ? (
-            <div className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                <BookOpen size={30} />
-              </div>
-
-              <h3 className="text-lg font-semibold text-slate-900">
-                No subjects yet
-              </h3>
-
-              <p className="mt-2 max-w-md text-sm text-slate-500">
-                Create your first subject or
-                use bulk add to create multiple
-                subjects at once.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => {
-                  resetMessages();
-                  setShowBulkModal(true);
-                }}
-                className="mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white"
-                style={{
-                  backgroundColor:
-                    themeColor,
-                }}
-              >
-                <Plus size={18} />
-                Add Subjects
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Desktop */}
-              <div className="hidden overflow-x-auto md:block">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50">
-                      <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Subject
-                      </th>
-
-                      <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Code
-                      </th>
-
-                      <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Category
-                      </th>
-
-                      <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Type
-                      </th>
-
-                      <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Status
-                      </th>
-
-                      <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {subjects.map(
-                      (subject) => (
-                        <tr
-                          key={subject._id}
-                          className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
-                        >
-                          <td className="px-6 py-4">
-                            <div className="font-semibold text-slate-900">
-                              {subject.name}
-                            </div>
-
-                            {subject.description && (
-                              <div className="mt-1 max-w-xs truncate text-xs text-slate-400">
-                                {
-                                  subject.description
-                                }
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="px-6 py-4">
-                            <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                              {subject.code ||
-                                "—"}
-                            </span>
-                          </td>
-
-                          <td className="px-6 py-4 text-sm text-slate-600">
-                            {getCategoryLabel(
-                              subject.category
-                            )}
-                          </td>
-
-                          <td className="px-6 py-4">
-                            {subject.isCore ? (
-                              <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">
-                                Core
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-                                General
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="px-6 py-4">
-                            {subject.isActive !==
-                            false ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                Active
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
-                                Inactive
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="px-6 py-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleDeleteSubject(
-                                  subject._id
-                                )
-                              }
-                              disabled={
-                                deletingId ===
-                                subject._id
-                              }
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                              title="Delete subject"
-                            >
-                              {deletingId ===
-                              subject._id ? (
-                                <Loader2
-                                  size={16}
-                                  className="animate-spin"
-                                />
-                              ) : (
-                                <Trash2
-                                  size={16}
-                                />
-                              )}
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile */}
-              <div className="divide-y divide-slate-100 md:hidden">
-                {subjects.map(
-                  (subject) => (
-                    <div
-                      key={subject._id}
-                      className="p-5"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h3 className="font-semibold text-slate-900">
-                            {subject.name}
-                          </h3>
-
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
-                              {subject.code ||
-                                "No code"}
-                            </span>
-
-                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600">
-                              {getCategoryLabel(
-                                subject.category
-                              )}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteSubject(
-                              subject._id
-                            )
-                          }
-                          disabled={
-                            deletingId ===
-                            subject._id
-                          }
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          {deletingId ===
-                          subject._id ? (
-                            <Loader2
-                              size={16}
-                              className="animate-spin"
-                            />
-                          ) : (
-                            <Trash2
-                              size={16}
-                            />
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="mt-4 flex items-center gap-2">
-                        {subject.isCore && (
-                          <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">
-                            Core
-                          </span>
-                        )}
-
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            subject.isActive !==
-                            false
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-slate-100 text-slate-500"
-                          }`}
-                        >
-                          {subject.isActive !==
-                          false
-                            ? "Active"
-                            : "Inactive"}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-            </>
-          )}
+          <p className="text-slate-400">
+            Enterprise subject management system
+          </p>
         </div>
       </div>
 
-      {/* =====================================
-          SINGLE SUBJECT MODAL
-      ===================================== */}
+      {/* ==============================
+          ERROR
+      ============================== */}
 
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  Add Subject
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Create a new school subject.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={closeAddModal}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleCreateSubject}
-              className="space-y-5 p-6"
-            >
-              {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Subject Name
-                </label>
-
-                <input
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      name: e.target.value,
-                    })
-                  }
-                  placeholder="e.g. Mathematics"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Subject Code
-                </label>
-
-                <input
-                  value={form.code}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      code: e.target.value,
-                    })
-                  }
-                  placeholder="e.g. MATH"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm uppercase outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Category
-                </label>
-
-                <div className="relative">
-                  <select
-                    value={form.category}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        category:
-                          e.target.value,
-                      })
-                    }
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                  >
-                    {categories.map(
-                      (category) => (
-                        <option
-                          key={
-                            category.value
-                          }
-                          value={
-                            category.value
-                          }
-                        >
-                          {category.label}
-                        </option>
-                      )
-                    )}
-                  </select>
-
-                  <ChevronDown
-                    size={17}
-                    className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                </div>
-              </div>
-
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-4">
-                <input
-                  type="checkbox"
-                  checked={form.isCore}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      isCore:
-                        e.target.checked,
-                    })
-                  }
-                  className="h-4 w-4 rounded border-slate-300"
-                />
-
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">
-                    Core Subject
-                  </p>
-
-                  <p className="text-xs text-slate-500">
-                    Mark this as a core subject.
-                  </p>
-                </div>
-              </label>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={closeAddModal}
-                  className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
-                  style={{
-                    backgroundColor:
-                      themeColor,
-                  }}
-                >
-                  {saving ? (
-                    <Loader2
-                      size={17}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <Save size={17} />
-                  )}
-
-                  {saving
-                    ? "Creating..."
-                    : "Create Subject"}
-                </button>
-              </div>
-            </form>
-          </div>
+      {error && (
+        <div className="rounded-xl bg-red-500/10 border border-red-500/30 p-3 text-red-300">
+          {error}
         </div>
       )}
 
-      {/* =====================================
-          BULK SUBJECT MODAL
-      ===================================== */}
+      {/* ==============================
+          SINGLE SUBJECT
+      ============================== */}
 
-      {showBulkModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  Bulk Add Subjects
-                </h2>
+      <div className="rounded-2xl border border-white/10 p-5">
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Create multiple subjects at once.
-                </p>
-              </div>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold">
+            Add Subject
+          </h2>
 
-              <button
-                type="button"
-                onClick={closeBulkModal}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X size={18} />
-              </button>
-            </div>
+          <p className="text-sm text-slate-400">
+            Create one subject manually
+          </p>
+        </div>
 
-            <form
-              onSubmit={handleBulkCreate}
-              className="flex max-h-[calc(90vh-90px)] flex-col"
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+
+          {/* SUBJECT NAME */}
+
+          <div>
+            <label className="mb-1 block text-sm text-slate-300">
+              Subject Name
+            </label>
+
+            <input
+              type="text"
+              value={rows[0].name}
+              onChange={(e) =>
+                updateRow(
+                  0,
+                  "name",
+                  e.target.value
+                )
+              }
+              placeholder="e.g. Mathematics"
+              className="input w-full"
+            />
+          </div>
+
+          {/* CODE */}
+
+          <div>
+            <label className="mb-1 block text-sm text-slate-300">
+              Subject Code
+            </label>
+
+            <input
+              type="text"
+              value={rows[0].code}
+              onChange={(e) =>
+                updateRow(
+                  0,
+                  "code",
+                  e.target.value
+                )
+              }
+              placeholder="e.g. MTH"
+              className="input w-full"
+            />
+          </div>
+
+          {/* CATEGORY */}
+
+          <div>
+            <label className="mb-1 block text-sm text-slate-300">
+              Category
+            </label>
+
+            <select
+              value={rows[0].category}
+              onChange={(e) =>
+                updateRow(
+                  0,
+                  "category",
+                  e.target.value
+                )
+              }
+              className="input w-full"
             >
-              {error && (
-                <div className="mx-6 mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
+              {categories.map((category) => (
+                <option
+                  key={category.value}
+                  value={category.value}
+                >
+                  {category.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              {message && (
-                <div className="mx-6 mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  {message}
-                </div>
-              )}
+          {/* STATUS */}
 
-              <div className="flex-1 overflow-auto p-6">
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                  <table className="w-full min-w-[760px]">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50">
-                        <th className="w-8 px-3 py-3 text-center text-xs font-semibold text-slate-400">
-                          #
-                        </th>
+          <div>
+            <label className="mb-1 block text-sm text-slate-300">
+              Status
+            </label>
 
-                        <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Subject Name
-                        </th>
+            <select
+              value={
+                rows[0].isActive
+                  ? "active"
+                  : "inactive"
+              }
+              onChange={(e) =>
+                updateRow(
+                  0,
+                  "isActive",
+                  e.target.value === "active"
+                )
+              }
+              className="input w-full"
+            >
+              <option value="active">
+                Active
+              </option>
 
-                        <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Code
-                        </th>
+              <option value="inactive">
+                Inactive
+              </option>
+            </select>
+          </div>
+        </div>
 
-                        <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Category
-                        </th>
+        {/* CORE SUBJECT */}
 
-                        <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Core
-                        </th>
+        <div className="mt-4 flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={rows[0].isCore}
+            onChange={(e) =>
+              updateRow(
+                0,
+                "isCore",
+                e.target.checked
+              )
+            }
+            className="h-4 w-4"
+          />
 
-                        <th className="w-12 px-3 py-3" />
-                      </tr>
-                    </thead>
+          <span className="text-sm text-slate-300">
+            This is a core subject
+          </span>
+        </div>
 
-                    <tbody>
-                      {bulkRows.map(
-                        (row, index) => (
-                          <tr
-                            key={index}
-                            className="border-b border-slate-100 last:border-0"
+        {/* ADD BUTTON */}
+
+        <div className="mt-5">
+          <button
+            onClick={addSingleSubject}
+            disabled={loading}
+            className="btn-primary"
+          >
+            {loading
+              ? "Processing..."
+              : "Add Subject"}
+          </button>
+        </div>
+      </div>
+
+      {/* ==============================
+          BULK SUBJECT ENTRY
+      ============================== */}
+
+      <div>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold">
+            Bulk Subject Entry
+          </h2>
+
+          <p className="text-sm text-slate-400">
+            Add multiple subjects at once
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 overflow-x-auto">
+
+          <table className="w-full text-sm">
+
+            <thead className="bg-white/5">
+              <tr>
+                <th className="p-3 text-left">
+                  Subject Name
+                </th>
+
+                <th className="p-3 text-left">
+                  Code
+                </th>
+
+                <th className="p-3 text-left">
+                  Category
+                </th>
+
+                <th className="p-3 text-center">
+                  Core
+                </th>
+
+                <th className="p-3 text-left">
+                  Status
+                </th>
+
+                <th className="p-3 text-center">
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+
+              {rows.map((row, index) => (
+                <tr
+                  key={index}
+                  className="border-t border-white/10"
+                >
+
+                  {/* NAME */}
+
+                  <td className="p-2">
+                    <input
+                      type="text"
+                      value={row.name}
+                      onChange={(e) =>
+                        updateRow(
+                          index,
+                          "name",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Mathematics"
+                      className="input w-full"
+                    />
+                  </td>
+
+                  {/* CODE */}
+
+                  <td className="p-2">
+                    <input
+                      type="text"
+                      value={row.code}
+                      onChange={(e) =>
+                        updateRow(
+                          index,
+                          "code",
+                          e.target.value
+                        )
+                      }
+                      placeholder="MTH"
+                      className="input w-full"
+                    />
+                  </td>
+
+                  {/* CATEGORY */}
+
+                  <td className="p-2">
+                    <select
+                      value={row.category}
+                      onChange={(e) =>
+                        updateRow(
+                          index,
+                          "category",
+                          e.target.value
+                        )
+                      }
+                      className="input w-full"
+                    >
+                      {categories.map(
+                        (category) => (
+                          <option
+                            key={category.value}
+                            value={
+                              category.value
+                            }
                           >
-                            <td className="px-3 py-3 text-center text-xs font-semibold text-slate-400">
-                              {index + 1}
-                            </td>
-
-                            <td className="px-3 py-3">
-                              <input
-                                value={
-                                  row.name
-                                }
-                                onChange={(e) =>
-                                  updateBulkRow(
-                                    index,
-                                    "name",
-                                    e.target
-                                      .value
-                                  )
-                                }
-                                placeholder="Mathematics"
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                              />
-                            </td>
-
-                            <td className="px-3 py-3">
-                              <input
-                                value={
-                                  row.code
-                                }
-                                onChange={(e) =>
-                                  updateBulkRow(
-                                    index,
-                                    "code",
-                                    e.target
-                                      .value
-                                  )
-                                }
-                                placeholder="MATH"
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm uppercase outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                              />
-                            </td>
-
-                            <td className="px-3 py-3">
-                              <select
-                                value={
-                                  row.category
-                                }
-                                onChange={(e) =>
-                                  updateBulkRow(
-                                    index,
-                                    "category",
-                                    e.target
-                                      .value
-                                  )
-                                }
-                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                              >
-                                {categories.map(
-                                  (
-                                    category
-                                  ) => (
-                                    <option
-                                      key={
-                                        category.value
-                                      }
-                                      value={
-                                        category.value
-                                      }
-                                    >
-                                      {
-                                        category.label
-                                      }
-                                    </option>
-                                  )
-                                )}
-                              </select>
-                            </td>
-
-                            <td className="px-3 py-3 text-center">
-                              <input
-                                type="checkbox"
-                                checked={
-                                  row.isCore
-                                }
-                                onChange={(e) =>
-                                  updateBulkRow(
-                                    index,
-                                    "isCore",
-                                    e.target
-                                      .checked
-                                  )
-                                }
-                                className="h-4 w-4 rounded border-slate-300"
-                              />
-                            </td>
-
-                            <td className="px-3 py-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeBulkRow(
-                                    index
-                                  )
-                                }
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
-                                title="Remove row"
-                              >
-                                <X size={16} />
-                              </button>
-                            </td>
-                          </tr>
+                            {category.label}
+                          </option>
                         )
                       )}
-                    </tbody>
-                  </table>
-                </div>
+                    </select>
+                  </td>
 
-                <button
-                  type="button"
-                  onClick={addBulkRow}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:border-cyan-400 hover:text-cyan-600"
-                >
-                  <Plus size={17} />
-                  Add Row
-                </button>
-              </div>
+                  {/* CORE */}
 
-              <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-slate-500">
-                  Empty rows will not be submitted.
-                </p>
+                  <td className="p-2 text-center">
+                    <input
+                      type="checkbox"
+                      checked={row.isCore}
+                      onChange={(e) =>
+                        updateRow(
+                          index,
+                          "isCore",
+                          e.target.checked
+                        )
+                      }
+                      className="h-4 w-4"
+                    />
+                  </td>
 
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={closeBulkModal}
-                    className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                  >
-                    Cancel
-                  </button>
+                  {/* STATUS */}
 
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
-                    style={{
-                      backgroundColor:
-                        themeColor,
-                    }}
-                  >
-                    {saving ? (
-                      <Loader2
-                        size={17}
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <Save size={17} />
-                    )}
+                  <td className="p-2">
+                    <select
+                      value={
+                        row.isActive
+                          ? "active"
+                          : "inactive"
+                      }
+                      onChange={(e) =>
+                        updateRow(
+                          index,
+                          "isActive",
+                          e.target.value ===
+                            "active"
+                        )
+                      }
+                      className="input w-full"
+                    >
+                      <option value="active">
+                        Active
+                      </option>
 
-                    {saving
-                      ? "Creating..."
-                      : "Create Subjects"}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
+                      <option value="inactive">
+                        Inactive
+                      </option>
+                    </select>
+                  </td>
+
+                  {/* DELETE ROW */}
+
+                  <td className="p-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        removeRow(index)
+                      }
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </td>
+
+                </tr>
+              ))}
+
+            </tbody>
+          </table>
         </div>
-      )}
+
+        {/* BULK ACTIONS */}
+
+        <div className="mt-4 flex gap-3">
+
+          <button
+            type="button"
+            onClick={addRow}
+            className="btn-secondary"
+          >
+            <Plus
+              size={16}
+              className="mr-2"
+            />
+
+            Add Row
+          </button>
+
+          <button
+            type="button"
+            onClick={saveAllSubjects}
+            disabled={loading}
+            className="btn-primary"
+          >
+            {loading
+              ? "Processing..."
+              : "Save All Subjects"}
+          </button>
+
+        </div>
+      </div>
+
+      {/* ==============================
+          EXISTING SUBJECTS
+      ============================== */}
+
+      <div>
+
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold">
+            Existing Subjects
+          </h2>
+
+          <p className="text-sm text-slate-400">
+            Subjects currently configured for this school
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 overflow-x-auto">
+
+          {loadingSubjects ? (
+            <div className="p-6 text-center text-slate-400">
+              Loading subjects...
+            </div>
+          ) : subjects.length === 0 ? (
+            <div className="p-6 text-center text-slate-400">
+              No subjects found.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+
+              <thead className="bg-white/5">
+                <tr>
+                  <th className="p-3 text-left">
+                    Subject
+                  </th>
+
+                  <th className="p-3 text-left">
+                    Code
+                  </th>
+
+                  <th className="p-3 text-left">
+                    Category
+                  </th>
+
+                  <th className="p-3 text-center">
+                    Core
+                  </th>
+
+                  <th className="p-3 text-left">
+                    Status
+                  </th>
+
+                  <th className="p-3 text-center">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+
+                {subjects.map((subject) => (
+                  <tr
+                    key={subject._id}
+                    className="border-t border-white/10"
+                  >
+
+                    <td className="p-3">
+                      {subject.name}
+                    </td>
+
+                    <td className="p-3 text-slate-300">
+                      {subject.code || "—"}
+                    </td>
+
+                    <td className="p-3 capitalize text-slate-300">
+                      {subject.category}
+                    </td>
+
+                    <td className="p-3 text-center">
+                      {subject.isCore ? (
+                        <span className="text-green-400">
+                          Yes
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">
+                          No
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="p-3">
+                      {subject.isActive ? (
+                        <span className="text-green-400">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-red-400">
+                          Inactive
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          deleteSubject(
+                            subject._id
+                          )
+                        }
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+
+                  </tr>
+                ))}
+
+              </tbody>
+            </table>
+          )}
+
+        </div>
+      </div>
+
     </div>
   );
 }
