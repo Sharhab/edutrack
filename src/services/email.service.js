@@ -3,7 +3,7 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const EMAIL_FROM =
-  process.env.EMAIL_FROM || from: "EduTrack <noreply@edutrack.cloud>";
+  process.env.EMAIL_FROM || from: "EduTrack <noreply@edutrack.cloud>"
 
 function escapeHtml(value = "") {
   return String(value)
