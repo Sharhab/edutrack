@@ -112,12 +112,13 @@ const navByRole: Record<
     { label: "Announcements", href: "/parent/announcements", icon: Bell },
   ],
 
-  student: [
-    { label: "Dashboard", href: "/student", icon: LayoutDashboard },
-    { label: "My Classes", href: "/student/classes", icon: GraduationCap },
-    { label: "Results", href: "/student/results", icon: BookOpen },
-    { label: "Announcements", href: "/student/announcements", icon: Bell },
-  ],
+ student: [
+  { label: "Dashboard", href: "/student", icon: LayoutDashboard },
+  { label: "My Classes", href: "/student/classes", icon: GraduationCap },
+  { label: "My Timetable", href: "/student/timetable", icon: CalendarDays },
+  { label: "Results", href: "/student/results", icon: BookOpen },
+  { label: "Announcements", href: "/student/announcements", icon: Bell },
+],
 };
 
 export default function Sidebar({ role, onNavigate }: SidebarProps) {
