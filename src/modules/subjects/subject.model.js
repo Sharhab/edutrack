@@ -34,6 +34,23 @@ const subjectSchema =
         default: "",
       },
 
+      /* =========================================
+         CLASS / TEACHER ASSIGNMENT
+      ========================================= */
+      classIds: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Class",
+        },
+      ],
+
+      teacherIds: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+      ],
+
       /**
        * IMPORTANT:
        * aligned with onboarding bootstrap
@@ -65,9 +82,6 @@ const subjectSchema =
          RESULT ENGINE V2
       ========================================= */
 
-      /**
-       * CA SETTINGS
-       */
       ca1Max: {
         type: Number,
         default: 20,
@@ -88,25 +102,16 @@ const subjectSchema =
         default: 50,
       },
 
-      /**
-       * TOTAL MARK
-       */
       totalMark: {
         type: Number,
         default: 100,
       },
 
-      /**
-       * PASS SETTINGS
-       */
       passMark: {
         type: Number,
         default: 40,
       },
 
-      /**
-       * GRADING ENGINE
-       */
       gradingSystem: {
         type: String,
         enum: [
@@ -117,41 +122,26 @@ const subjectSchema =
         default: "default",
       },
 
-      /**
-       * ENTRY CONTROL
-       */
       allowResultEntry: {
         type: Boolean,
         default: true,
       },
 
-      /**
-       * RESULT PUBLISH CONTROL
-       */
       publishable: {
         type: Boolean,
         default: true,
       },
 
-      /**
-       * LOCK RESULT ENTRY
-       */
       resultLocked: {
         type: Boolean,
         default: false,
       },
 
-      /**
-       * LIVE AUTOSAVE SUPPORT
-       */
       autosaveEnabled: {
         type: Boolean,
         default: true,
       },
 
-      /**
-       * ENTERPRISE UI SETTINGS
-       */
       resultEntryMode: {
         type: String,
         enum: [
