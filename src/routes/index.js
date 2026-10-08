@@ -28,6 +28,7 @@ import sessionRoutes from "../modules/sessions/session.routes.js";
 import termRoutes from "../modules/terms/term.routes.js";
 import classRoutes from "../modules/classes/class.routes.js";
 import subjectRoutes from "../modules/subjects/subject.routes.js";
+import timetableSettingRoutes from "../modules/timetables/timetable-setting.routes.js";
 import teacherRoutes from "../modules/teachers/teacher.routes.js";
 import parentRoutes from "../modules/parents/parent.routes.js";
 import studentRoutes from "../modules/students/student.routes.js";
@@ -173,7 +174,7 @@ router.use("/sessions", sessionRoutes);
 router.use("/terms", termRoutes);
 router.use("/classes", classRoutes);
 router.use("/subjects", subjectRoutes);
-
+router.use("/timetable-settings", timetableSettingRoutes);
 router.use("/teachers", teacherRoutes);
 router.use("/parents", parentRoutes);
 router.use("/students", studentRoutes);
