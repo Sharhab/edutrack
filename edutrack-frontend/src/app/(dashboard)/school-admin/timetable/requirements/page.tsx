@@ -20,6 +20,7 @@ type ClassOption = {
   name: string;
   code?: string;
   level?: string;
+  isActive?: boolean;
 };
 
 type SubjectOption = {
@@ -222,9 +223,26 @@ export default function TimetableRequirementsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  /*
+   * Teachers that have a valid User ID.
+   * The backend expects teacherId to be the User ID.
+   */
   const availableTeachers = useMemo(() => {
     return teachers.filter((teacher) => getTeacherUserId(teacher));
   }, [teachers]);
+
+  /*
+   * IMPORTANT:
+   * Classes are NOT filtered by session or term.
+   *
+   * A class belongs to the school and can be reused across
+   * different sessions and terms.
+   *
+   * We only remove explicitly inactive classes.
+   */
+  const availableClasses = useMemo(() => {
+    return classes.filter((item) => item.isActive !== false);
+  }, [classes]);
 
   useEffect(() => {
     loadInitialData();
@@ -284,7 +302,13 @@ export default function TimetableRequirementsPage() {
       ]);
 
       setSessions(sessionList);
+
+      /*
+       * Keep ALL classes returned by the school classes endpoint.
+       * Do not filter by selected session or term.
+       */
       setClasses(classList);
+
       setSubjects(subjectList);
       setTeachers(teacherList);
 
@@ -394,7 +418,9 @@ export default function TimetableRequirementsPage() {
         return currentRows;
       }
 
-      return currentRows.filter((_, rowIndex) => rowIndex !== index);
+      return currentRows.filter(
+        (_, rowIndex) => rowIndex !== index
+      );
     });
   }
 
@@ -472,7 +498,9 @@ export default function TimetableRequirementsPage() {
           teacherId: row.teacherId,
           periodsPerWeek: Number(row.periodsPerWeek),
           allowDoublePeriod: Boolean(row.allowDoublePeriod),
-          maxConsecutivePeriods: Number(row.maxConsecutivePeriods),
+          maxConsecutivePeriods: Number(
+            row.maxConsecutivePeriods
+          ),
           isActive: Boolean(row.isActive),
         })),
       };
@@ -644,8 +672,12 @@ export default function TimetableRequirementsPage() {
             <thead className="bg-white/5 text-left text-white/60">
               <tr>
                 <th className="px-4 py-3 font-medium">Class</th>
-                <th className="px-4 py-3 font-medium">Subject</th>
-                <th className="px-4 py-3 font-medium">Teacher</th>
+                <th className="px-4 py-3 font-medium">
+                  Subject
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  Teacher
+                </th>
                 <th className="px-4 py-3 font-medium">
                   Periods / Week
                 </th>
@@ -655,8 +687,12 @@ export default function TimetableRequirementsPage() {
                 <th className="px-4 py-3 font-medium">
                   Max Consecutive
                 </th>
-                <th className="px-4 py-3 font-medium">Active</th>
-                <th className="px-4 py-3 font-medium">Action</th>
+                <th className="px-4 py-3 font-medium">
+                  Active
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  Action
+                </th>
               </tr>
             </thead>
 
@@ -668,7 +704,7 @@ export default function TimetableRequirementsPage() {
                 >
                   <td className="px-4 py-3">
                     <select
-                      className="input min-w-[170px]"
+                      className="input min-w-[190px]"
                       value={row.classId}
                       onChange={(event) =>
                         updateRow(
@@ -680,13 +716,27 @@ export default function TimetableRequirementsPage() {
                     >
                       <option value="">Select class</option>
 
-                      {classes.map((item) => (
-                        <option key={item._id} value={item._id}>
+                      {availableClasses.map((item) => (
+                        <option
+                          key={item._id}
+                          value={item._id}
+                        >
                           {item.name}
-                          {item.level ? ` - ${item.level}` : ""}
+                          {item.level
+                            ? ` - ${item.level}`
+                            : ""}
+                          {item.code
+                            ? ` (${item.code})`
+                            : ""}
                         </option>
                       ))}
                     </select>
+
+                    {availableClasses.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-300">
+                        No active classes are available.
+                      </p>
+                    )}
                   </td>
 
                   <td className="px-4 py-3">
@@ -704,9 +754,14 @@ export default function TimetableRequirementsPage() {
                       <option value="">Select subject</option>
 
                       {subjects.map((item) => (
-                        <option key={item._id} value={item._id}>
+                        <option
+                          key={item._id}
+                          value={item._id}
+                        >
                           {item.name}
-                          {item.code ? ` (${item.code})` : ""}
+                          {item.code
+                            ? ` (${item.code})`
+                            : ""}
                         </option>
                       ))}
                     </select>
@@ -731,7 +786,10 @@ export default function TimetableRequirementsPage() {
                           getSelectedTeacherId(teacher);
 
                         return (
-                          <option key={userId} value={userId}>
+                          <option
+                            key={userId}
+                            value={userId}
+                          >
                             {getTeacherName(teacher)}
                           </option>
                         );
@@ -741,8 +799,8 @@ export default function TimetableRequirementsPage() {
                     {teachers.length > 0 &&
                       availableTeachers.length === 0 && (
                         <p className="mt-1 text-xs text-amber-300">
-                          Teacher user IDs are not available from
-                          the teacher response.
+                          Teacher user IDs are not available
+                          from the teacher response.
                         </p>
                       )}
                   </td>
@@ -903,24 +961,31 @@ export default function TimetableRequirementsPage() {
                   <th className="px-4 py-3 font-medium">
                     Class
                   </th>
+
                   <th className="px-4 py-3 font-medium">
                     Subject
                   </th>
+
                   <th className="px-4 py-3 font-medium">
                     Teacher
                   </th>
+
                   <th className="px-4 py-3 font-medium">
                     Periods / Week
                   </th>
+
                   <th className="px-4 py-3 font-medium">
                     Double
                   </th>
+
                   <th className="px-4 py-3 font-medium">
                     Max Consecutive
                   </th>
+
                   <th className="px-4 py-3 font-medium">
                     Status
                   </th>
+
                   <th className="px-4 py-3 font-medium">
                     Action
                   </th>
