@@ -15,6 +15,7 @@ import {
   Shield,
   Users,
   Upload,
+  Library,
 } from "lucide-react";
 import clsx from "clsx";
 import { UserRole } from "../../types/auth";
@@ -55,6 +56,7 @@ const navByRole: Record<
     { label: "Teachers", href: "/school-admin/teachers", icon: Users },
     { label: "Attendance", href: "/school-admin/attendance", icon: CalendarCheck },
     { label: "Classes", href: "/school-admin/classes", icon: Building2 },
+    { label: "Subjects", href: "/school-admin/subjects", icon: Library },
     { label: "Results", href: "/school-admin/results", icon: BookOpen },
     { label: "Import Students", href: "/school-admin/students/import", icon: Upload },
     { label: "Bulk Entry", href: "/school-admin/students/bulk", icon: Users },
