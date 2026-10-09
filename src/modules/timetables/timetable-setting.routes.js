@@ -43,7 +43,7 @@ router.delete(
  */
 router.get(
   "/",
-  authorize("school_admin", "teacher"),
+  authorize("school_admin", "teacher", "parent"),
   asyncHandler(getTimetableSettingHandler)
 );
 
