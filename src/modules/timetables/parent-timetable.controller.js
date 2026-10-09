@@ -26,6 +26,7 @@ export async function getParentStudentsHandler(req, res) {
   });
 }
 
+
 export async function getParentTimetableHandler(req, res) {
   const { sessionId, termId, studentId, day } = req.query;
 
@@ -50,10 +51,8 @@ export async function getParentTimetableHandler(req, res) {
     });
   }
 
-  /*
-   * First verify that this student actually belongs
-   * to the authenticated parent.
-   */
+  // Verify that the selected student is linked to this parent
+  // within the same school.
   const parent = await Parent.findOne({
     userId: req.user._id,
     schoolId: req.user.schoolId,
@@ -67,16 +66,17 @@ export async function getParentTimetableHandler(req, res) {
     });
   }
 
+  // Student uses "status", not "isActive".
   const student = await Student.findOne({
     _id: studentId,
     schoolId: req.user.schoolId,
-    isActive: true,
+    status: "active",
   }).select("_id classId firstName lastName admissionNumber");
 
   if (!student) {
     return res.status(404).json({
       success: false,
-      message: "Student was not found.",
+      message: "Student was not found or is inactive.",
     });
   }
 
