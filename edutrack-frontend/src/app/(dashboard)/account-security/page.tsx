@@ -1,8 +1,8 @@
 
 "use client";
 
-import ChangePasswordForm from "../../../../components/settings/ChangePasswordForm";
-import SectionCard from "../../../../components/ui/SectionCard";
+import ChangePasswordForm from "../../../components/settings/ChangePasswordForm";
+import SectionCard from "../../../components/ui/SectionCard";
 
 export default function AccountSecurityPage() {
   return (
