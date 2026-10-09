@@ -98,12 +98,13 @@ const navByRole: Record<
 ],
 
   teacher: [
-  { label: "Account Security", href: "/account-security", icon: Shield },
   { label: "Dashboard", href: "/teacher", icon: LayoutDashboard },
   { label: "My Classes", href: "/teacher/students", icon: GraduationCap },
   { label: "My Timetable", href: "/teacher/timetable", icon: CalendarDays },
   { label: "Result Entry", href: "/teacher/results/entry", icon: BookOpen },
   { label: "Announcements", href: "/teacher/announcements", icon: Bell },
+  { label: "Account Security", href: "/account-security", icon: Shield },
+
 ],
  parent: [
   { label: "Dashboard", href: "/parent", icon: LayoutDashboard },
@@ -116,6 +117,8 @@ const navByRole: Record<
   { label: "Results", href: "/parent/results", icon: BookOpen },
   { label: "Receipts", href: "/parent/receipts", icon: CreditCard },
   { label: "Announcements", href: "/parent/announcements", icon: Bell },
+  { label: "Account Security", href: "/account-security", icon: Shield },
+
 ],
 
  student: [
