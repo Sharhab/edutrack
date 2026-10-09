@@ -98,6 +98,7 @@ const navByRole: Record<
 ],
 
   teacher: [
+  { label: "Account Security", href: "/account-security", icon: Shield },
   { label: "Dashboard", href: "/teacher", icon: LayoutDashboard },
   { label: "My Classes", href: "/teacher/students", icon: GraduationCap },
   { label: "My Timetable", href: "/teacher/timetable", icon: CalendarDays },
