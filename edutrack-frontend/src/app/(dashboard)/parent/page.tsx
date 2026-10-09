@@ -1,4 +1,3 @@
-display parent detail and preserve current code improve ux "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
