@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-
+import ChangePasswordForm from "../../../../components/settings/ChangePasswordForm";
 import SectionCard from "../../../../components/ui/SectionCard";
 import PageLoader from "../../../../components/ui/PageLoader";
 import EmptyState from "../../../../components/ui/EmptyState";
@@ -742,6 +742,14 @@ export default function SchoolAdminSettingsPage() {
           )}
         </div>
       </SectionCard>
+      
+{/* ACCOUNT SECURITY */}
+<SectionCard
+  title="Account Security"
+  subtitle="Protect your school administrator account"
+>
+  <ChangePasswordForm />
+</SectionCard>
     </div>
   );
 }
