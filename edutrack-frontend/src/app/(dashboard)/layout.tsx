@@ -52,20 +52,34 @@ export default function DashboardLayout({
     return config["/parent"];
   }, [pathname]);
 
-  useEffect(() => {
-    if (!hydrated) return;
+  
+useEffect(() => {
+  if (!hydrated) return;
 
-    if (!user?.role) {
-      router.replace("/login");
+  if (!user?.role) {
+    router.replace("/login");
+    return;
+  }
+
+  const correctBase = getDashboardRoute(user.role);
+
+  // Shared account-security route for approved school roles.
+  if (pathname === "/account-security") {
+    const allowedRoles = ["school_admin", "teacher", "parent"];
+
+    if (allowedRoles.includes(user.role)) {
       return;
     }
 
-    const correctBase = getDashboardRoute(user.role);
+    router.replace(correctBase);
+    return;
+  }
 
-    if (!pathname.startsWith(correctBase)) {
-      router.replace(correctBase);
-    }
-  }, [hydrated, user, pathname, router]);
+  // Keep the existing dashboard role protection.
+  if (!pathname.startsWith(correctBase)) {
+    router.replace(correctBase);
+  }
+}, [hydrated, user, pathname, router]);
 
   if (!hydrated) return null;
   if (!user?.role) return null;
