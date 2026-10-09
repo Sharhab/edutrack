@@ -89,6 +89,16 @@ export async function protect(req, res, next) {
       schoolId: user.schoolId,
     });
 
+    if (
+  user.passwordChangedAt &&
+  decoded.iat &&
+  decoded.iat * 1000 < user.passwordChangedAt.getTime()
+) {
+  return res.status(401).json({
+    success: false,
+    message: "Password changed. Please log in again.",
+  });
+}
     req.user = user;
 
     console.log("✅ AUTH SUCCESS");
