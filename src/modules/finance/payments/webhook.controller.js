@@ -92,21 +92,26 @@ export async function paystackWebhookHandler(req, res) {
 
     // Use the identifiers returned by Paystack's verification API,
     // and ensure they match the signed webhook event.
-    if (
-      !verifiedMetadata.schoolId ||
-      !verifiedMetadata.studentId ||
-      !verifiedMetadata.studentFeeId ||
-      String(verifiedMetadata.schoolId) !== String(schoolId) ||
-      String(verifiedMetadata.studentId) !== String(eventStudentId) ||
-      String(verifiedMetadata.studentFeeId) !== String(eventStudentFeeId)
-    ) {
-      console.error(
-        "PAYSTACK WEBHOOK: Verified metadata does not match the event",
-        { reference }
-      );
+   
+if (
+  !verifiedMetadata.schoolId ||
+  !verifiedMetadata.studentId ||
+  !verifiedMetadata.studentFeeId ||
+  !verifiedMetadata.paymentIntentId ||
+  String(verifiedMetadata.schoolId) !== String(schoolId) ||
+  String(verifiedMetadata.studentId) !== String(eventStudentId) ||
+  String(verifiedMetadata.studentFeeId) !== String(eventStudentFeeId) ||
+  !eventMetadata.paymentIntentId ||
+  String(verifiedMetadata.paymentIntentId) !==
+    String(eventMetadata.paymentIntentId)
+) {
+  console.error(
+    "PAYSTACK WEBHOOK: Verified metadata or Payment Intent does not match the event",
+    { reference }
+  );
 
-      return res.sendStatus(400);
-    }
+  return res.sendStatus(400);
+}
 
     // If the event includes the saved intent ID, pass it through
     // so processFeePayment can validate it against the saved intent.
