@@ -1,3 +1,4 @@
+
 import { Parent } from "../parents/parent.model.js";
 import { Student } from "../students/student.model.js";
 import { Invoice } from "../finance/models/invoice.model.js";
@@ -8,7 +9,7 @@ import { Result } from "../results/result.model.js";
 import { Announcement } from "../announcements/announcement.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
-import  Class  from "../classes/class.model.js";
+import Class from "../classes/class.model.js";
 
 import { ApiError } from "../../utils/apiError.js";
 
@@ -37,49 +38,55 @@ async function getParentProfile(parentUserId) {
  * PARENT DASHBOARD
  * =========================================
  */
-export async function getParentDashboard(
-  parentUserId
-) {
-  const parent = await getParentProfile(
-    parentUserId
-  );
+export async function getParentDashboard(parentUserId) {
+  const parent = await getParentProfile(parentUserId);
 
   const studentIds = parent.studentIds || [];
 
   /**
    * =========================================
    * ACTIVE SESSION + TERM
+   *
+   * Session and Term schemas use isCurrent,
+   * not isActive.
    * =========================================
    */
-
-  const activeSession =
-    await Session.findOne({
-      schoolId: parent.schoolId,
-      isActive: true,
-    });
-
-  const activeTerm = await Term.findOne({
+  const activeSession = await Session.findOne({
     schoolId: parent.schoolId,
-    isActive: true,
-  });
+    isCurrent: true,
+  }).sort({ createdAt: -1 });
+
+  const activeTermQuery = {
+    schoolId: parent.schoolId,
+    isCurrent: true,
+  };
+
+  // Prefer the current term belonging to the
+  // current session, when a current session exists.
+  if (activeSession) {
+    activeTermQuery.sessionId = activeSession._id;
+  }
+
+  const activeTerm = await Term.findOne(
+    activeTermQuery
+  ).sort({ createdAt: -1 });
 
   /**
    * =========================================
    * STUDENTS
    * =========================================
    */
-
   const students = await Student.find({
     _id: { $in: studentIds },
+    schoolId: parent.schoolId,
   }).populate("classId", "name");
 
   /**
    * =========================================
-   * SOURCE OF TRUTH = STUDENT FEES
+   * STUDENT FEES
+   * SOURCE OF TRUTH FOR FEE BALANCES
    * =========================================
    */
-
- 
   const studentFees = await StudentFee.find({
     studentId: { $in: studentIds },
     schoolId: parent.schoolId,
@@ -95,9 +102,9 @@ export async function getParentDashboard(
    * PAYMENTS
    * =========================================
    */
-
   const payments = await Payment.find({
     studentId: { $in: studentIds },
+    schoolId: parent.schoolId,
   }).sort({ createdAt: -1 });
 
   /**
@@ -105,9 +112,9 @@ export async function getParentDashboard(
    * ATTENDANCE
    * =========================================
    */
-
   const attendance = await Attendance.find({
     studentId: { $in: studentIds },
+    schoolId: parent.schoolId,
   });
 
   /**
@@ -115,9 +122,9 @@ export async function getParentDashboard(
    * RESULTS
    * =========================================
    */
-
   const results = await Result.find({
     studentId: { $in: studentIds },
+    schoolId: parent.schoolId,
   });
 
   /**
@@ -125,181 +132,138 @@ export async function getParentDashboard(
    * ANNOUNCEMENTS
    * =========================================
    */
-
-  const announcements =
-    await Announcement.find({
-      $or: [
-        { targetAudience: "all" },
-        { targetAudience: "parents" },
-      ],
-    })
-      .sort({ createdAt: -1 })
-      .limit(10);
+  const announcements = await Announcement.find({
+    schoolId: parent.schoolId,
+    $or: [
+      { targetAudience: "all" },
+      { targetAudience: "parents" },
+    ],
+  })
+    .sort({ createdAt: -1 })
+    .limit(10);
 
   /**
    * =========================================
    * FINANCE SUMMARY
    * =========================================
    */
-
-  const totalOutstanding =
-    studentFees.reduce(
-      (sum, fee) =>
-        sum + Number(fee.balance || 0),
-      0
-    );
-
-  const totalPaid = studentFees.reduce(
-    (sum, fee) =>
-      sum +
-      Number(fee.amountPaid || 0),
+  const totalOutstanding = studentFees.reduce(
+    (sum, fee) => sum + Number(fee.balance || 0),
     0
   );
 
-  const totalBilled =
-    studentFees.reduce(
-      (sum, fee) =>
-        sum +
-        Number(fee.totalAmount || 0),
-      0
-    );
+  const totalPaid = studentFees.reduce(
+    (sum, fee) => sum + Number(fee.amountPaid || 0),
+    0
+  );
 
+  const totalBilled = studentFees.reduce(
+    (sum, fee) => sum + Number(fee.totalAmount || 0),
+    0
+  );
 
-    
   /**
    * =========================================
    * CHILDREN SUMMARY
    * =========================================
    */
+  const children = students.map((student) => {
+    const studentAttendance = attendance.filter(
+      (record) =>
+        String(record.studentId) === String(student._id)
+    );
 
-  const children = students.map(
-    (student) => {
-      const studentAttendance =
-        attendance.filter(
-          (a) =>
-            String(a.studentId) ===
-            String(student._id)
-        );
+    const presentDays = studentAttendance.filter(
+      (record) => record.status === "present"
+    ).length;
 
-      const presentDays =
-        studentAttendance.filter(
-          (a) => a.status === "present"
-        ).length;
+    const attendanceRate = studentAttendance.length
+      ? (
+          (presentDays / studentAttendance.length) *
+          100
+        ).toFixed(2)
+      : "0";
 
-      const attendanceRate =
-        studentAttendance.length
-          ? (
-              (presentDays /
-                studentAttendance.length) *
-              100
-            ).toFixed(2)
-          : "0";
+    const latestResult = results
+      .filter(
+        (result) =>
+          String(result.studentId) === String(student._id)
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt || 0) -
+          new Date(a.createdAt || 0)
+      )[0];
 
-      const latestResult = results
-        .filter(
-          (r) =>
-            String(r.studentId) ===
-            String(student._id)
-        )
-        .sort(
-          (a, b) =>
-            new Date(
-              b.createdAt || 0
-            ) -
-            new Date(
-              a.createdAt || 0
-            )
-        )[0];
+    const childFees = studentFees.filter(
+      (fee) =>
+        String(fee.studentId) === String(student._id)
+    );
 
-      return {
-        _id: student._id,
+    const latestChildFee = childFees[0];
 
-        firstName:
-          student.firstName,
+    return {
+      _id: student._id,
 
-        lastName:
-          student.lastName,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      admissionNumber: student.admissionNumber,
 
-        admissionNumber:
-          student.admissionNumber,
+      className: student.classId?.name || "No Class",
 
-        /**
-         * =========================================
-         * FIX CLASS NAME
-         * =========================================
-         */
+      attendanceRate,
 
-        className:
-          student.classId?.name ||
-          "No Class",
+      // Prefer the child's latest fee record.
+      // Fall back to the school's current period.
+      session:
+        latestChildFee?.session ||
+        activeSession?.name ||
+        "",
 
-        attendanceRate,
+      term:
+        latestChildFee?.term ||
+        activeTerm?.name ||
+        "",
 
-        latestResult,
-      };
-    }
-  );
+      latestResult,
+    };
+  });
 
+  /**
+   * =========================================
+   * DASHBOARD RESPONSE
+   * =========================================
+   */
   return {
     parent: {
       id: parent._id,
 
-      firstName:
-        parent.userId?.firstName || "",
+      firstName: parent.userId?.firstName || "",
+      lastName: parent.userId?.lastName || "",
+      email: parent.userId?.email || "",
+      phone: parent.userId?.phone || "",
 
-      lastName:
-        parent.userId?.lastName || "",
-
-      email:
-        parent.userId?.email || "",
-
-      phone:
-        parent.userId?.phone || "",
-
-      occupation:
-        parent.occupation,
-
-      relationshipToStudent:
-        parent.relationshipToStudent,
+      occupation: parent.occupation,
+      relationshipToStudent: parent.relationshipToStudent,
     },
 
-    /**
-     * =========================================
-     * SESSION + TERM
-     * =========================================
-     */
-
-    currentSession:
-      activeSession?.name || "",
-
-    currentTerm:
-      activeTerm?.name || "",
+    currentSession: activeSession?.name || "",
+    currentTerm: activeTerm?.name || "",
 
     stats: {
-      totalChildren:
-        students.length,
-
+      totalChildren: students.length,
       totalPaid,
-
       totalOutstanding,
-
       totalBilled,
     },
 
     children,
-
     announcements,
 
-    /**
-     * KEEP FOR LEGACY UI
-     */
-
+    // Keep legacy UI compatibility.
     invoices: studentFees,
 
-    /**
-     * NEW SOURCE OF TRUTH
-     */
-
+    // Current source of truth for parent fee balances.
     studentFees,
 
     payments,
@@ -311,30 +275,20 @@ export async function getParentDashboard(
  * GET MY CHILDREN
  * =========================================
  */
-export async function getMyChildren(
-  parentUserId,
-  schoolId
-) {
-  const parent =
-    await getParentProfile(
-      parentUserId
-    );
+export async function getMyChildren(parentUserId, schoolId) {
+  const parent = await getParentProfile(parentUserId);
 
   return Student.find({
-    _id: {
-      $in: parent.studentIds,
-    },
+    _id: { $in: parent.studentIds || [] },
     schoolId,
   })
     .populate("classId", "name")
-    .select(
-      `
+    .select(`
       firstName
       lastName
       admissionNumber
       classId
-    `
-    );
+    `);
 }
 
 /**
@@ -343,49 +297,31 @@ export async function getMyChildren(
  * SOURCE OF TRUTH = STUDENT FEES
  * =========================================
  */
-export async function getChildFinance(
-  studentId,
-  schoolId
-) {
-  const studentFees =
-    await StudentFee.find({
-      studentId,
-      schoolId,
-    }).sort({ createdAt: -1 });
+export async function getChildFinance(studentId, schoolId) {
+  const studentFees = await StudentFee.find({
+    studentId,
+    schoolId,
+  }).sort({ createdAt: -1 });
 
-  const payments =
-    await Payment.find({
-      studentId,
-      schoolId,
-    }).sort({ createdAt: -1 });
+  const payments = await Payment.find({
+    studentId,
+    schoolId,
+  }).sort({ createdAt: -1 });
 
-  const totalBilled =
-    studentFees.reduce(
-      (sum, fee) =>
-        sum +
-        Number(
-          fee.totalAmount || 0
-        ),
-      0
-    );
+  const totalBilled = studentFees.reduce(
+    (sum, fee) => sum + Number(fee.totalAmount || 0),
+    0
+  );
 
-  const totalPaid =
-    studentFees.reduce(
-      (sum, fee) =>
-        sum +
-        Number(
-          fee.amountPaid || 0
-        ),
-      0
-    );
+  const totalPaid = studentFees.reduce(
+    (sum, fee) => sum + Number(fee.amountPaid || 0),
+    0
+  );
 
-  const balance =
-    studentFees.reduce(
-      (sum, fee) =>
-        sum +
-        Number(fee.balance || 0),
-      0
-    );
+  const balance = studentFees.reduce(
+    (sum, fee) => sum + Number(fee.balance || 0),
+    0
+  );
 
   return {
     studentId,
@@ -397,7 +333,6 @@ export async function getChildFinance(
     },
 
     studentFees,
-
     payments,
   };
 }
@@ -408,10 +343,7 @@ export async function getChildFinance(
  * LEGACY SUPPORT
  * =========================================
  */
-export async function getChildInvoices(
-  studentId,
-  schoolId
-) {
+export async function getChildInvoices(studentId, schoolId) {
   return StudentFee.find({
     studentId,
     schoolId,
@@ -423,40 +355,36 @@ export async function getChildInvoices(
  * CHILD RESULTS
  * =========================================
  */
-export async function getChildResults(
-  studentId,
-  schoolId
-) {
+export async function getChildResults(studentId, schoolId) {
   const results = await Result.find({
     studentId,
     schoolId,
   }).sort({ createdAt: -1 });
 
-  return results.map((r) => ({
-    _id: r._id,
+  return results.map((result) => ({
+    _id: result._id,
 
     subjectName:
-      r.subjectName ||
-      r.subject ||
+      result.subjectName ||
+      result.subject ||
       "Subject",
 
-    session: r.session || "",
+    session: result.session || "",
+    term: result.term || "",
 
-    term: r.term || "",
-
-    caScore: r.caScore || 0,
-
-    examScore: r.examScore || 0,
+    caScore: result.caScore || 0,
+    examScore: result.examScore || 0,
 
     totalScore:
-      r.totalScore ||
-      (Number(r.caScore || 0) +
-        Number(r.examScore || 0)),
+      result.totalScore ||
+      (
+        Number(result.caScore || 0) +
+        Number(result.examScore || 0)
+      ),
 
-    grade: r.grade || "",
+    grade: result.grade || "",
+    remark: result.remark || "",
 
-    remark: r.remark || "",
-
-    createdAt: r.createdAt,
+    createdAt: result.createdAt,
   }));
 }
