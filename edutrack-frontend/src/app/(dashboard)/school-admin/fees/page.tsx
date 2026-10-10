@@ -15,7 +15,10 @@ type PaymentPolicy = {
   installmentAmount?: number | null;
 };
 
-type SelectReference = string | { _id?: string; name?: string } | null;
+type SelectReference =
+  | string
+  | { _id?: string; name?: string }
+  | null;
 
 type FeePlan = {
   _id: string;
@@ -31,6 +34,7 @@ type FeePlan = {
 type ClassItem = { _id: string; name: string };
 type SessionItem = { _id: string; name: string };
 type TermItem = { _id: string; name: string };
+
 type StudentItem = {
   _id: string;
   firstName: string;
@@ -46,21 +50,33 @@ const PAYMENT_MODES: {
   {
     value: "full_only",
     label: "Full payment only",
-    description: "Parents must pay the remaining balance in full.",
+    description: "Parents must pay the entire outstanding balance.",
   },
   {
     value: "flexible_partial",
     label: "Flexible partial payment",
     description:
-      "Parents choose an amount. You can optionally set a minimum payment.",
+      "Parents choose how much to pay, subject to the minimum payment if configured.",
   },
   {
     value: "fixed_installment",
     label: "Fixed installment",
     description:
-      "Parents pay a fixed installment, or the smaller remaining balance.",
+      "Parents pay the configured installment or the smaller remaining balance.",
   },
 ];
+
+const initialForm = {
+  title: "",
+  amount: "",
+  classId: "",
+  sessionId: "",
+  termId: "",
+  description: "",
+  paymentMode: "full_only" as PaymentMode,
+  minimumPaymentAmount: "",
+  installmentAmount: "",
+};
 
 function getReferenceId(reference: SelectReference): string {
   if (!reference) return "";
@@ -82,17 +98,14 @@ function formatMoney(amount: number): string {
   }).format(Number(amount) || 0);
 }
 
-const initialForm = {
-  title: "",
-  amount: "",
-  classId: "",
-  sessionId: "",
-  termId: "",
-  description: "",
-  paymentMode: "full_only" as PaymentMode,
-  minimumPaymentAmount: "",
-  installmentAmount: "",
-};
+function getErrorMessage(error: unknown, fallback: string): string {
+  const err = error as {
+    response?: { data?: { message?: string } };
+    message?: string;
+  };
+
+  return err?.response?.data?.message || err?.message || fallback;
+}
 
 export default function FeePlansPage() {
   const [loading, setLoading] = useState(false);
@@ -108,6 +121,7 @@ export default function FeePlansPage() {
   const [feePlans, setFeePlans] = useState<FeePlan[]>([]);
 
   const [form, setForm] = useState(initialForm);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
 
   const [assignStudent, setAssignStudent] = useState({
     studentId: "",
@@ -124,25 +138,31 @@ export default function FeePlansPage() {
     setLoadError("");
 
     try {
-      const [classResponse, sessionResponse, termResponse, studentResponse, planResponse] =
-        await Promise.all([
-          api.get("/classes"),
-          api.get("/sessions"),
-          api.get("/terms"),
-          api.get("/students"),
-          api.get("/finance/fees/plans"),
-        ]);
+      const [
+        classResponse,
+        sessionResponse,
+        termResponse,
+        studentResponse,
+        planResponse,
+      ] = await Promise.all([
+        api.get("/classes"),
+        api.get("/sessions"),
+        api.get("/terms"),
+        api.get("/students"),
+        api.get("/finance/fees/plans"),
+      ]);
 
       setClasses(classResponse.data?.data || []);
       setSessions(sessionResponse.data?.data || []);
       setTerms(termResponse.data?.data || []);
       setStudents(studentResponse.data?.data || []);
       setFeePlans(planResponse.data?.data || []);
-    } catch (error: any) {
-      console.error("Failed to load fee-plan data:", error);
+    } catch (error: unknown) {
       setLoadError(
-        error?.response?.data?.message ||
-          "Could not load fee plans and school data. Please try again."
+        getErrorMessage(
+          error,
+          "Could not load fee plans and school data."
+        )
       );
     } finally {
       setLoadingData(false);
@@ -155,12 +175,12 @@ export default function FeePlansPage() {
 
   const selectedModeDescription = useMemo(
     () =>
-      PAYMENT_MODES.find((mode) => mode.value === form.paymentMode)
-        ?.description || "",
+      PAYMENT_MODES.find(
+        (item) => item.value === form.paymentMode
+      )?.description || "",
     [form.paymentMode]
   );
 
-  // Compare IDs whether the API returns an ID string or a populated object.
   const availableStudentPlans = useMemo(() => {
     const student = students.find(
       (item) => item._id === assignStudent.studentId
@@ -183,16 +203,53 @@ export default function FeePlansPage() {
     );
   }, [feePlans, assignClass.classId]);
 
+  function startEditing(plan: FeePlan) {
+    const policy = plan.paymentPolicy || { mode: "full_only" as PaymentMode };
+
+    setEditingPlanId(plan._id);
+    setPageError("");
+    setNotice("");
+
+    setForm({
+      title: plan.title || "",
+      amount: String(plan.totalAmount ?? ""),
+      classId: getReferenceId(plan.classId),
+      sessionId: getReferenceId(plan.sessionId),
+      termId: getReferenceId(plan.termId),
+      description: plan.description || "",
+      paymentMode: policy.mode || "full_only",
+      minimumPaymentAmount:
+        policy.minimumPaymentAmount == null
+          ? ""
+          : String(policy.minimumPaymentAmount),
+      installmentAmount:
+        policy.installmentAmount == null
+          ? ""
+          : String(policy.installmentAmount),
+    });
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEditing() {
+    setEditingPlanId(null);
+    setForm(initialForm);
+    setPageError("");
+    setNotice("");
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPageError("");
     setNotice("");
 
     const amount = Number(form.amount);
+
     const minimumPaymentAmount =
       form.minimumPaymentAmount.trim() === ""
         ? null
         : Number(form.minimumPaymentAmount);
+
     const installmentAmount =
       form.installmentAmount.trim() === ""
         ? null
@@ -208,7 +265,7 @@ export default function FeePlansPage() {
       return;
     }
 
-    if (!form.classId || !form.sessionId || !form.termId) {
+    if (!editingPlanId && (!form.classId || !form.sessionId || !form.termId)) {
       setPageError("Select a class, academic session, and term.");
       return;
     }
@@ -228,8 +285,8 @@ export default function FeePlansPage() {
 
     if (
       form.paymentMode === "fixed_installment" &&
-      (!Number.isFinite(installmentAmount) ||
-        installmentAmount === null ||
+      (installmentAmount === null ||
+        !Number.isFinite(installmentAmount) ||
         installmentAmount <= 0 ||
         installmentAmount > amount)
     ) {
@@ -251,26 +308,48 @@ export default function FeePlansPage() {
           : null,
     };
 
+    const payload = {
+      title: form.title.trim(),
+      amount,
+      description: form.description.trim(),
+      paymentPolicy,
+    };
+
     try {
       setLoading(true);
 
-      await api.post("/finance/fees/plans", {
-        title: form.title.trim(),
-        amount,
-        classId: form.classId,
-        sessionId: form.sessionId,
-        termId: form.termId,
-        description: form.description.trim(),
-        paymentPolicy,
-      });
+      if (editingPlanId) {
+        await api.patch(
+          `/finance/fees/plans/${editingPlanId}`,
+          payload
+        );
 
+        setNotice(
+          "Fee plan updated successfully. Existing recorded payments and student balances were not reset."
+        );
+      } else {
+        await api.post("/finance/fees/plans", {
+          ...payload,
+          classId: form.classId,
+          sessionId: form.sessionId,
+          termId: form.termId,
+        });
+
+        setNotice("Fee plan created successfully.");
+      }
+
+      setEditingPlanId(null);
       setForm(initialForm);
-      setNotice("Fee plan created successfully.");
 
       await loadAll();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setPageError(
-        error?.response?.data?.message || "Failed to create fee plan."
+        getErrorMessage(
+          error,
+          editingPlanId
+            ? "Failed to update fee plan."
+            : "Failed to create fee plan."
+        )
       );
     } finally {
       setLoading(false);
@@ -300,11 +379,12 @@ export default function FeePlansPage() {
       setNotice(
         response.data?.message || "Fee plan assigned to the student."
       );
+
       setAssignStudent({ studentId: "", feePlanId: "" });
-    } catch (error: any) {
+      await loadAll();
+    } catch (error: unknown) {
       setPageError(
-        error?.response?.data?.message ||
-          "Failed to assign fee plan to student."
+        getErrorMessage(error, "Failed to assign fee plan to student.")
       );
     } finally {
       setLoading(false);
@@ -349,11 +429,12 @@ export default function FeePlansPage() {
         response.data?.message ||
           "Fee plan assignment to the class completed."
       );
+
       setAssignClass({ classId: "", feePlanId: "" });
-    } catch (error: any) {
+      await loadAll();
+    } catch (error: unknown) {
       setPageError(
-        error?.response?.data?.message ||
-          "Failed to assign fee plan to class."
+        getErrorMessage(error, "Failed to assign fee plan to class.")
       );
     } finally {
       setLoading(false);
@@ -365,8 +446,8 @@ export default function FeePlansPage() {
       <header className="space-y-1">
         <h1 className="text-2xl font-bold">Fee Plans</h1>
         <p className="text-sm text-white/60">
-          Create school fees, configure parent payment options, and assign
-          fees to students or classes.
+          Create and edit school fees, configure parent payment options,
+          and assign fees to students or classes.
         </p>
       </header>
 
@@ -404,12 +485,16 @@ export default function FeePlansPage() {
         </div>
       )}
 
-      {/* CREATE FEE PLAN */}
+      {/* CREATE OR EDIT FEE PLAN */}
       <section className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
         <div>
-          <h2 className="text-lg font-semibold">Create Fee Plan</h2>
+          <h2 className="text-lg font-semibold">
+            {editingPlanId ? "Edit Fee Plan" : "Create Fee Plan"}
+          </h2>
           <p className="mt-1 text-sm text-white/60">
-            Choose the academic period and how parents are allowed to pay.
+            {editingPlanId
+              ? "Update this existing fee plan. Its class, session, and term cannot be changed here."
+              : "Choose the academic period and how parents are allowed to pay."}
           </p>
         </div>
 
@@ -449,11 +534,12 @@ export default function FeePlansPage() {
               <span>Class</span>
               <select
                 required
+                disabled={Boolean(editingPlanId)}
                 value={form.classId}
                 onChange={(event) =>
                   setForm({ ...form, classId: event.target.value })
                 }
-                className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+                className="w-full rounded-xl border border-white/10 bg-black/30 p-3 disabled:opacity-60"
               >
                 <option value="">Select class</option>
                 {classes.map((item) => (
@@ -468,11 +554,12 @@ export default function FeePlansPage() {
               <span>Academic session</span>
               <select
                 required
+                disabled={Boolean(editingPlanId)}
                 value={form.sessionId}
                 onChange={(event) =>
                   setForm({ ...form, sessionId: event.target.value })
                 }
-                className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+                className="w-full rounded-xl border border-white/10 bg-black/30 p-3 disabled:opacity-60"
               >
                 <option value="">Select session</option>
                 {sessions.map((item) => (
@@ -487,11 +574,12 @@ export default function FeePlansPage() {
               <span>Term</span>
               <select
                 required
+                disabled={Boolean(editingPlanId)}
                 value={form.termId}
                 onChange={(event) =>
                   setForm({ ...form, termId: event.target.value })
                 }
-                className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+                className="w-full rounded-xl border border-white/10 bg-black/30 p-3 disabled:opacity-60"
               >
                 <option value="">Select term</option>
                 {terms.map((item) => (
@@ -521,13 +609,13 @@ export default function FeePlansPage() {
             <div>
               <h3 className="font-semibold">Parent Payment Policy</h3>
               <p className="mt-1 text-sm text-white/60">
-                This setting controls the permitted payment amount when a
-                parent pays an assigned fee.
+                Choose whether parents pay in full, choose a partial amount,
+                or pay fixed installments.
               </p>
             </div>
 
             <label className="block space-y-1 text-sm">
-              <span>Payment method policy</span>
+              <span>Payment policy</span>
               <select
                 value={form.paymentMode}
                 onChange={(event) =>
@@ -571,9 +659,8 @@ export default function FeePlansPage() {
                   className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
                 />
                 <span className="block text-xs text-white/50">
-                  If left empty, the backend permits any positive amount up
-                  to the outstanding balance. A smaller final payment can
-                  clear the remaining balance.
+                  Parents can pay any positive amount up to the outstanding
+                  balance if you leave this empty.
                 </span>
               </label>
             )}
@@ -598,8 +685,8 @@ export default function FeePlansPage() {
                   className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
                 />
                 <span className="block text-xs text-white/50">
-                  The final payment can be smaller when the remaining
-                  balance is less than this installment.
+                  The final payment can be smaller if the remaining balance
+                  is less than the installment.
                 </span>
               </label>
             )}
@@ -612,13 +699,30 @@ export default function FeePlansPage() {
             )}
           </div>
 
-          <button
-            type="submit"
-            disabled={loading || loadingData}
-            className="w-full rounded-xl bg-green-600 p-3 font-semibold transition hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Create Fee Plan"}
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="submit"
+              disabled={loading || loadingData}
+              className="w-full rounded-xl bg-green-600 p-3 font-semibold transition hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading
+                ? "Saving..."
+                : editingPlanId
+                  ? "Save Fee Plan Changes"
+                  : "Create Fee Plan"}
+            </button>
+
+            {editingPlanId && (
+              <button
+                type="button"
+                onClick={cancelEditing}
+                disabled={loading}
+                className="w-full rounded-xl border border-white/20 p-3 font-semibold disabled:opacity-50"
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
         </form>
       </section>
 
@@ -660,7 +764,7 @@ export default function FeePlansPage() {
               return (
                 <article
                   key={plan._id}
-                  className="space-y-2 rounded-xl border border-white/10 bg-black/20 p-4"
+                  className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -671,26 +775,36 @@ export default function FeePlansPage() {
                         {getReferenceName(plan.termId)}
                       </p>
                     </div>
-                    <strong>{formatMoney(plan.totalAmount)}</strong>
+
+                    <div className="flex items-center gap-3">
+                      <strong>{formatMoney(plan.totalAmount)}</strong>
+                      <button
+                        type="button"
+                        onClick={() => startEditing(plan)}
+                        disabled={loading}
+                        className="rounded-lg border border-cyan-400/40 px-3 py-2 text-sm font-medium text-cyan-200 hover:bg-cyan-400/10 disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
+                    </div>
                   </div>
 
                   <p className="text-sm">
-                    Payment policy: <span className="text-white/70">{modeLabel}</span>
+                    Payment policy:{" "}
+                    <span className="text-white/70">{modeLabel}</span>
                   </p>
 
                   {policy?.mode === "flexible_partial" &&
                     policy.minimumPaymentAmount != null && (
                       <p className="text-sm text-white/60">
-                        Minimum:{" "}
-                        {formatMoney(policy.minimumPaymentAmount)}
+                        Minimum: {formatMoney(policy.minimumPaymentAmount)}
                       </p>
                     )}
 
                   {policy?.mode === "fixed_installment" &&
                     policy.installmentAmount != null && (
                       <p className="text-sm text-white/60">
-                        Installment:{" "}
-                        {formatMoney(policy.installmentAmount)}
+                        Installment: {formatMoney(policy.installmentAmount)}
                       </p>
                     )}
 
@@ -704,12 +818,6 @@ export default function FeePlansPage() {
             })}
           </div>
         )}
-
-        <p className="text-xs text-white/50">
-          Editing is not enabled here yet because the current backend does
-          not expose a fee-plan update route. We will add the matching
-          backend endpoint before connecting an Edit action.
-        </p>
       </section>
 
       {/* ASSIGN TO STUDENT */}
@@ -717,7 +825,7 @@ export default function FeePlansPage() {
         <div>
           <h2 className="text-lg font-semibold">Assign to Student</h2>
           <p className="text-sm text-white/60">
-            Assign an active fee plan to one student.
+            Assign a fee plan to one student.
           </p>
         </div>
 
