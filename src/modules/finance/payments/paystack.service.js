@@ -393,32 +393,26 @@ export async function initializePaystackPayment({
 /* =========================================
    VERIFY PAYSTACK PAYMENT
 ========================================= */
-export async function verifyPaystackPayment(
-  reference,
-  schoolId
-) {
-  if (!reference) {
-    throw new ApiError(
-      400,
-      "Payment reference required"
-    );
+export async function verifyPaystackPayment(reference, schoolId) {
+  if (!reference || !String(reference).trim()) {
+    throw new ApiError(400, "Payment reference required");
   }
 
   if (!schoolId) {
-    throw new ApiError(
-      400,
-      "School ID required"
-    );
+    throw new ApiError(400, "School ID required");
   }
 
+  const normalizedReference = String(reference).trim();
   const secretKey = getPaystackSecret();
 
-  // Make sure the school exists and is connected.
+  // Confirm the school is configured for online payments.
   await getSchoolPaystackSubaccount(schoolId);
 
   try {
     const response = await axios.get(
-      `${PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
+      `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(
+        normalizedReference
+      )}`,
       {
         headers: {
           Authorization: `Bearer ${secretKey}`,
@@ -428,55 +422,57 @@ export async function verifyPaystackPayment(
 
     const payment = response.data?.data;
 
-    if (!payment) {
-      throw new ApiError(
-        400,
-        "Invalid Paystack response"
-      );
+    if (!response.data?.status || !payment) {
+      throw new ApiError(502, "Invalid Paystack verification response");
     }
+
+    const metadata = payment.metadata || {};
 
     return {
       status: payment.status,
       reference: payment.reference,
-
       amount: Number(payment.amount || 0) / 100,
-
-      paidAt: payment.paid_at,
-      channel: payment.channel,
+      paidAt: payment.paid_at || null,
+      channel: payment.channel || null,
       currency: payment.currency,
 
       metadata: {
-        schoolId:
-          payment.metadata?.schoolId,
+        schoolId: metadata.schoolId
+          ? String(metadata.schoolId)
+          : null,
 
-        studentId:
-          payment.metadata?.studentId,
+        studentId: metadata.studentId
+          ? String(metadata.studentId)
+          : null,
 
-        studentFeeId:
-          payment.metadata?.studentFeeId,
+        studentFeeId: metadata.studentFeeId
+          ? String(metadata.studentFeeId)
+          : null,
 
-        session:
-          payment.metadata?.session,
+        paymentIntentId: metadata.paymentIntentId
+          ? String(metadata.paymentIntentId)
+          : null,
 
-        term:
-          payment.metadata?.term,
+        session: metadata.session || "",
+        term: metadata.term || "",
       },
 
-      gatewayResponse:
-        payment.gateway_response,
-
-      customer:
-        payment.customer || {},
+      gatewayResponse: payment.gateway_response || null,
+      customer: payment.customer || {},
     };
   } catch (error) {
-    console.log(
-      "❌ PAYSTACK VERIFY ERROR:",
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    console.error(
+      "PAYSTACK VERIFY ERROR:",
       error.response?.data || error.message
     );
 
     throw new ApiError(
-      500,
-      "Failed to verify payment"
+      502,
+      "Could not verify payment with Paystack"
     );
   }
 }
