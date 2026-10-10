@@ -79,10 +79,16 @@ export async function getParentDashboard(
    * =========================================
    */
 
-  const studentFees =
-    await StudentFee.find({
-      studentId: { $in: studentIds },
-    }).sort({ createdAt: -1 });
+ 
+  const studentFees = await StudentFee.find({
+    studentId: { $in: studentIds },
+    schoolId: parent.schoolId,
+  })
+    .populate({
+      path: "feePlanId",
+      select: "paymentPolicy",
+    })
+    .sort({ createdAt: -1 });
 
   /**
    * =========================================
