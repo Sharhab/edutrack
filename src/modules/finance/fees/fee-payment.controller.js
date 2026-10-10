@@ -274,6 +274,53 @@ export async function getStudentFeesHandler(
   }
 }
 
+
+/* =========================================
+   UPDATE FEE PLAN
+========================================= */
+
+export async function updateFeePlanHandler(req, res) {
+  const { id } = req.params;
+
+  if (!isValidId(id)) {
+    throw new ApiError(400, "Invalid fee plan ID");
+  }
+
+  const payload = req.body || {};
+
+  const allowedFields = [
+    "title",
+    "amount",
+    "description",
+    "paymentPolicy",
+  ];
+
+  const suppliedFields = Object.keys(payload);
+
+  if (
+    suppliedFields.length === 0 ||
+    suppliedFields.some((field) => !allowedFields.includes(field))
+  ) {
+    throw new ApiError(
+      400,
+      "Provide only title, amount, description or paymentPolicy"
+    );
+  }
+
+  const data = await updateFeePlan({
+    schoolId: req.user.schoolId,
+    feePlanId: id,
+    payload,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "Fee plan updated successfully",
+    data,
+  });
+}
+
+
 /* =========================================
    ASSIGN FEE TO STUDENT (LEGACY SUPPORT)
 ========================================= */
