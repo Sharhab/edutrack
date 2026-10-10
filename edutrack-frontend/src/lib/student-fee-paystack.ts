@@ -18,14 +18,25 @@ export interface InitializeStudentFeePaymentResponse {
   message?: string;
 }
 
+
 export async function initializeStudentFeePaystack(
-  studentFeeId: string
+  studentFeeId: string,
+  amount?: number
 ) {
-  const { data } =
-    await api.post<InitializeStudentFeePaymentResponse>(
-      "/finance/paystack/initialize",
-      { studentFeeId }
-    );
+  const payload: {
+    studentFeeId: string;
+    amount?: number;
+  } = { studentFeeId };
+
+  if (amount !== undefined) {
+    payload.amount = amount;
+  }
+
+  const { data } = await api.post<InitializeStudentFeePaymentResponse>(
+    "/finance/paystack/initialize",
+    payload
+  );
 
   return data;
 }
+
