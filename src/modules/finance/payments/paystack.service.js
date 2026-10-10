@@ -282,54 +282,66 @@ export async function initializePaystackPayment({
   email,
   amount,
   callbackUrl,
+  reference,
   metadata = {},
 }) {
   if (!email) {
     throw new ApiError(400, "Email is required");
   }
 
+  if (!schoolId) {
+    throw new ApiError(400, "School ID is required");
+  }
+
+  if (!reference || !String(reference).trim()) {
+    throw new ApiError(
+      400,
+      "A pre-created payment reference is required"
+    );
+  }
+
   const numericAmount = Number(amount);
 
-  if (!numericAmount || numericAmount <= 0) {
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
     throw new ApiError(400, "Valid amount required");
   }
 
   const secretKey = getPaystackSecret();
-
   const subaccountCode =
     await getSchoolPaystackSubaccount(schoolId);
 
-  // =========================================
-  // STRICT METADATA ENFORCEMENT
-  // =========================================
   const safeMetadata = {
     schoolId: String(metadata.schoolId || schoolId),
     studentId: String(metadata.studentId || ""),
     studentFeeId: String(metadata.studentFeeId || ""),
-
+    paymentIntentId: String(metadata.paymentIntentId || ""),
     session: metadata.session || "unknown",
     term: metadata.term || "unknown",
-
     source: "student-fee-payment",
   };
+
+  if (
+    safeMetadata.schoolId !== String(schoolId) ||
+    !safeMetadata.studentId ||
+    !safeMetadata.studentFeeId ||
+    !safeMetadata.paymentIntentId
+  ) {
+    throw new ApiError(
+      400,
+      "Required payment intent metadata is missing or invalid"
+    );
+  }
 
   try {
     const response = await axios.post(
       `${PAYSTACK_BASE_URL}/transaction/initialize`,
       {
         email,
-
         amount: Math.round(numericAmount * 100),
-
         currency: "NGN",
-
+        reference: String(reference).trim(),
         callback_url: callbackUrl,
-
-        // =====================================
-        // SCHOOL'S PAYSTACK SUBACCOUNT
-        // =====================================
         subaccount: subaccountCode,
-
         metadata: safeMetadata,
       },
       {
@@ -342,22 +354,38 @@ export async function initializePaystackPayment({
 
     const data = response.data?.data;
 
-    return {
-      authorizationUrl: data?.authorization_url,
-      accessCode: data?.access_code,
-      reference: data?.reference,
+    if (
+      !response.data?.status ||
+      !data?.authorization_url ||
+      !data?.reference ||
+      String(data.reference) !== String(reference).trim()
+    ) {
+      throw new ApiError(
+        502,
+        "Paystack returned an invalid payment initialization response"
+      );
+    }
 
+    return {
+      authorizationUrl: data.authorization_url,
+      accessCode: data.access_code,
+      reference: data.reference,
       metadata: safeMetadata,
     };
   } catch (error) {
-    console.log(
-      "❌ PAYSTACK INIT ERROR:",
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    console.error(
+      "PAYSTACK INIT ERROR:",
       error.response?.data || error.message
     );
 
     throw new ApiError(
-      500,
-      "Failed to initialize payment"
+      error.response?.status === 400 ? 400 : 502,
+      error.response?.data?.message ||
+        "Failed to initialize payment"
     );
   }
 }
