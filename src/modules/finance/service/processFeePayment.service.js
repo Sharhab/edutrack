@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 import { StudentFee } from "../fees/studentFee.model.js";
@@ -11,11 +10,27 @@ import { ApiError } from "../../../utils/apiError.js";
 import { PaymentIntent } from "../models/paymentIntent.model.js";
 import { PaymentReconciliation } from "../models/paymentReconciliation.model.js";
 
+const MAX_TRANSACTION_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 150;
+
 function makeReceiptNumber() {
   return `RCT-${Date.now()}-${new mongoose.Types.ObjectId()
     .toString()
     .slice(-8)
     .toUpperCase()}`;
+}
+
+function isRetryableTransactionError(error) {
+  if (typeof error?.hasErrorLabel === "function") {
+    if (
+      error.hasErrorLabel("TransientTransactionError") ||
+      error.hasErrorLabel("UnknownTransactionCommitResult")
+    ) {
+      return true;
+    }
+  }
+
+  return error?.code === 112;
 }
 
 function validatePaymentPolicy(policy, paymentAmount, balance) {
@@ -43,7 +58,7 @@ function validatePaymentPolicy(policy, paymentAmount, balance) {
       );
     }
 
-    // Permit the final payment to clear a balance below the minimum.
+    // Allow the final payment to clear a balance below the minimum.
     if (
       minimum > 0 &&
       paymentAmount < minimum - tolerance &&
@@ -68,7 +83,6 @@ function validatePaymentPolicy(policy, paymentAmount, balance) {
       );
     }
 
-    // The final installment may be smaller than the usual installment.
     const requiredAmount = Math.min(installment, balance);
 
     if (Math.abs(paymentAmount - requiredAmount) > tolerance) {
@@ -84,7 +98,52 @@ function validatePaymentPolicy(policy, paymentAmount, balance) {
   throw new ApiError(400, "Unsupported fee payment policy");
 }
 
-export async function processFeePayment({
+async function recordReconciliation({
+  schoolId,
+  studentId,
+  studentFeeId,
+  paymentReference,
+  paymentAmount,
+  validatedIntent,
+  reconciliationReason,
+  reconciliationDetails,
+}) {
+  if (!validatedIntent || !reconciliationReason) {
+    return;
+  }
+
+  try {
+    await PaymentReconciliation.updateOne(
+      {
+        schoolId,
+        reference: paymentReference,
+      },
+      {
+        $setOnInsert: {
+          schoolId,
+          studentId,
+          studentFeeId,
+          paymentIntentId: validatedIntent._id,
+          reference: paymentReference,
+          expectedAmount: validatedIntent.expectedAmount,
+          verifiedAmount: paymentAmount,
+          currency: "NGN",
+          reason: reconciliationReason,
+          status: "pending",
+          details: reconciliationDetails,
+        },
+      },
+      { upsert: true }
+    );
+  } catch (error) {
+    console.error(
+      "PAYMENT RECONCILIATION RECORDING ERROR:",
+      error
+    );
+  }
+}
+
+async function processFeePaymentAttempt({
   schoolId,
   studentId,
   studentFeeId,
@@ -105,7 +164,10 @@ export async function processFeePayment({
     !Number.isFinite(paymentAmount) ||
     paymentAmount <= 0
   ) {
-    throw new ApiError(400, "Invalid payment reference or amount");
+    throw new ApiError(
+      400,
+      "Invalid payment reference or amount"
+    );
   }
 
   if (
@@ -147,10 +209,8 @@ export async function processFeePayment({
       if (
         String(paymentIntent.studentId) !== String(studentId) ||
         String(paymentIntent.studentFeeId) !== String(studentFeeId) ||
-        (
-          metadata.paymentIntentId &&
-          String(metadata.paymentIntentId) !== String(paymentIntent._id)
-        )
+        !metadata.paymentIntentId ||
+        String(metadata.paymentIntentId) !== String(paymentIntent._id)
       ) {
         throw new ApiError(
           409,
@@ -160,7 +220,9 @@ export async function processFeePayment({
 
       if (
         paymentIntent.currency !== "NGN" ||
-        Math.abs(Number(paymentIntent.expectedAmount) - paymentAmount) > 0.01
+        Math.abs(
+          Number(paymentIntent.expectedAmount) - paymentAmount
+        ) > 0.01
       ) {
         throw new ApiError(
           409,
@@ -168,11 +230,10 @@ export async function processFeePayment({
         );
       }
 
-      // Only a matched intent can be considered for reconciliation below.
       validatedIntent = paymentIntent;
     }
 
-    // Callback and webhook retries must not create duplicate payments.
+    // Idempotency: do not post the same reference twice.
     const existingPayment = await Payment.findOne({
       schoolId,
       reference: paymentReference,
@@ -182,7 +243,9 @@ export async function processFeePayment({
       const matches =
         String(existingPayment.studentFeeId) === String(studentFeeId) &&
         String(existingPayment.studentId) === String(studentId) &&
-        Math.abs(Number(existingPayment.amount) - paymentAmount) < 0.01 &&
+        Math.abs(
+          Number(existingPayment.amount) - paymentAmount
+        ) < 0.01 &&
         existingPayment.status === "success";
 
       if (!matches) {
@@ -201,6 +264,7 @@ export async function processFeePayment({
         validatedIntent.status = "success";
         validatedIntent.paidAt =
           existingPayment.paidAt || new Date();
+
         await validatedIntent.save({ session });
       }
 
@@ -230,7 +294,8 @@ export async function processFeePayment({
       !Number.isFinite(total) ||
       !Number.isFinite(previousPaid) ||
       total < 0 ||
-      previousPaid < 0
+      previousPaid < 0 ||
+      previousPaid > total + 0.01
     ) {
       throw new ApiError(409, "Student fee amounts are invalid");
     }
@@ -275,14 +340,14 @@ export async function processFeePayment({
         paymentAmount,
         currentBalance
       );
-    } catch (policyError) {
+    } catch (error) {
       if (validatedIntent) {
         reconciliationReason = "balance_changed";
         reconciliationDetails =
           "The verified payment no longer matches the current fee payment policy or balance.";
       }
 
-      throw policyError;
+      throw error;
     }
 
     const newAmountPaid =
@@ -296,17 +361,28 @@ export async function processFeePayment({
     const newStatus = newBalance <= 0 ? "paid" : "partial";
 
     /*
-     * Conditional update:
-     * only update the fee if its amountPaid is still the value we read.
-     * If another transaction changed it first, do not overwrite that update.
+     * Compare-and-update protects against overwriting a fee balance
+     * changed by another operation.
+     *
+     * Legacy documents may have no amountPaid field. Treat a missing
+     * field as zero only when the value we read was zero.
      */
+    const feeFilter = {
+      _id: studentFee._id,
+      schoolId,
+      studentId,
+      ...(previousPaid === 0
+        ? {
+            $or: [
+              { amountPaid: 0 },
+              { amountPaid: { $exists: false } },
+            ],
+          }
+        : { amountPaid: previousPaid }),
+    };
+
     const feeUpdate = await StudentFee.updateOne(
-      {
-        _id: studentFee._id,
-        schoolId,
-        studentId,
-        amountPaid: previousPaid,
-      },
+      feeFilter,
       {
         $set: {
           amountPaid: newAmountPaid,
@@ -327,7 +403,7 @@ export async function processFeePayment({
 
       throw new ApiError(
         409,
-        "Student fee changed during payment processing; retry or reconcile the verified transaction"
+        "Student fee changed during payment processing; reconciliation may be required"
       );
     }
 
@@ -407,7 +483,13 @@ export async function processFeePayment({
     const receiptMethod =
       method === "paystack"
         ? "paystack"
-        : ["manual", "bank", "cash", "bank_transfer", "pos"].includes(method)
+        : [
+            "manual",
+            "bank",
+            "cash",
+            "bank_transfer",
+            "pos",
+          ].includes(method)
           ? method
           : "manual";
 
@@ -439,6 +521,7 @@ export async function processFeePayment({
     if (validatedIntent) {
       validatedIntent.status = "success";
       validatedIntent.paidAt = new Date();
+
       await validatedIntent.save({ session });
     }
 
@@ -456,55 +539,79 @@ export async function processFeePayment({
       },
       invoice,
     };
-  } catch (err) {
+  } catch (error) {
     if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
-
-    /*
-     * Reconciliation is deliberately written AFTER aborting the payment
-     * transaction, so it does not get rolled back with the failed posting.
-     * This branch is only enabled for a matching saved Paystack intent.
-     */
-    if (
-      method === "paystack" &&
-      validatedIntent &&
-      reconciliationReason
-    ) {
       try {
-        await PaymentReconciliation.updateOne(
-          {
-            schoolId,
-            reference: paymentReference,
-          },
-          {
-            $setOnInsert: {
-              schoolId,
-              studentId,
-              studentFeeId,
-              paymentIntentId: validatedIntent._id,
-              reference: paymentReference,
-              expectedAmount: validatedIntent.expectedAmount,
-              verifiedAmount: paymentAmount,
-              currency: "NGN",
-              reason: reconciliationReason,
-              status: "pending",
-              details: reconciliationDetails,
-            },
-          },
-          { upsert: true }
-        );
-      } catch (reconciliationError) {
+        await session.abortTransaction();
+      } catch (abortError) {
         console.error(
-          "PAYMENT RECONCILIATION RECORDING ERROR:",
-          reconciliationError
+          "PAYMENT TRANSACTION ABORT ERROR:",
+          abortError
         );
       }
     }
 
-    throw err;
+    /*
+     * Do not create a reconciliation case for a retryable transaction
+     * error yet. The outer wrapper may retry the complete operation.
+     */
+    if (
+      method === "paystack" &&
+      validatedIntent &&
+      reconciliationReason &&
+      !isRetryableTransactionError(error)
+    ) {
+      await recordReconciliation({
+        schoolId,
+        studentId,
+        studentFeeId,
+        paymentReference,
+        paymentAmount,
+        validatedIntent,
+        reconciliationReason,
+        reconciliationDetails,
+      });
+    }
+
+    throw error;
   } finally {
     await session.endSession();
   }
 }
 
+export async function processFeePayment(options) {
+  for (
+    let attempt = 1;
+    attempt <= MAX_TRANSACTION_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      return await processFeePaymentAttempt(options);
+    } catch (error) {
+      const shouldRetry =
+        isRetryableTransactionError(error) &&
+        attempt < MAX_TRANSACTION_ATTEMPTS;
+
+      if (!shouldRetry) {
+        throw error;
+      }
+
+      console.warn(
+        `PAYMENT TRANSACTION RETRY: attempt ${attempt + 1} of ${MAX_TRANSACTION_ATTEMPTS}`,
+        {
+          reference: options?.reference,
+          errorCode: error?.code,
+          errorMessage: error?.message,
+        }
+      );
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, RETRY_DELAY_MS * attempt)
+      );
+    }
+  }
+
+  throw new Error(
+    "Payment processing failed after retry attempts"
+  );
+}
