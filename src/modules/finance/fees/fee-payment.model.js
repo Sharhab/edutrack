@@ -16,13 +16,12 @@ const feePaymentSchema = new mongoose.Schema(
       index: true,
     },
 
-
-studentFeeId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "StudentFee",
-  required: true,
-  index: true,
-},
+    studentFeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "StudentFee",
+      required: true,
+      index: true,
+    },
 
     amount: {
       type: Number,
@@ -45,7 +44,6 @@ studentFeeId: {
       type: String,
       default: "",
       trim: true,
-      index: true,
     },
 
     note: {
@@ -69,11 +67,26 @@ studentFeeId: {
   { timestamps: true }
 );
 
-/**
- * INDEXES
+/*
+ * Prevent duplicate non-empty payment references within a school.
+ * Empty references remain allowed for manual payments without a reference.
  */
-feePaymentSchema.index({ schoolId: 1, studentId: 1 });
-feePaymentSchema.index({ schoolId: 1, invoiceId: 1 });
+feePaymentSchema.index(
+  { schoolId: 1, reference: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      reference: { $type: "string", $gt: "" },
+    },
+    name: "unique_school_payment_reference",
+  }
+);
+
+/* Useful lookup index for a school's student payment history. */
+feePaymentSchema.index(
+  { schoolId: 1, studentId: 1 },
+  { name: "school_student_payments" }
+);
 
 export const Payment =
   mongoose.models.FeePayment ||
