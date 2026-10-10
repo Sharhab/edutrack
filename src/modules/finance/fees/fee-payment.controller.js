@@ -71,6 +71,7 @@ function isValidId(id) {
 /* =========================================
    CREATE FEE PLAN
 ========================================= */
+
 export async function createFeePlanHandler(req, res) {
   const {
     title,
@@ -79,40 +80,121 @@ export async function createFeePlanHandler(req, res) {
     sessionId,
     termId,
     description,
-  } = req.body;
+    paymentPolicy,
+  } = req.body || {};
 
-  if (!title) {
+  if (!title?.trim()) {
     throw new ApiError(400, "Fee title is required");
   }
 
-  if (!amount || Number(amount) <= 0) {
+  const numericAmount = Number(amount);
+
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
     throw new ApiError(400, "Valid amount required");
   }
 
-  if (!classId) {
-    throw new ApiError(400, "Class is required");
+  if (!isValidId(classId)) {
+    throw new ApiError(400, "Valid class is required");
   }
 
-  if (!sessionId) {
-    throw new ApiError(400, "Session is required");
+  if (!isValidId(sessionId)) {
+    throw new ApiError(400, "Valid session is required");
   }
 
-  if (!termId) {
-    throw new ApiError(400, "Term is required");
+  if (!isValidId(termId)) {
+    throw new ApiError(400, "Valid term is required");
+  }
+
+  const policy = paymentPolicy || {};
+  const allowedModes = [
+    "full_only",
+    "flexible_partial",
+    "fixed_installment",
+  ];
+
+  const mode = policy.mode || "full_only";
+
+  if (!allowedModes.includes(mode)) {
+    throw new ApiError(400, "Invalid payment policy");
+  }
+
+  const minimumPaymentAmount =
+    policy.minimumPaymentAmount == null
+      ? null
+      : Number(policy.minimumPaymentAmount);
+
+  const installmentAmount =
+    policy.installmentAmount == null
+      ? null
+      : Number(policy.installmentAmount);
+
+  if (
+    mode === "flexible_partial" &&
+    minimumPaymentAmount != null &&
+    (!Number.isFinite(minimumPaymentAmount) ||
+      minimumPaymentAmount <= 0)
+  ) {
+    throw new ApiError(
+      400,
+      "Minimum payment amount must be greater than zero"
+    );
+  }
+
+  if (
+    mode === "fixed_installment" &&
+    (!Number.isFinite(installmentAmount) ||
+      installmentAmount <= 0)
+  ) {
+    throw new ApiError(
+      400,
+      "A valid installment amount is required"
+    );
+  }
+
+  if (
+    minimumPaymentAmount != null &&
+    minimumPaymentAmount > numericAmount
+  ) {
+    throw new ApiError(
+      400,
+      "Minimum payment cannot exceed the total fee"
+    );
+  }
+
+  if (
+    installmentAmount != null &&
+    installmentAmount > numericAmount
+  ) {
+    throw new ApiError(
+      400,
+      "Installment amount cannot exceed the total fee"
+    );
   }
 
   const data = await createFeePlan({
     schoolId: req.user.schoolId,
-    title,
-    amount,
+    title: title.trim(),
+    amount: numericAmount,
     classId,
     sessionId,
     termId,
     description,
+    paymentPolicy: {
+      mode,
+      minimumPaymentAmount:
+        mode === "flexible_partial"
+          ? minimumPaymentAmount
+          : null,
+      installmentAmount:
+        mode === "fixed_installment"
+          ? installmentAmount
+          : null,
+    },
   });
 
-  res.json({
+  return res.status(201).json({
     success: true,
+    message: "Fee plan created successfully",
     data,
   });
 }
