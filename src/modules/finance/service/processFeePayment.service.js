@@ -9,6 +9,7 @@ import { Ledger } from "../models/ledger.model.js";
 import { FeeStructure } from "../models/feeStructure.model.js";
 import { ApiError } from "../../../utils/apiError.js";
 import { PaymentIntent } from "../models/paymentIntent.model.js";
+import { PaymentReconciliation } from "../models/paymentReconciliation.model.js";
 
 function makeReceiptNumber() {
   return `RCT-${Date.now()}-${new mongoose.Types.ObjectId()
