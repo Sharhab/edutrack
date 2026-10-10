@@ -265,6 +265,175 @@ export async function getFeePlans(schoolId) {
     .sort({ createdAt: -1 });
 }
 
+
+/* =========================================
+   UPDATE FEE PLAN
+   Existing student balances and payments
+   are intentionally left unchanged.
+========================================= */
+
+export async function updateFeePlan({
+  schoolId,
+  feePlanId,
+  payload = {},
+}) {
+  validateObjectId(feePlanId, "feePlanId");
+
+  const feePlan = await FeeStructure.findOne({
+    _id: feePlanId,
+    schoolId,
+    isActive: true,
+  });
+
+  if (!feePlan) {
+    throw new ApiError(404, "Active fee plan not found");
+  }
+
+  const allowedFields = [
+    "title",
+    "amount",
+    "description",
+    "paymentPolicy",
+  ];
+
+  const suppliedFields = Object.keys(payload);
+
+  if (
+    suppliedFields.length === 0 ||
+    suppliedFields.some((field) => !allowedFields.includes(field))
+  ) {
+    throw new ApiError(
+      400,
+      "Only title, amount, description and paymentPolicy can be updated"
+    );
+  }
+
+  const title =
+    payload.title === undefined
+      ? feePlan.title
+      : String(payload.title).trim();
+
+  const amount =
+    payload.amount === undefined
+      ? Number(feePlan.totalAmount)
+      : Number(payload.amount);
+
+  const description =
+    payload.description === undefined
+      ? feePlan.description
+      : String(payload.description ?? "").trim();
+
+  if (!title) {
+    throw new ApiError(400, "Fee title is required");
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ApiError(400, "Valid amount required");
+  }
+
+  const currentPolicy = feePlan.paymentPolicy?.toObject
+    ? feePlan.paymentPolicy.toObject()
+    : feePlan.paymentPolicy || {};
+
+  const incomingPolicy = payload.paymentPolicy;
+
+  if (
+    incomingPolicy !== undefined &&
+    (
+      !incomingPolicy ||
+      typeof incomingPolicy !== "object" ||
+      Array.isArray(incomingPolicy)
+    )
+  ) {
+    throw new ApiError(400, "Invalid payment policy");
+  }
+
+  const policy = {
+    ...currentPolicy,
+    ...(incomingPolicy || {}),
+  };
+
+  const allowedModes = [
+    "full_only",
+    "flexible_partial",
+    "fixed_installment",
+  ];
+
+  const mode = policy.mode || "full_only";
+
+  if (!allowedModes.includes(mode)) {
+    throw new ApiError(400, "Invalid payment policy");
+  }
+
+  const minimumPaymentAmount =
+    policy.minimumPaymentAmount == null
+      ? null
+      : Number(policy.minimumPaymentAmount);
+
+  const installmentAmount =
+    policy.installmentAmount == null
+      ? null
+      : Number(policy.installmentAmount);
+
+  if (
+    mode === "flexible_partial" &&
+    minimumPaymentAmount !== null &&
+    (
+      !Number.isFinite(minimumPaymentAmount) ||
+      minimumPaymentAmount <= 0 ||
+      minimumPaymentAmount > amount
+    )
+  ) {
+    throw new ApiError(
+      400,
+      "Minimum payment must be greater than zero and cannot exceed the total fee"
+    );
+  }
+
+  if (
+    mode === "fixed_installment" &&
+    (
+      !Number.isFinite(installmentAmount) ||
+      installmentAmount <= 0 ||
+      installmentAmount > amount
+    )
+  ) {
+    throw new ApiError(
+      400,
+      "Installment amount must be greater than zero and cannot exceed the total fee"
+    );
+  }
+
+  feePlan.title = title;
+  feePlan.totalAmount = amount;
+  feePlan.description = description;
+
+  feePlan.items = [
+    {
+      title,
+      amount,
+      optional: false,
+    },
+  ];
+
+  feePlan.paymentPolicy = {
+    mode,
+    minimumPaymentAmount:
+      mode === "flexible_partial"
+        ? minimumPaymentAmount
+        : null,
+    installmentAmount:
+      mode === "fixed_installment"
+        ? installmentAmount
+        : null,
+  };
+
+  await feePlan.save();
+
+  return feePlan;
+}
+
+
 /* =========================================
    ASSIGN FEE TO ONE STUDENT
 ========================================= */
