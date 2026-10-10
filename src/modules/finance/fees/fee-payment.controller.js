@@ -1,5 +1,6 @@
 import {
   createFeePlan,
+  updateFeePlan,
   assignFeeToStudent,
   assignFeeToClass, // ✅ NEW
   recordManualPayment,
