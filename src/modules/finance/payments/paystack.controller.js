@@ -11,6 +11,7 @@ import { StudentFee } from "../fees/studentFee.model.js";
 import { Student } from "../../students/student.model.js";
 import { Parent } from "../../parents/parent.model.js";
 import { School } from "../../schools/school.model.js";
+import { FeeStructure } from "../models/feeStructure.model.js";
 
 /* =========================================
    GET PAYSTACK BANKS
@@ -253,9 +254,10 @@ function getPaymentCallbackUrl(req, school) {
 /* =========================================
    INITIALIZE PAYSTACK PAYMENT
 ========================================= */
+    
 export async function initializePaystackHandler(req, res) {
   try {
-    const { studentFeeId } = req.body || {};
+    const { studentFeeId, amount: requestedAmount } = req.body || {};
 
     const userId = req.user?._id || req.user?.id;
     const email = req.user?.email?.trim();
@@ -283,18 +285,7 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    console.log("PAYSTACK PARENT LOOKUP:", {
-      userId: String(userId),
-      feeSchoolId: String(fee.schoolId),
-    });
-
-    console.log("PAYMENT REQUEST USER:", {
-      userId: String(userId),
-      role: req.user?.role,
-      schoolId: String(req.user?.schoolId || ""),
-      feeSchoolId: String(fee.schoolId),
-    });
-
+    // Verify the logged-in parent belongs to this school.
     const parent = await Parent.findOne({
       userId,
       schoolId: fee.schoolId,
@@ -307,17 +298,7 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    console.log(
-      "PAYSTACK PARENT FOUND:",
-      parent
-        ? {
-            parentId: String(parent._id),
-            parentUserId: String(parent.userId),
-            parentSchoolId: String(parent.schoolId),
-          }
-        : null
-    );
-
+    // Verify that this parent is linked to the student.
     const child = await Student.findOne({
       _id: fee.studentId,
       schoolId: fee.schoolId,
@@ -331,12 +312,121 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    const amount = Number(fee.balance || 0);
+    const balance = Number(fee.balance);
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(balance) || balance <= 0) {
       return res.status(400).json({
         success: false,
         message: "No outstanding balance",
+      });
+    }
+
+    // Read the payment policy from the school's fee plan.
+    const feePlan = await FeeStructure.findOne({
+      _id: fee.feePlanId,
+      schoolId: fee.schoolId,
+    }).select("paymentPolicy totalAmount");
+
+    // Older fee plans without a policy remain full-payment-only.
+    const policy = feePlan?.paymentPolicy || {};
+    const mode = policy.mode || "full_only";
+
+    let amount;
+
+    if (mode === "full_only") {
+      amount = balance;
+
+      if (
+        requestedAmount !== undefined &&
+        requestedAmount !== null &&
+        requestedAmount !== "" &&
+        Math.abs(Number(requestedAmount) - balance) > 0.01
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "This fee requires full payment",
+          data: { balance },
+        });
+      }
+    } else if (mode === "flexible_partial") {
+      amount =
+        requestedAmount === undefined ||
+        requestedAmount === null ||
+        requestedAmount === ""
+          ? balance
+          : Number(requestedAmount);
+
+      const minimum = Number(policy.minimumPaymentAmount || 0);
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter a valid payment amount",
+        });
+      }
+
+      if (amount > balance + 0.01) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment exceeds the outstanding balance",
+          data: { balance },
+        });
+      }
+
+      if (minimum > 0 && amount < minimum - 0.01 && amount < balance - 0.01) {
+        return res.status(400).json({
+          success: false,
+          message: `The minimum payment is ${minimum}`,
+          data: { minimumPaymentAmount: minimum, balance },
+        });
+      }
+    } else if (mode === "fixed_installment") {
+      const installment = Number(policy.installmentAmount);
+
+      if (!Number.isFinite(installment) || installment <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "The school's installment policy is not configured correctly",
+        });
+      }
+
+      // The final installment can be smaller than the usual installment.
+      const requiredAmount = Math.min(installment, balance);
+
+      amount =
+        requestedAmount === undefined ||
+        requestedAmount === null ||
+        requestedAmount === ""
+          ? requiredAmount
+          : Number(requestedAmount);
+
+      if (
+        !Number.isFinite(amount) ||
+        Math.abs(amount - requiredAmount) > 0.01
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment must match the required installment amount",
+          data: {
+            requiredAmount,
+            balance,
+          },
+        });
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Unsupported fee payment policy",
+      });
+    }
+
+    // Avoid floating-point precision issues when sending the amount.
+    amount = Math.round(amount * 100) / 100;
+
+    if (amount <= 0 || amount > balance + 0.01) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment amount",
       });
     }
 
@@ -363,19 +453,23 @@ export async function initializePaystackHandler(req, res) {
         schoolId: String(fee.schoolId),
         studentId: String(fee.studentId),
         studentFeeId: String(fee._id),
-        session: fee.session,
-        term: fee.term,
+        session: fee.session || "",
+        term: fee.term || "",
       },
     });
 
     return res.json({
       success: true,
-      data: result,
+      data: {
+        ...result,
+        amount,
+        balance,
+      },
     });
   } catch (err) {
     console.error("PAYSTACK INITIALIZATION ERROR:", err);
 
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
       message: err.message || "Payment initialization failed",
     });
