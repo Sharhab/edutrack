@@ -259,11 +259,6 @@ export async function initializePaystackHandler(req, res) {
   let paymentIntent = null;
 
   try {
-    const { randomUUID } = await import("node:crypto");
-    const { PaymentIntent } = await import(
-      "../models/paymentIntent.model.js"
-    );
-
     const { studentFeeId, amount: requestedAmount } = req.body || {};
     const userId = req.user?._id || req.user?.id;
     const email = req.user?.email?.trim();
@@ -291,6 +286,7 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
+    // Confirm this account belongs to a parent at the same school.
     const parent = await Parent.findOne({
       userId,
       schoolId: fee.schoolId,
@@ -303,6 +299,7 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
+    // Confirm the parent is linked to this student.
     const child = await Student.findOne({
       _id: fee.studentId,
       schoolId: fee.schoolId,
@@ -316,20 +313,33 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    const balance = Math.round(
-      (
-        Number(fee.totalAmount || 0) -
-        Number(fee.amountPaid || 0)
-      ) * 100
-    ) / 100;
+    // Calculate the outstanding balance in naira.
+    const total = Number(fee.totalAmount);
+    const amountAlreadyPaid = Number(fee.amountPaid || 0);
 
-    if (!Number.isFinite(balance) || balance <= 0) {
+    if (
+      !Number.isFinite(total) ||
+      !Number.isFinite(amountAlreadyPaid) ||
+      total < 0 ||
+      amountAlreadyPaid < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Student fee amounts are invalid",
+      });
+    }
+
+    const balance =
+      Math.round((total - amountAlreadyPaid) * 100) / 100;
+
+    if (balance <= 0) {
       return res.status(400).json({
         success: false,
         message: "No outstanding balance",
       });
     }
 
+    // Load the fee payment policy belonging to this school.
     const feePlan = await FeeStructure.findOne({
       _id: fee.feePlanId,
       schoolId: fee.schoolId,
@@ -347,7 +357,10 @@ export async function initializePaystackHandler(req, res) {
         requestedAmount !== undefined &&
         requestedAmount !== null &&
         requestedAmount !== "" &&
-        Math.abs(Number(requestedAmount) - balance) > 0.01
+        (
+          !Number.isFinite(Number(requestedAmount)) ||
+          Math.abs(Number(requestedAmount) - balance) > 0.01
+        )
       ) {
         return res.status(400).json({
           success: false,
@@ -365,30 +378,31 @@ export async function initializePaystackHandler(req, res) {
 
       const minimum = Number(policy.minimumPaymentAmount || 0);
 
-      if (!Number.isFinite(amount) || amount <= 0) {
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0 ||
+        amount > balance + 0.001
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Enter a valid payment amount",
-        });
-      }
-
-      if (amount > balance + 0.01) {
-        return res.status(400).json({
-          success: false,
-          message: "Payment exceeds the outstanding balance",
+          message: "Enter a valid amount not exceeding the balance",
           data: { balance },
         });
       }
 
+      // Allow a smaller final payment when it clears the balance.
       if (
         minimum > 0 &&
-        amount < minimum - 0.01 &&
-        amount < balance - 0.01
+        amount < minimum - 0.001 &&
+        amount < balance - 0.001
       ) {
         return res.status(400).json({
           success: false,
           message: `The minimum payment is ${minimum}`,
-          data: { minimumPaymentAmount: minimum, balance },
+          data: {
+            minimumPaymentAmount: minimum,
+            balance,
+          },
         });
       }
     } else if (mode === "fixed_installment") {
@@ -417,7 +431,10 @@ export async function initializePaystackHandler(req, res) {
         return res.status(400).json({
           success: false,
           message: "Payment must match the required installment amount",
-          data: { requiredAmount, balance },
+          data: {
+            requiredAmount,
+            balance,
+          },
         });
       }
     } else {
@@ -427,12 +444,13 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
+    // Normalize to two decimal places.
     amount = Math.round(amount * 100) / 100;
 
     if (
       !Number.isFinite(amount) ||
       amount <= 0 ||
-      amount > balance + 0.01
+      amount > balance + 0.001
     ) {
       return res.status(400).json({
         success: false,
@@ -452,9 +470,12 @@ export async function initializePaystackHandler(req, res) {
     }
 
     const callbackUrl = getPaymentCallbackUrl(req, school);
-    const reference = `EDU-${randomUUID().replace(/-/g, "").toUpperCase()}`;
 
-    // Save the expected transaction before contacting Paystack.
+    // Generate the reference before contacting Paystack.
+    const reference =
+      `EDU-${randomUUID().replace(/-/g, "").toUpperCase()}`;
+
+    // Persist the expected payment first.
     paymentIntent = await PaymentIntent.create({
       schoolId: fee.schoolId,
       studentId: fee.studentId,
@@ -473,6 +494,8 @@ export async function initializePaystackHandler(req, res) {
       },
     });
 
+    // The Paystack service now requires this exact reference
+    // and the saved payment intent ID.
     const result = await initializePaystackPayment({
       schoolId: fee.schoolId,
       email,
@@ -503,24 +526,15 @@ export async function initializePaystackHandler(req, res) {
   } catch (err) {
     console.error("PAYSTACK INITIALIZATION ERROR:", err);
 
-    // A network timeout does not prove Paystack failed to initialize.
-    // Leave the intent as initializing for reconciliation.
-    if (paymentIntent && err.statusCode) {
-      paymentIntent.status = "failed";
-      await paymentIntent.save().catch((saveError) => {
-        console.error(
-          "PAYMENT INTENT UPDATE ERROR:",
-          saveError.message
-        );
-      });
-    }
-
+    // Keep an unresolved intent in "initializing".
+    // A timeout alone cannot prove Paystack rejected the request.
     return res.status(err.statusCode || 500).json({
       success: false,
       message: err.message || "Payment initialization failed",
     });
   }
 }
+
 
 
 /* =========================================
