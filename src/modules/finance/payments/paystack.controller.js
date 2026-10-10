@@ -12,7 +12,8 @@ import { Student } from "../../students/student.model.js";
 import { Parent } from "../../parents/parent.model.js";
 import { School } from "../../schools/school.model.js";
 import { FeeStructure } from "../models/feeStructure.model.js";
-
+import { randomUUID } from "node:crypto";
+import { PaymentIntent } from "../models/paymentIntent.model.js";
 /* =========================================
    GET PAYSTACK BANKS
 ========================================= */
@@ -254,11 +255,16 @@ function getPaymentCallbackUrl(req, school) {
 /* =========================================
    INITIALIZE PAYSTACK PAYMENT
 ========================================= */
-    
 export async function initializePaystackHandler(req, res) {
-  try {
-    const { studentFeeId, amount: requestedAmount } = req.body || {};
+  let paymentIntent = null;
 
+  try {
+    const { randomUUID } = await import("node:crypto");
+    const { PaymentIntent } = await import(
+      "../models/paymentIntent.model.js"
+    );
+
+    const { studentFeeId, amount: requestedAmount } = req.body || {};
     const userId = req.user?._id || req.user?.id;
     const email = req.user?.email?.trim();
 
@@ -285,7 +291,6 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    // Verify the logged-in parent belongs to this school.
     const parent = await Parent.findOne({
       userId,
       schoolId: fee.schoolId,
@@ -298,7 +303,6 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    // Verify that this parent is linked to the student.
     const child = await Student.findOne({
       _id: fee.studentId,
       schoolId: fee.schoolId,
@@ -312,7 +316,12 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    const balance = Number(fee.balance);
+    const balance = Math.round(
+      (
+        Number(fee.totalAmount || 0) -
+        Number(fee.amountPaid || 0)
+      ) * 100
+    ) / 100;
 
     if (!Number.isFinite(balance) || balance <= 0) {
       return res.status(400).json({
@@ -321,13 +330,11 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    // Read the payment policy from the school's fee plan.
     const feePlan = await FeeStructure.findOne({
       _id: fee.feePlanId,
       schoolId: fee.schoolId,
-    }).select("paymentPolicy totalAmount");
+    }).select("paymentPolicy");
 
-    // Older fee plans without a policy remain full-payment-only.
     const policy = feePlan?.paymentPolicy || {};
     const mode = policy.mode || "full_only";
 
@@ -373,7 +380,11 @@ export async function initializePaystackHandler(req, res) {
         });
       }
 
-      if (minimum > 0 && amount < minimum - 0.01 && amount < balance - 0.01) {
+      if (
+        minimum > 0 &&
+        amount < minimum - 0.01 &&
+        amount < balance - 0.01
+      ) {
         return res.status(400).json({
           success: false,
           message: `The minimum payment is ${minimum}`,
@@ -390,7 +401,6 @@ export async function initializePaystackHandler(req, res) {
         });
       }
 
-      // The final installment can be smaller than the usual installment.
       const requiredAmount = Math.min(installment, balance);
 
       amount =
@@ -407,10 +417,7 @@ export async function initializePaystackHandler(req, res) {
         return res.status(400).json({
           success: false,
           message: "Payment must match the required installment amount",
-          data: {
-            requiredAmount,
-            balance,
-          },
+          data: { requiredAmount, balance },
         });
       }
     } else {
@@ -420,10 +427,13 @@ export async function initializePaystackHandler(req, res) {
       });
     }
 
-    // Avoid floating-point precision issues when sending the amount.
     amount = Math.round(amount * 100) / 100;
 
-    if (amount <= 0 || amount > balance + 0.01) {
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      amount > balance + 0.01
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid payment amount",
@@ -442,21 +452,45 @@ export async function initializePaystackHandler(req, res) {
     }
 
     const callbackUrl = getPaymentCallbackUrl(req, school);
+    const reference = `EDU-${randomUUID().replace(/-/g, "").toUpperCase()}`;
+
+    // Save the expected transaction before contacting Paystack.
+    paymentIntent = await PaymentIntent.create({
+      schoolId: fee.schoolId,
+      studentId: fee.studentId,
+      studentFeeId: fee._id,
+      feePlanId: fee.feePlanId || null,
+      reference,
+      expectedAmount: amount,
+      currency: "NGN",
+      sessionId: fee.sessionId || null,
+      termId: fee.termId || null,
+      status: "initializing",
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      metadata: {
+        session: fee.session || "",
+        term: fee.term || "",
+      },
+    });
 
     const result = await initializePaystackPayment({
       schoolId: fee.schoolId,
       email,
       amount,
       callbackUrl,
+      reference,
       metadata: {
-        source: "student_fee",
         schoolId: String(fee.schoolId),
         studentId: String(fee.studentId),
         studentFeeId: String(fee._id),
+        paymentIntentId: String(paymentIntent._id),
         session: fee.session || "",
         term: fee.term || "",
       },
     });
+
+    paymentIntent.status = "pending";
+    await paymentIntent.save();
 
     return res.json({
       success: true,
@@ -469,12 +503,25 @@ export async function initializePaystackHandler(req, res) {
   } catch (err) {
     console.error("PAYSTACK INITIALIZATION ERROR:", err);
 
+    // A network timeout does not prove Paystack failed to initialize.
+    // Leave the intent as initializing for reconciliation.
+    if (paymentIntent && err.statusCode) {
+      paymentIntent.status = "failed";
+      await paymentIntent.save().catch((saveError) => {
+        console.error(
+          "PAYMENT INTENT UPDATE ERROR:",
+          saveError.message
+        );
+      });
+    }
+
     return res.status(err.statusCode || 500).json({
       success: false,
       message: err.message || "Payment initialization failed",
     });
   }
 }
+
 
 /* =========================================
    VERIFY PAYSTACK PAYMENT
