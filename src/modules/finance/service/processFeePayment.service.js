@@ -97,37 +97,44 @@ export async function processFeePayment({
     throw new ApiError(400, "Missing payment identifiers");
   }
 
+  const paymentReference = String(reference).trim();
   const paymentAmount = Math.round(Number(amountPaid) * 100) / 100;
 
-  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-    throw new ApiError(400, "Invalid payment amount");
+  if (
+    !paymentReference ||
+    !Number.isFinite(paymentAmount) ||
+    paymentAmount <= 0
+  ) {
+    throw new ApiError(400, "Invalid payment reference or amount");
   }
 
-  if (method === "paystack") {
-    if (
+  if (
+    method === "paystack" &&
+    (
       (metadata.schoolId &&
         String(metadata.schoolId) !== String(schoolId)) ||
       (metadata.studentId &&
         String(metadata.studentId) !== String(studentId)) ||
       (metadata.studentFeeId &&
         String(metadata.studentFeeId) !== String(studentFeeId))
-    ) {
-      throw new ApiError(400, "Payment metadata does not match");
-    }
+    )
+  ) {
+    throw new ApiError(400, "Payment metadata does not match");
   }
 
   const session = await mongoose.startSession();
 
+  let validatedIntent = null;
+  let reconciliationReason = null;
+  let reconciliationDetails = "";
+
   try {
     session.startTransaction();
 
-    // A Paystack payment must match a previously saved intent.
-    let paymentIntent = null;
-
     if (method === "paystack") {
-      paymentIntent = await PaymentIntent.findOne({
+      const paymentIntent = await PaymentIntent.findOne({
         schoolId,
-        reference: String(reference),
+        reference: paymentReference,
       }).session(session);
 
       if (!paymentIntent) {
@@ -139,7 +146,11 @@ export async function processFeePayment({
 
       if (
         String(paymentIntent.studentId) !== String(studentId) ||
-        String(paymentIntent.studentFeeId) !== String(studentFeeId)
+        String(paymentIntent.studentFeeId) !== String(studentFeeId) ||
+        (
+          metadata.paymentIntentId &&
+          String(metadata.paymentIntentId) !== String(paymentIntent._id)
+        )
       ) {
         throw new ApiError(
           409,
@@ -148,44 +159,33 @@ export async function processFeePayment({
       }
 
       if (
-        metadata.paymentIntentId &&
-        String(metadata.paymentIntentId) !== String(paymentIntent._id)
-      ) {
-        throw new ApiError(
-          409,
-          "Payment intent identifier does not match"
-        );
-      }
-
-      if (
         paymentIntent.currency !== "NGN" ||
-        Math.abs(
-          Number(paymentIntent.expectedAmount) - paymentAmount
-        ) > 0.01
+        Math.abs(Number(paymentIntent.expectedAmount) - paymentAmount) > 0.01
       ) {
         throw new ApiError(
           409,
           "Verified amount or currency does not match the saved payment intent"
         );
       }
+
+      // Only a matched intent can be considered for reconciliation below.
+      validatedIntent = paymentIntent;
     }
 
-    // Make repeated callback/webhook deliveries idempotent.
+    // Callback and webhook retries must not create duplicate payments.
     const existingPayment = await Payment.findOne({
       schoolId,
-      reference: String(reference),
+      reference: paymentReference,
     }).session(session);
 
     if (existingPayment) {
-      const sameFee =
-        String(existingPayment.studentFeeId) === String(studentFeeId);
-      const sameStudent =
-        String(existingPayment.studentId) === String(studentId);
-      const sameAmount =
-        Math.abs(Number(existingPayment.amount) - paymentAmount) < 0.01;
-      const successful = existingPayment.status === "success";
+      const matches =
+        String(existingPayment.studentFeeId) === String(studentFeeId) &&
+        String(existingPayment.studentId) === String(studentId) &&
+        Math.abs(Number(existingPayment.amount) - paymentAmount) < 0.01 &&
+        existingPayment.status === "success";
 
-      if (!sameFee || !sameStudent || !sameAmount || !successful) {
+      if (!matches) {
         throw new ApiError(
           409,
           "This reference is already associated with a different or unsuccessful payment"
@@ -197,10 +197,11 @@ export async function processFeePayment({
         paymentId: existingPayment._id,
       }).session(session);
 
-      if (paymentIntent && paymentIntent.status !== "success") {
-        paymentIntent.status = "success";
-        paymentIntent.paidAt = existingPayment.paidAt || new Date();
-        await paymentIntent.save({ session });
+      if (validatedIntent && validatedIntent.status !== "success") {
+        validatedIntent.status = "success";
+        validatedIntent.paidAt =
+          existingPayment.paidAt || new Date();
+        await validatedIntent.save({ session });
       }
 
       await session.commitTransaction();
@@ -224,26 +225,43 @@ export async function processFeePayment({
 
     const total = Number(studentFee.totalAmount || 0);
     const previousPaid = Number(studentFee.amountPaid || 0);
+
+    if (
+      !Number.isFinite(total) ||
+      !Number.isFinite(previousPaid) ||
+      total < 0 ||
+      previousPaid < 0
+    ) {
+      throw new ApiError(409, "Student fee amounts are invalid");
+    }
+
     const currentBalance = Math.max(
       Math.round((total - previousPaid) * 100) / 100,
       0
     );
 
     if (currentBalance <= 0) {
+      reconciliationReason = "fee_already_paid";
+      reconciliationDetails =
+        "Paystack payment was verified, but the student fee has no outstanding balance.";
+
       throw new ApiError(
         409,
-        "This student fee is already fully paid; reconcile this transaction"
+        "Fee is already paid; the verified transaction requires reconciliation"
       );
     }
 
-    if (paymentAmount > currentBalance + 0.01) {
+    if (paymentAmount > currentBalance + 0.001) {
+      reconciliationReason = "overpayment";
+      reconciliationDetails =
+        "Verified payment exceeds the current outstanding student-fee balance.";
+
       throw new ApiError(
         409,
         "Verified payment exceeds the outstanding balance; reconciliation is required"
       );
     }
 
-    // Revalidate the current fee policy.
     const feePlan = await FeeStructure.findOne({
       _id: studentFee.feePlanId,
       schoolId,
@@ -251,11 +269,67 @@ export async function processFeePayment({
       .select("paymentPolicy")
       .session(session);
 
-    validatePaymentPolicy(
-      feePlan?.paymentPolicy || { mode: "full_only" },
-      paymentAmount,
-      currentBalance
+    try {
+      validatePaymentPolicy(
+        feePlan?.paymentPolicy || { mode: "full_only" },
+        paymentAmount,
+        currentBalance
+      );
+    } catch (policyError) {
+      if (validatedIntent) {
+        reconciliationReason = "balance_changed";
+        reconciliationDetails =
+          "The verified payment no longer matches the current fee payment policy or balance.";
+      }
+
+      throw policyError;
+    }
+
+    const newAmountPaid =
+      Math.round((previousPaid + paymentAmount) * 100) / 100;
+
+    const newBalance = Math.max(
+      Math.round((total - newAmountPaid) * 100) / 100,
+      0
     );
+
+    const newStatus = newBalance <= 0 ? "paid" : "partial";
+
+    /*
+     * Conditional update:
+     * only update the fee if its amountPaid is still the value we read.
+     * If another transaction changed it first, do not overwrite that update.
+     */
+    const feeUpdate = await StudentFee.updateOne(
+      {
+        _id: studentFee._id,
+        schoolId,
+        studentId,
+        amountPaid: previousPaid,
+      },
+      {
+        $set: {
+          amountPaid: newAmountPaid,
+          balance: newBalance,
+          status: newStatus,
+        },
+      },
+      { session }
+    );
+
+    if (feeUpdate.modifiedCount !== 1) {
+      reconciliationReason = validatedIntent
+        ? "balance_changed"
+        : null;
+
+      reconciliationDetails =
+        "The student-fee balance changed while the payment was being processed.";
+
+      throw new ApiError(
+        409,
+        "Student fee changed during payment processing; retry or reconcile the verified transaction"
+      );
+    }
 
     const [payment] = await Payment.create(
       [
@@ -266,7 +340,7 @@ export async function processFeePayment({
           amount: paymentAmount,
           paymentMethod:
             method === "paystack" ? "online" : method,
-          reference: String(reference),
+          reference: paymentReference,
           status: "success",
           paidAt: new Date(),
           note:
@@ -278,20 +352,7 @@ export async function processFeePayment({
       { session }
     );
 
-    studentFee.amountPaid =
-      Math.round((previousPaid + paymentAmount) * 100) / 100;
-
-    studentFee.balance = Math.max(
-      Math.round((total - studentFee.amountPaid) * 100) / 100,
-      0
-    );
-
-    studentFee.status =
-      studentFee.balance <= 0 ? "paid" : "partial";
-
-    await studentFee.save({ session });
-
-    // Update the invoice for the same fee and academic period.
+    // Update only the invoice for this fee and academic period.
     const invoiceQuery = {
       schoolId,
       studentId,
@@ -300,10 +361,14 @@ export async function processFeePayment({
 
     if (studentFee.sessionId) {
       invoiceQuery.sessionId = studentFee.sessionId;
+    } else {
+      invoiceQuery.sessionId = { $exists: false };
     }
 
     if (studentFee.termId) {
       invoiceQuery.termId = studentFee.termId;
+    } else {
+      invoiceQuery.termId = { $exists: false };
     }
 
     const invoice = await Invoice.findOne(invoiceQuery)
@@ -313,10 +378,10 @@ export async function processFeePayment({
     if (invoice) {
       invoice.amount = total;
       invoice.totalAmount = total;
-      invoice.amountPaid = studentFee.amountPaid;
-      invoice.balanceAmount = studentFee.balance;
-      invoice.paymentStatus = studentFee.status;
-      invoice.status = studentFee.status;
+      invoice.amountPaid = newAmountPaid;
+      invoice.balanceAmount = newBalance;
+      invoice.paymentStatus = newStatus;
+      invoice.status = newStatus;
 
       await invoice.save({ session });
     }
@@ -328,8 +393,8 @@ export async function processFeePayment({
           studentId,
           type: "payment",
           amount: paymentAmount,
-          balanceAfter: studentFee.balance,
-          reference: String(payment._id),
+          balanceAfter: newBalance,
+          reference: payment._id.toString(),
           description:
             method === "paystack"
               ? "Paystack student fee payment"
@@ -354,13 +419,13 @@ export async function processFeePayment({
           studentId,
           studentFeeId: studentFee._id,
           amount: paymentAmount,
-          amountPaid: studentFee.amountPaid,
+          amountPaid: newAmountPaid,
           method: receiptMethod,
           status: "success",
-          reference: String(reference),
+          reference: paymentReference,
           title: studentFee.title,
           totalAmount: total,
-          balance: studentFee.balance,
+          balance: newBalance,
           session: studentFee.session || "",
           term: studentFee.term || "",
           receiptNumber: makeReceiptNumber(),
@@ -371,11 +436,10 @@ export async function processFeePayment({
       { session }
     );
 
-    // Mark the intent successful in the same transaction as the records.
-    if (paymentIntent) {
-      paymentIntent.status = "success";
-      paymentIntent.paidAt = new Date();
-      await paymentIntent.save({ session });
+    if (validatedIntent) {
+      validatedIntent.status = "success";
+      validatedIntent.paidAt = new Date();
+      await validatedIntent.save({ session });
     }
 
     await session.commitTransaction();
@@ -384,7 +448,12 @@ export async function processFeePayment({
       alreadyProcessed: false,
       payment,
       receipt,
-      studentFee,
+      studentFee: {
+        ...studentFee.toObject(),
+        amountPaid: newAmountPaid,
+        balance: newBalance,
+        status: newStatus,
+      },
       invoice,
     };
   } catch (err) {
@@ -392,8 +461,50 @@ export async function processFeePayment({
       await session.abortTransaction();
     }
 
+    /*
+     * Reconciliation is deliberately written AFTER aborting the payment
+     * transaction, so it does not get rolled back with the failed posting.
+     * This branch is only enabled for a matching saved Paystack intent.
+     */
+    if (
+      method === "paystack" &&
+      validatedIntent &&
+      reconciliationReason
+    ) {
+      try {
+        await PaymentReconciliation.updateOne(
+          {
+            schoolId,
+            reference: paymentReference,
+          },
+          {
+            $setOnInsert: {
+              schoolId,
+              studentId,
+              studentFeeId,
+              paymentIntentId: validatedIntent._id,
+              reference: paymentReference,
+              expectedAmount: validatedIntent.expectedAmount,
+              verifiedAmount: paymentAmount,
+              currency: "NGN",
+              reason: reconciliationReason,
+              status: "pending",
+              details: reconciliationDetails,
+            },
+          },
+          { upsert: true }
+        );
+      } catch (reconciliationError) {
+        console.error(
+          "PAYMENT RECONCILIATION RECORDING ERROR:",
+          reconciliationError
+        );
+      }
+    }
+
     throw err;
   } finally {
     await session.endSession();
   }
 }
+
