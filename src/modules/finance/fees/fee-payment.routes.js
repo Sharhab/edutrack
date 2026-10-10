@@ -9,6 +9,7 @@ import { paystackWebhookHandler } from "../payments/webhook.controller.js";
 
 import {
   createFeePlanHandler,
+  updateFeePlanHandler,
   assignFeeToStudentHandler,
   assignFeeToClassHandler,
   generateInvoiceHandler,
@@ -65,6 +66,13 @@ router.post(
 router.get(
   "/plans",
   asyncHandler(getFeePlansHandler)
+);
+
+
+router.patch(
+  "/plans/:id",
+  authorize("school_admin", "super_admin"),
+  asyncHandler(updateFeePlanHandler)
 );
 
 /* =========================================
