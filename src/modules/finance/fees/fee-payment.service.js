@@ -113,7 +113,6 @@ async function syncInvoiceFromStudentFee({
 /* =========================================
    CREATE FEE PLAN
 ========================================= */
-
 export async function createFeePlan({
   schoolId,
   title,
@@ -122,6 +121,7 @@ export async function createFeePlan({
   sessionId,
   termId,
   description,
+  paymentPolicy = {},
 }) {
   if (!title?.trim()) {
     throw new ApiError(400, "Fee title is required");
@@ -136,6 +136,51 @@ export async function createFeePlan({
   validateObjectId(classId, "classId");
   validateObjectId(sessionId, "sessionId");
   validateObjectId(termId, "termId");
+
+  const allowedModes = [
+    "full_only",
+    "flexible_partial",
+    "fixed_installment",
+  ];
+
+  const mode = paymentPolicy.mode || "full_only";
+  const minimumPaymentAmount =
+    paymentPolicy.minimumPaymentAmount == null
+      ? null
+      : Number(paymentPolicy.minimumPaymentAmount);
+  const installmentAmount =
+    paymentPolicy.installmentAmount == null
+      ? null
+      : Number(paymentPolicy.installmentAmount);
+
+  if (!allowedModes.includes(mode)) {
+    throw new ApiError(400, "Invalid payment policy");
+  }
+
+  if (
+    mode === "flexible_partial" &&
+    minimumPaymentAmount != null &&
+    (!Number.isFinite(minimumPaymentAmount) ||
+      minimumPaymentAmount <= 0 ||
+      minimumPaymentAmount > numericAmount)
+  ) {
+    throw new ApiError(
+      400,
+      "Minimum payment must be greater than zero and cannot exceed the total fee"
+    );
+  }
+
+  if (
+    mode === "fixed_installment" &&
+    (!Number.isFinite(installmentAmount) ||
+      installmentAmount <= 0 ||
+      installmentAmount > numericAmount)
+  ) {
+    throw new ApiError(
+      400,
+      "Installment amount must be greater than zero and cannot exceed the total fee"
+    );
+  }
 
   const ClassModel = mongoose.model("Class");
   const SessionModel = mongoose.model("Session");
@@ -189,9 +234,21 @@ export async function createFeePlan({
       },
     ],
     description: description || "",
+    paymentPolicy: {
+      mode,
+      minimumPaymentAmount:
+        mode === "flexible_partial"
+          ? minimumPaymentAmount
+          : null,
+      installmentAmount:
+        mode === "fixed_installment"
+          ? installmentAmount
+          : null,
+    },
     isActive: true,
   });
 }
+
 
 /* =========================================
    LIST FEE PLANS
