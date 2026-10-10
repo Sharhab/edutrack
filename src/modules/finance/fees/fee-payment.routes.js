@@ -1,3 +1,4 @@
+
 import express from "express";
 
 import { protect } from "../../../middlewares/auth.middleware.js";
@@ -5,6 +6,7 @@ import { authorize } from "../../../middlewares/role.middleware.js";
 import { tenantScope } from "../../../middlewares/tenantScope.middleware.js";
 import { asyncHandler } from "../../../utils/asyncHandler.js";
 import { paystackWebhookHandler } from "../payments/webhook.controller.js";
+
 import {
   createFeePlanHandler,
   assignFeeToStudentHandler,
@@ -24,8 +26,21 @@ import {
 const router = express.Router();
 
 /* =========================================
-   AUTH
+   PAYSTACK WEBHOOK
+   Must be registered before authentication.
+   The handler validates the Paystack signature.
 ========================================= */
+
+router.post(
+  "/payments/paystack/webhook",
+  asyncHandler(paystackWebhookHandler)
+);
+
+/* =========================================
+   AUTHENTICATION AND TENANT SCOPE
+   Applies to all routes below this point.
+========================================= */
+
 router.use(protect);
 
 router.use(
@@ -41,6 +56,7 @@ router.use(tenantScope);
 /* =========================================
    FEE PLANS
 ========================================= */
+
 router.post(
   "/plans",
   asyncHandler(createFeePlanHandler)
@@ -54,6 +70,7 @@ router.get(
 /* =========================================
    ASSIGN FEES
 ========================================= */
+
 router.post(
   "/assign-student",
   asyncHandler(assignFeeToStudentHandler)
@@ -68,18 +85,19 @@ router.post(
    INVOICES
 ========================================= */
 
-/**
- * THESE BECOME:
- * /api/finance/fees/invoices
- * /api/finance/fees/invoices/:id
- */
-
-/* ======================================
-   GET RECEIPT BY PAYMENT
-====================================== */
 router.get(
   "/invoices",
   asyncHandler(getInvoices)
+);
+
+router.get(
+  "/invoices/student/:studentId",
+  asyncHandler(getStudentInvoicesHandler)
+);
+
+router.get(
+  "/invoices/class/:classId",
+  asyncHandler(getClassInvoicesHandler)
 );
 
 router.get(
@@ -98,21 +116,9 @@ router.get(
 );
 
 /* =========================================
-   OPTIONAL INVOICE LOOKUP
-========================================= */
-router.get(
-  "/invoices/student/:studentId",
-  asyncHandler(getStudentInvoicesHandler)
-);
-
-router.get(
-  "/invoices/class/:classId",
-  asyncHandler(getClassInvoicesHandler)
-);
-
-/* =========================================
    PAYMENTS
 ========================================= */
+
 router.get(
   "/payments",
   asyncHandler(listPaymentsHandler)
@@ -123,15 +129,6 @@ router.post(
   asyncHandler(recordManualPaymentHandler)
 );
 
-
-// Paystack webhook (NO auth usually)
-router.post(
-  "/payments/paystack/webhook",
- asyncHandler(paystackWebhookHandler)
-);
-/* =========================================
-   CANCEL PAYMENT
-========================================= */
 router.patch(
   "/payments/:id/cancel",
   asyncHandler(cancelPaymentHandler)
