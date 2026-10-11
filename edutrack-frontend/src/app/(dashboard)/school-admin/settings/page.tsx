@@ -10,11 +10,10 @@ import SchoolProfileForm from "../../../../components/settings/SchoolProfileForm
 import SchoolProfilePreview from "../../../../components/settings/SchoolProfilePreview";
 
 import {
-  getSchoolProfile,
-  updateSchoolProfile,
   uploadSchoolLogo,
 } from "../../../../lib/settings";
-
+import SchoolProfileForm from "../../../../components/settings/SchoolProfileForm";
+import SchoolProfilePreview from "../../../../components/settings/SchoolProfilePreview";
 import { SchoolProfileFormValues } from "../../../../types/settings";
 
 import { useTenant } from "../../../../components/tenant/TenantProvider";
