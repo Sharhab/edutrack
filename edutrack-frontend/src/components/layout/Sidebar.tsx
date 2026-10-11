@@ -94,7 +94,12 @@ const navByRole: Record<
   { label: "Class Reports", href: "/school-admin/results/class-reports", icon: GraduationCap },
   { label: "Parents", href: "/school-admin/parents", icon: Users },
   { label: "Announcements", href: "/school-admin/announcements", icon: Bell },
-  { label: "Settings", href: "/school-admin/settings", icon: Settings },
+{
+  label: "Academic Periods",
+  href: "/school-admin/academic-periods",
+  icon: CalendarDays,
+},
+{ label: "Settings", href: "/school-admin/settings", icon: Settings },
 ],
 
   teacher: [
