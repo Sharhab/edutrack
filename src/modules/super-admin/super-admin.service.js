@@ -1,4 +1,6 @@
+
 import { School } from "../schools/school.model.js";
+import { User } from "../users/user.model.js";
 import { Student } from "../students/student.model.js";
 import { Teacher } from "../teachers/teacher.model.js";
 import { Parent } from "../parents/parent.model.js";
@@ -33,8 +35,11 @@ export async function getSuperAdminDashboard() {
     SuperInvoice.countDocuments(),
   ]);
 
-  const recentTenants = await School.find().sort({ createdAt: -1 }).limit(5);
-  const recentPayments = await Payment.find()
+  const recentTenants = await School.find()
+    .sort({ createdAt: -1 })
+    .limit(5);
+
+  const recentPayments = await SubPayment.find()
     .populate("schoolId", "name slug email")
     .sort({ createdAt: -1 })
     .limit(5);
@@ -76,11 +81,21 @@ export async function updateTenant(id, payload) {
 }
 
 export async function deleteTenant(id) {
-  const doc = await School.findByIdAndDelete(id);
+  const doc = await School.findById(id);
 
   if (!doc) {
     throw new ApiError(404, "Tenant not found");
   }
+
+  // Delete the tenant first. Keep billing records for auditing.
+  await doc.deleteOne();
+
+  // Remove only admin accounts belonging to this deleted school.
+  // Never delete users belonging to other schools.
+  await User.deleteMany({
+    schoolId: doc._id,
+    role: "school_admin",
+  });
 
   return { deleted: true };
 }
@@ -92,15 +107,21 @@ export async function controlTenant(id, payload) {
     throw new ApiError(404, "Tenant not found");
   }
 
-  if (payload.isActive !== undefined) doc.isActive = payload.isActive;
+  if (payload.isActive !== undefined) {
+    doc.isActive = payload.isActive;
+  }
+
   if (payload.subscriptionStatus !== undefined) {
     doc.subscriptionStatus = payload.subscriptionStatus;
   }
- if (payload.expiryDate !== undefined) {
-  doc.subscriptionExpiresAt = payload.expiryDate
-    ? new Date(payload.expiryDate)
-    : null;
-}
+
+  if (payload.expiryDate !== undefined) {
+    doc.subscriptionExpiresAt = payload.expiryDate
+      ? new Date(payload.expiryDate)
+      : null;
+  }
+
   await doc.save();
+
   return doc;
 }
