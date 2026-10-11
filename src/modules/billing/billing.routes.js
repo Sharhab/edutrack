@@ -1,8 +1,8 @@
+
 import express from "express";
 
 import { protect } from "../../middlewares/auth.middleware.js";
 import { authorize } from "../../middlewares/role.middleware.js";
-
 import { asyncHandler } from "../../utils/asyncHandler.js";
 
 import {
@@ -17,182 +17,115 @@ import {
   listPaymentsHandler,
   listSubscriptionsHandler,
   updateSubscriptionHandler,
-   getCurrentBillingHandler,
+  getCurrentBillingHandler,
   verifyPaystackHandler,
-   getBillingHistoryHandler,
+  getBillingHistoryHandler,
   upgradeSubscriptionHandler,
   initializeBillingPaymentHandler,
 } from "./billing.controller.js";
 
 const router = express.Router();
 
-/**
- * =========================================
- * PUBLIC BILLING ROUTES
- * =========================================
- * Used during onboarding/payment flow
- */
-
-/**
- * INITIALIZE PAYSTACK PAYMENT
- */
+// Keep existing school billing/payment initialization behavior.
 router.post(
   "/paystack/initialize",
   protect,
   authorize("school_admin"),
-  asyncHandler(
-    initializeBillingPaymentHandler
-  )
+  asyncHandler(initializeBillingPaymentHandler)
 );
 
-/**
- * VERIFY PAYMENT
- */
 router.get(
   "/paystack/verify/:reference",
-  asyncHandler(
-    verifyPaystackHandler
-  )
+  asyncHandler(verifyPaystackHandler)
 );
 
-/**
- * =========================================
- * SUPER ADMIN ROUTES
- * =========================================
- */
+// Existing billing routes require authentication.
 router.use(protect);
 
-/**
- * =========================================
- * AUTHENTICATED BILLING ROUTES
- * =========================================
- */
+// School-specific billing routes.
 router.get(
   "/current",
-  protect,
-  authorize(
-    "school_admin",
-    "super_admin"
-  ),
-  asyncHandler(
-    getCurrentBillingHandler
-  )
+  authorize("school_admin", "super_admin"),
+  asyncHandler(getCurrentBillingHandler)
 );
 
 router.get(
   "/history",
-  protect,
-  authorize(
-    "school_admin",
-    "super_admin"
-  ),
-  asyncHandler(
-    getBillingHistoryHandler
-  )
+  authorize("school_admin", "super_admin"),
+  asyncHandler(getBillingHistoryHandler)
 );
 
 router.post(
   "/upgrade",
-  protect,
-  authorize(
-    "school_admin",
-    "super_admin"
-  ),
-  asyncHandler(
-    upgradeSubscriptionHandler
-  )
+  authorize("school_admin", "super_admin"),
+  asyncHandler(upgradeSubscriptionHandler)
 );
 
+// All management routes below require Super Admin access.
+// Authorization must come BEFORE these handlers.
+router.use(authorize("super_admin"));
 
-/**
- * SUBSCRIPTIONS
- */
+// Subscriptions
 router.get(
   "/subscriptions",
-  asyncHandler(
-    listSubscriptionsHandler
-  )
+  asyncHandler(listSubscriptionsHandler)
 );
 
 router.post(
   "/subscriptions",
-  asyncHandler(
-    createSubscriptionHandler
-  )
+  asyncHandler(createSubscriptionHandler)
 );
 
 router.get(
   "/subscriptions/:id",
-  asyncHandler(
-    getSubscriptionHandler
-  )
+  asyncHandler(getSubscriptionHandler)
 );
 
+router.put(
+  "/subscriptions/:id",
+  asyncHandler(updateSubscriptionHandler)
+);
 
 router.patch(
   "/subscriptions/:id",
-  asyncHandler(
-    updateSubscriptionHandler
-  )
+  asyncHandler(updateSubscriptionHandler)
 );
 
 router.delete(
   "/subscriptions/:id",
-  asyncHandler(
-    deleteSubscriptionHandler
-  )
+  asyncHandler(deleteSubscriptionHandler)
 );
 
-/**
- * PAYMENTS
- */
+// Payments
 router.get(
   "/payments",
-  asyncHandler(
-    listPaymentsHandler
-  )
+  asyncHandler(listPaymentsHandler)
 );
 
 router.post(
   "/payments",
-  asyncHandler(
-    createManualPaymentHandler
-  )
+  asyncHandler(createManualPaymentHandler)
 );
 
 router.get(
   "/payments/:id",
-  asyncHandler(
-    getPaymentHandler
-  )
+  asyncHandler(getPaymentHandler)
 );
 
-/**
- * INVOICES
- */
+// Invoices
 router.get(
   "/invoices",
-  asyncHandler(
-    listInvoicesHandler
-  )
+  asyncHandler(listInvoicesHandler)
 );
 
 router.post(
   "/invoices",
-  asyncHandler(
-    createInvoiceHandler
-  )
+  asyncHandler(createInvoiceHandler)
 );
 
 router.get(
   "/invoices/:id",
-  asyncHandler(
-    getInvoiceHandler
-  )
-);
-
-router.use(
-  authorize("super_admin")
+  asyncHandler(getInvoiceHandler)
 );
 
 export default router;
