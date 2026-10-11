@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardCheck,
+  Clock,
   CreditCard,
   FileBarChart,
   GraduationCap,
