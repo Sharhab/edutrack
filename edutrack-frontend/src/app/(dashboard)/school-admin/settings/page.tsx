@@ -1,24 +1,32 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 import axios from "axios";
+
 import ChangePasswordForm from "../../../../components/settings/ChangePasswordForm";
+import SchoolProfileForm from "../../../../components/settings/SchoolProfileForm";
 import SectionCard from "../../../../components/ui/SectionCard";
 import PageLoader from "../../../../components/ui/PageLoader";
 import EmptyState from "../../../../components/ui/EmptyState";
-import SchoolProfileForm from "../../../../components/settings/SchoolProfileForm";
-import SchoolProfilePreview from "../../../../components/settings/SchoolProfilePreview";
 
 import {
+  getSchoolProfile,
+  updateSchoolProfile,
   uploadSchoolLogo,
 } from "../../../../lib/settings";
-import SchoolProfileForm from "../../../../components/settings/SchoolProfileForm";
-import SchoolProfilePreview from "../../../../components/settings/SchoolProfilePreview";
-import { SchoolProfileFormValues } from "../../../../types/settings";
+
+import type { SchoolProfileFormValues } from "../../../../types/settings";
 
 import { useTenant } from "../../../../components/tenant/TenantProvider";
 import { mapSchoolProfileToTenantPatch } from "../../../../lib/tenant-patch";
 import api from "../../../../lib/axios";
+
+type PaystackBank = {
+  name: string;
+  code: string;
+  slug?: string;
+};
 
 const initialForm: SchoolProfileFormValues = {
   schoolName: "",
@@ -28,23 +36,13 @@ const initialForm: SchoolProfileFormValues = {
   principalName: "",
   currentSession: "",
   currentTerm: "",
-
   logoFile: undefined,
   logoUrl: "",
-
   themeColor: "#06b6d4",
-};
-
-type PaystackBank = {
-  name: string;
-  code: string;
-  slug?: string;
 };
 
 export default function SchoolAdminSettingsPage() {
   const { patchTenant } = useTenant();
-
-  console.log("PATCH EXISTS", patchTenant);
 
   const [form, setForm] =
     useState<SchoolProfileFormValues>(initialForm);
@@ -54,10 +52,7 @@ export default function SchoolAdminSettingsPage() {
   const [pageError, setPageError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
 
-  // =========================================
-  // PAYSTACK SETTINGS STATE
-  // =========================================
-
+  // Paystack settings
   const [banks, setBanks] = useState<PaystackBank[]>([]);
   const [banksLoading, setBanksLoading] = useState(false);
   const [bankCode, setBankCode] = useState("");
@@ -67,13 +62,14 @@ export default function SchoolAdminSettingsPage() {
   const [verifiedAccountName, setVerifiedAccountName] = useState("");
   const [paystackMessage, setPaystackMessage] = useState("");
   const [paystackConnected, setPaystackConnected] = useState(false);
-  const [paystackVerified, setPaystackVerified] = useState<boolean | null>(null);
-  const [verificationCheckedAt, setVerificationCheckedAt] = useState<string | null>(null);
-  const [refreshingPaystackStatus, setRefreshingPaystackStatus] = useState(false);
+  const [paystackVerified, setPaystackVerified] =
+    useState<boolean | null>(null);
+  const [verificationCheckedAt, setVerificationCheckedAt] =
+    useState<string | null>(null);
+  const [refreshingPaystackStatus, setRefreshingPaystackStatus] =
+    useState(false);
 
-  /* =========================================
-     LOAD PROFILE
-  ========================================= */
+  // Load school profile
   async function loadProfile() {
     try {
       setLoading(true);
@@ -89,87 +85,67 @@ export default function SchoolAdminSettingsPage() {
         principalName: profile.principalName || "",
         currentSession: profile.currentSession || "",
         currentTerm: profile.currentTerm || "",
-
         logoUrl: profile.logoUrl || "",
         logoFile: undefined,
-
         themeColor: profile.themeColor || "#06b6d4",
       });
 
-      console.log(
-        "PATCH DATA",
-        mapSchoolProfileToTenantPatch(profile)
-      );
-
-      patchTenant(
-        mapSchoolProfileToTenantPatch(profile)
-      );
+      patchTenant(mapSchoolProfileToTenantPatch(profile));
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setPageError(
-          err.response?.data?.message ||
-            "Failed to load school profile."
-        );
-      } else {
-        setPageError(
-          "Failed to load school profile."
-        );
-      }
+      setPageError(
+        axios.isAxiosError(err)
+          ? err.response?.data?.message ||
+              "Failed to load school profile."
+          : "Failed to load school profile."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadProfile();
+    void loadProfile();
+    // Load the profile once when the page mounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* =========================================
-     LOAD PAYSTACK BANKS
-  ========================================= */
+  // Load Paystack-supported banks
   async function loadPaystackBanks() {
     try {
       setBanksLoading(true);
-      setPaystackMessage("");
 
       const response = await api.get("/finance/paystack/banks");
+      const result = response.data?.data ?? response.data;
 
-      setBanks(response.data?.data || []);
+      setBanks(Array.isArray(result) ? result : []);
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setPaystackMessage(
-          err.response?.data?.message ||
-            "Could not load banks."
-        );
-      } else {
-        setPaystackMessage("Could not load banks.");
-      }
+      setPaystackMessage(
+        axios.isAxiosError(err)
+          ? err.response?.data?.message || "Could not load banks."
+          : "Could not load banks."
+      );
     } finally {
       setBanksLoading(false);
     }
   }
 
   useEffect(() => {
-    loadPaystackBanks();
+    void loadPaystackBanks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* =========================================
-     REFRESH PAYSTACK SUBACCOUNT STATUS
-  ========================================= */
+  // Refresh the school's Paystack connection and verification status
   async function handleRefreshPaystackStatus() {
     try {
       setRefreshingPaystackStatus(true);
-      setPaystackMessage("");
 
       const response = await api.get(
         "/finance/paystack/subaccount-status"
       );
 
-      // Support the standard { success, data } response and direct data responses.
       const status = response.data?.data ?? response.data;
 
-      const connected = Boolean(status?.connected);
-      setPaystackConnected(connected);
+      setPaystackConnected(Boolean(status?.connected));
       setPaystackVerified(
         typeof status?.isVerified === "boolean"
           ? status.isVerified
@@ -180,31 +156,28 @@ export default function SchoolAdminSettingsPage() {
       );
 
       setPaystackMessage(
-        connected
+        status?.connected
           ? "Paystack subaccount status refreshed."
           : "No Paystack subaccount is connected to this school."
       );
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setPaystackMessage(
-          err.response?.data?.message ||
-            "Could not refresh Paystack status."
-        );
-      } else {
-        setPaystackMessage("Could not refresh Paystack status.");
-      }
+      setPaystackMessage(
+        axios.isAxiosError(err)
+          ? err.response?.data?.message ||
+              "Could not refresh Paystack status."
+          : "Could not refresh Paystack status."
+      );
     } finally {
       setRefreshingPaystackStatus(false);
     }
   }
 
   useEffect(() => {
-    handleRefreshPaystackStatus();
+    void handleRefreshPaystackStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* =========================================
-     VERIFY PAYSTACK BANK ACCOUNT
-  ========================================= */
+  // Verify the bank account with Paystack before connecting it
   async function handleVerifyPaystackAccount() {
     if (!bankCode) {
       setPaystackMessage("Please select your bank.");
@@ -212,9 +185,7 @@ export default function SchoolAdminSettingsPage() {
     }
 
     if (!/^\d{10}$/.test(accountNumber)) {
-      setPaystackMessage(
-        "Enter a valid 10-digit account number."
-      );
+      setPaystackMessage("Enter a valid 10-digit account number.");
       return;
     }
 
@@ -231,8 +202,8 @@ export default function SchoolAdminSettingsPage() {
         }
       );
 
-      const accountName =
-        response.data?.data?.accountName;
+      const result = response.data?.data ?? response.data;
+      const accountName = result?.accountName;
 
       if (!accountName) {
         setPaystackMessage(
@@ -247,25 +218,18 @@ export default function SchoolAdminSettingsPage() {
       );
     } catch (err: unknown) {
       setVerifiedAccountName("");
-
-      if (axios.isAxiosError(err)) {
-        setPaystackMessage(
-          err.response?.data?.message ||
-            "Could not verify this bank account."
-        );
-      } else {
-        setPaystackMessage(
-          "Could not verify this bank account."
-        );
-      }
+      setPaystackMessage(
+        axios.isAxiosError(err)
+          ? err.response?.data?.message ||
+              "Could not verify this bank account."
+          : "Could not verify this bank account."
+      );
     } finally {
       setVerifyingAccount(false);
     }
   }
 
-  /* =========================================
-     CONNECT PAYSTACK ACCOUNT
-  ========================================= */
+  // Connect the verified account
   async function handleConnectPaystack() {
     if (!bankCode) {
       setPaystackMessage("Please select your bank.");
@@ -273,9 +237,7 @@ export default function SchoolAdminSettingsPage() {
     }
 
     if (!/^\d{10}$/.test(accountNumber)) {
-      setPaystackMessage(
-        "Enter a valid 10-digit account number."
-      );
+      setPaystackMessage("Enter a valid 10-digit account number.");
       return;
     }
 
@@ -307,60 +269,60 @@ export default function SchoolAdminSettingsPage() {
           "School Paystack account connected successfully."
       );
 
-      // Fetch Paystack's actual verification status after connection.
       await handleRefreshPaystackStatus();
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setPaystackMessage(
-          err.response?.data?.message ||
-            "Could not connect the Paystack account."
-        );
-      } else {
-        setPaystackMessage(
-          "Could not connect the Paystack account."
-        );
-      }
+      setPaystackMessage(
+        axios.isAxiosError(err)
+          ? err.response?.data?.message ||
+              "Could not connect the Paystack account."
+          : "Could not connect the Paystack account."
+      );
     } finally {
       setConnectingPaystack(false);
     }
   }
 
-  /* =========================================
-     UPDATE FORM (SAFE TYPING)
-  ========================================= */
+  // Safely update a form field
   function updateForm(
     field: keyof SchoolProfileFormValues,
-    value: any
+    value: SchoolProfileFormValues[keyof SchoolProfileFormValues]
   ) {
-    setForm((prev) => ({
-      ...prev,
+    setForm((previous) => ({
+      ...previous,
       [field]: value,
     }));
   }
 
-  /* =========================================
-     VALIDATION
-  ========================================= */
-  function validateForm() {
-    if (!form.schoolName.trim())
+  // Validate required fields
+  function validateForm(): string {
+    if (!form.schoolName.trim()) {
       return "School name is required.";
-    if (!form.email.trim())
+    }
+
+    if (!form.email.trim()) {
       return "Email is required.";
-    if (!form.phone.trim())
+    }
+
+    if (!form.phone.trim()) {
       return "Phone is required.";
-    if (!form.principalName.trim())
+    }
+
+    if (!form.principalName.trim()) {
       return "Principal name is required.";
-    if (!form.currentSession.trim())
+    }
+
+    if (!form.currentSession.trim()) {
       return "Current session is required.";
-    if (!form.currentTerm.trim())
+    }
+
+    if (!form.currentTerm.trim()) {
       return "Current term is required.";
+    }
 
     return "";
   }
 
-  /* =========================================
-     SAVE PROFILE + LOGO
-  ========================================= */
+  // Save school profile and upload a new logo separately
   async function handleSaveProfile() {
     const validationError = validateForm();
 
@@ -373,10 +335,6 @@ export default function SchoolAdminSettingsPage() {
       setSubmitting(true);
       setActionMessage("");
 
-      /* =========================================
-         1. UPDATE PROFILE INFORMATION
-      ========================================= */
-
       const profilePayload: SchoolProfileFormValues = {
         schoolName: form.schoolName,
         email: form.email,
@@ -385,124 +343,58 @@ export default function SchoolAdminSettingsPage() {
         principalName: form.principalName,
         currentSession: form.currentSession,
         currentTerm: form.currentTerm,
-
-        /*
-         * Keep the currently saved logo URL here.
-         * The actual new file is uploaded separately
-         * to Cloudinary below.
-         */
         logoUrl: form.logoUrl,
         logoFile: undefined,
-
         themeColor: form.themeColor,
       };
 
-      let updated =
-        await updateSchoolProfile(
-          profilePayload
-        );
-
-      /* =========================================
-         2. UPLOAD NEW LOGO TO CLOUDINARY
-      ========================================= */
+      let updated = await updateSchoolProfile(profilePayload);
 
       if (form.logoFile instanceof File) {
-        const logoResult =
-          await uploadSchoolLogo(
-            form.logoFile
-          );
+        const logoResult = await uploadSchoolLogo(form.logoFile);
 
-        /*
-         * The backend saves the Cloudinary URL
-         * directly into the School document.
-         *
-         * Fetch the profile again so all frontend
-         * state uses the persisted value.
-         */
-        updated =
-          await getSchoolProfile();
+        updated = await getSchoolProfile();
 
-        /*
-         * Safety fallback:
-         * If the GET response does not contain the
-         * URL for any reason, use the upload result.
-         */
-        if (
-          !updated.logoUrl &&
-          logoResult.logoUrl
-        ) {
+        if (!updated.logoUrl && logoResult?.logoUrl) {
           updated = {
             ...updated,
-            logoUrl:
-              logoResult.logoUrl,
+            logoUrl: logoResult.logoUrl,
           };
         }
       }
 
-      /* =========================================
-         3. UPDATE FORM STATE
-      ========================================= */
-
       const nextForm: SchoolProfileFormValues = {
-        schoolName:
-          updated.schoolName || "",
-        email:
-          updated.email || "",
-        phone:
-          updated.phone || "",
-        address:
-          updated.address || "",
-        principalName:
-          updated.principalName || "",
-        currentSession:
-          updated.currentSession || "",
-        currentTerm:
-          updated.currentTerm || "",
-
-        logoUrl:
-          updated.logoUrl || "",
+        schoolName: updated.schoolName || "",
+        email: updated.email || "",
+        phone: updated.phone || "",
+        address: updated.address || "",
+        principalName: updated.principalName || "",
+        currentSession: updated.currentSession || "",
+        currentTerm: updated.currentTerm || "",
+        logoUrl: updated.logoUrl || "",
         logoFile: undefined,
-
-        themeColor:
-          updated.themeColor ||
-          "#06b6d4",
+        themeColor: updated.themeColor || "#06b6d4",
       };
 
       setForm(nextForm);
+      patchTenant(mapSchoolProfileToTenantPatch(updated));
 
-      /* =========================================
-         4. UPDATE TENANT BRANDING
-      ========================================= */
-
-      patchTenant(
-        mapSchoolProfileToTenantPatch(
-          updated
-        )
-      );
-
-      setActionMessage(
-        "School profile updated successfully."
-      );
+      setActionMessage("School profile updated successfully.");
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setActionMessage(
-          err.response?.data?.message ||
-            "Failed to update school profile."
-        );
-      } else {
-        setActionMessage(
-          "Failed to update school profile."
-        );
-      }
+      setActionMessage(
+        axios.isAxiosError(err)
+          ? err.response?.data?.message ||
+              "Failed to update school profile."
+          : "Failed to update school profile."
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
-  /* =========================================
-     UI STATES
-  ========================================= */
-  if (loading) return <PageLoader />;
+  if (loading) {
+    return <PageLoader />;
+  }
 
   if (pageError) {
     return (
@@ -513,17 +405,17 @@ export default function SchoolAdminSettingsPage() {
     );
   }
 
-  /* =========================================
-     UI
-  ========================================= */
   return (
     <div className="space-y-6">
       <SectionCard
         title="School Profile Settings"
-        subtitle="Manage school identity, contact details, branding & academic defaults"
+        subtitle="Manage school identity, contact details, branding and academic defaults"
       >
         {actionMessage ? (
-          <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+          <div
+            role="status"
+            className="mb-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300"
+          >
             {actionMessage}
           </div>
         ) : null}
@@ -536,20 +428,136 @@ export default function SchoolAdminSettingsPage() {
             submitting={submitting}
           />
 
-          <SchoolProfilePreview values={form} />
+          {/* Read-only profile preview */}
+          <aside className="h-fit rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+            <div className="mb-5">
+              <h3 className="text-lg font-semibold text-white">
+                School Profile Preview
+              </h3>
+              <p className="mt-1 text-sm text-slate-400">
+                Preview your school information and branding.
+              </p>
+            </div>
+
+            <div
+              className="rounded-2xl border border-white/10 bg-slate-950/60 p-6"
+              style={{
+                borderTopWidth: 4,
+                borderTopColor: form.themeColor || "#06b6d4",
+              }}
+            >
+              <div className="flex items-center gap-4">
+                {form.logoFile || form.logoUrl ? (
+                  <img
+                    src={
+                      form.logoFile
+                        ? URL.createObjectURL(form.logoFile)
+                        : form.logoUrl
+                    }
+                    alt="School logo"
+                    className="h-16 w-16 rounded-xl object-cover"
+                  />
+                ) : (
+                  <div
+                    className="flex h-16 w-16 items-center justify-center rounded-xl text-2xl"
+                    style={{
+                      backgroundColor: form.themeColor || "#06b6d4",
+                    }}
+                  >
+                    🏫
+                  </div>
+                )}
+
+                <div className="min-w-0">
+                  <h4 className="break-words text-lg font-bold text-white">
+                    {form.schoolName || "Your School Name"}
+                  </h4>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {form.principalName || "Principal name"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-3 text-sm">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                    Email
+                  </p>
+                  <p className="break-words text-slate-200">
+                    {form.email || "Not provided"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                    Phone
+                  </p>
+                  <p className="text-slate-200">
+                    {form.phone || "Not provided"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                    Address
+                  </p>
+                  <p className="break-words text-slate-200">
+                    {form.address || "Not provided"}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      Session
+                    </p>
+                    <p className="mt-1 text-slate-200">
+                      {form.currentSession || "Not selected"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      Term
+                    </p>
+                    <p className="mt-1 text-slate-200">
+                      {form.currentTerm || "Not selected"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <span
+                className="h-8 w-8 rounded-lg border border-white/20"
+                style={{
+                  backgroundColor: form.themeColor || "#06b6d4",
+                }}
+              />
+              <div>
+                <p className="text-sm font-medium text-white">
+                  School theme color
+                </p>
+                <p className="text-xs text-slate-400">
+                  {form.themeColor || "#06b6d4"}
+                </p>
+              </div>
+            </div>
+          </aside>
         </div>
       </SectionCard>
 
-      {/* =========================================
-          SCHOOL FEE PAYMENT SETTINGS
-      ========================================= */}
+      {/* School fee payment settings */}
       <SectionCard
         title="School Fee Payment Settings"
         subtitle="Connect the school's settlement account to receive online school-fee payments"
       >
         <div className="max-w-2xl space-y-5">
           {paystackMessage ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+            <div
+              role="status"
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300"
+            >
               {paystackMessage}
             </div>
           ) : null}
@@ -561,10 +569,15 @@ export default function SchoolAdminSettingsPage() {
                   Paystack account connected
                 </p>
                 <p className="mt-1 text-sm text-slate-300">
-                  Online school-fee payments are linked to this school's Paystack subaccount.
+                  Online school-fee payments are linked to this school's
+                  Paystack subaccount.
                 </p>
+
                 <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-slate-300">Paystack verification:</span>
+                  <span className="text-slate-300">
+                    Paystack verification:
+                  </span>
+
                   {paystackVerified === true ? (
                     <span className="rounded-full bg-emerald-500/15 px-3 py-1 font-semibold text-emerald-300">
                       Verified
@@ -579,12 +592,16 @@ export default function SchoolAdminSettingsPage() {
                     </span>
                   )}
                 </div>
+
                 <p className="mt-2 text-xs text-slate-400">
-                  Verification status comes from Paystack and may differ from connection status.
+                  Verification status comes from Paystack and may differ
+                  from connection status.
                 </p>
+
                 {verificationCheckedAt ? (
                   <p className="mt-1 text-xs text-slate-400">
-                    Last checked: {new Date(verificationCheckedAt).toLocaleString()}
+                    Last checked:{" "}
+                    {new Date(verificationCheckedAt).toLocaleString()}
                   </p>
                 ) : null}
               </div>
@@ -626,16 +643,10 @@ export default function SchoolAdminSettingsPage() {
                   className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
                 >
                   <option value="">
-                    {banksLoading
-                      ? "Loading banks..."
-                      : "Select your bank"}
+                    {banksLoading ? "Loading banks..." : "Select your bank"}
                   </option>
-
                   {banks.map((bank) => (
-                    <option
-                      key={bank.code}
-                      value={bank.code}
-                    >
+                    <option key={bank.code} value={bank.code}>
                       {bank.name}
                     </option>
                   ))}
@@ -659,24 +670,19 @@ export default function SchoolAdminSettingsPage() {
                   value={accountNumber}
                   onChange={(event) => {
                     setAccountNumber(
-                      event.target.value
-                        .replace(/\D/g, "")
-                        .slice(0, 10)
+                      event.target.value.replace(/\D/g, "").slice(0, 10)
                     );
-
                     setVerifiedAccountName("");
                     setPaystackMessage("");
                   }}
-                  disabled={
-                    connectingPaystack ||
-                    verifyingAccount
-                  }
+                  disabled={connectingPaystack || verifyingAccount}
                   placeholder="Enter 10-digit account number"
                   className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-500"
                 />
 
                 <p className="mt-2 text-xs text-slate-400">
-                  Use the account where this school should receive its fee payments.
+                  Use the account where this school should receive its
+                  fee payments.
                 </p>
               </div>
 
@@ -689,14 +695,15 @@ export default function SchoolAdminSettingsPage() {
                     {verifiedAccountName}
                   </p>
                   <p className="mt-2 text-xs text-slate-300">
-                    Please confirm this is the correct settlement account before connecting.
+                    Confirm that this is the correct settlement account
+                    before connecting.
                   </p>
                 </div>
               ) : null}
 
               <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                EduTrack platform commission:{" "}
-                <strong>0%</strong>. Paystack processing fees still apply.
+                EduTrack platform commission: <strong>0%</strong>.
+                Paystack processing fees still apply.
               </div>
 
               <div className="flex flex-wrap gap-3">
@@ -741,14 +748,15 @@ export default function SchoolAdminSettingsPage() {
           )}
         </div>
       </SectionCard>
-      
-{/* ACCOUNT SECURITY */}
-<SectionCard
-  title="Account Security"
-  subtitle="Protect your school administrator account"
->
-  <ChangePasswordForm />
-</SectionCard>
+
+      {/* Account security */}
+      <SectionCard
+        title="Account Security"
+        subtitle="Protect your school administrator account"
+      >
+        <ChangePasswordForm />
+      </SectionCard>
     </div>
   );
 }
+
