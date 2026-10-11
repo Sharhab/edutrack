@@ -22,24 +22,21 @@ import {
   getSubscriptionById,
   listInvoices,
   listPayments,
-   upgradeSubscription,
   listSubscriptions,
   updateSubscription,
   getCurrentBilling,
   getBillingHistory,
-   initializeRenewalPayment,
+  upgradeSubscription,
+  initializeRenewalPayment,
 } from "./billing.service.js";
+
 /**
- * =========================
  * PAYSTACK
- * =========================
  */
 
+// Existing subscription renewal initialization.
 export async function initializeBillingPaymentHandler(req, res) {
-  const data = await initializeRenewalPayment(
-    req.user,
-    req.body
-  );
+  const data = await initializeRenewalPayment(req.user, req.body);
 
   return res.status(200).json({
     success: true,
@@ -47,84 +44,116 @@ export async function initializeBillingPaymentHandler(req, res) {
     data,
   });
 }
+
+// Preserve the existing Paystack initialization handler.
 export async function initializePaystackHandler(req, res) {
   const parsed = initializePaystackSchema.parse(req.body);
-
   const data = await initializePaystackPayment(parsed);
 
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
     message: "Payment initialized successfully",
     data,
   });
 }
 
+// Preserve the existing verification handler.
 export async function verifyPaystackHandler(req, res) {
   const data = await verifyPaystackPayment(req.params.reference);
 
-  res.json({
+  return res.json({
     success: true,
     message: "Payment verified successfully",
     data,
   });
 }
 
-
-
-
 /**
- * =========================
  * SUBSCRIPTIONS
- * =========================
  */
-export async function listSubscriptionsHandler(req, res) {
-  const data = await listSubscriptions();
 
-  res.json({
+export async function listSubscriptionsHandler(req, res) {
+  const [subscriptions, payments] = await Promise.all([
+    listSubscriptions(),
+    listPayments(),
+  ]);
+
+  const activeSubscriptions = subscriptions.filter(
+    (subscription) => subscription.status === "active"
+  ).length;
+
+  const expiredSubscriptions = subscriptions.filter(
+    (subscription) => subscription.status === "expired"
+  ).length;
+
+  const pendingPayments = payments.filter(
+    (payment) => payment.status === "pending"
+  ).length;
+
+  // Count only payments recorded as successful.
+  // This avoids treating the value of an active subscription as cash received.
+  const totalRevenue = payments
+    .filter((payment) => payment.status === "success")
+    .reduce(
+      (total, payment) => total + Number(payment.amount || 0),
+      0
+    );
+
+  const summary = {
+    totalRevenue,
+    activeSubscriptions,
+    expiredSubscriptions,
+    pendingPayments,
+  };
+
+  return res.json({
     success: true,
     message: "Subscriptions fetched successfully",
-    data,
+    subscriptions,
+    summary,
+    data: subscriptions,
   });
 }
 
 export async function getSubscriptionHandler(req, res) {
-  const data = await getSubscriptionById(req.params.id);
+  const subscription = await getSubscriptionById(req.params.id);
 
-  res.json({
+  return res.json({
     success: true,
     message: "Subscription fetched successfully",
-    data,
+    subscription,
+    data: subscription,
   });
 }
 
 export async function createSubscriptionHandler(req, res) {
   const parsed = createSubscriptionSchema.parse(req.body);
+  const subscription = await createSubscription(parsed);
 
-  const data = await createSubscription(parsed);
-
-  res.status(201).json({
+  return res.status(201).json({
     success: true,
     message: "Subscription created successfully",
-    data,
+    subscription,
+    data: subscription,
   });
 }
 
 export async function updateSubscriptionHandler(req, res) {
   const parsed = updateSubscriptionSchema.parse(req.body);
+  const subscription = await updateSubscription(req.params.id, parsed);
 
-  const data = await updateSubscription(req.params.id, parsed);
-
-  res.json({
+  return res.json({
     success: true,
     message: "Subscription updated successfully",
-    data,
+    subscription,
+    data: subscription,
   });
 }
 
 export async function deleteSubscriptionHandler(req, res) {
   const data = await deleteSubscription(req.params.id);
 
-  res.json({
+  return res.json({
     success: true,
     message: "Subscription deleted successfully",
     data,
@@ -132,85 +161,84 @@ export async function deleteSubscriptionHandler(req, res) {
 }
 
 /**
- * =========================
- * PAYMENTS (🔥 FIXED MISSING EXPORT)
- * =========================
+ * SUBSCRIPTION PAYMENTS
  */
-export async function listPaymentsHandler(req, res) {
-  const data = await listPayments();
 
-  res.json({
+export async function listPaymentsHandler(req, res) {
+  const payments = await listPayments();
+
+  return res.json({
     success: true,
     message: "Payments fetched successfully",
-    data,
+    payments,
+    data: payments,
   });
 }
 
-/**
- * 🔥 THIS FIXES YOUR ERROR
- */
 export async function createManualPaymentHandler(req, res) {
   const parsed = createManualPaymentSchema.parse(req.body);
+  const payment = await createManualPayment(parsed);
 
-  const data = await createManualPayment(parsed);
-
-  res.status(201).json({
+  return res.status(201).json({
     success: true,
     message: "Payment created successfully",
-    data,
+    payment,
+    data: payment,
   });
 }
 
 export async function getPaymentHandler(req, res) {
-  const data = await getPaymentById(req.params.id);
+  const payment = await getPaymentById(req.params.id);
 
-  res.json({
+  return res.json({
     success: true,
     message: "Payment fetched successfully",
-    data,
+    payment,
+    data: payment,
   });
 }
 
 /**
- * =========================
- * INVOICES
- * =========================
+ * SUPER ADMIN INVOICES
  */
-export async function listInvoicesHandler(req, res) {
-  const data = await listInvoices();
 
-  res.json({
+export async function listInvoicesHandler(req, res) {
+  const invoices = await listInvoices();
+
+  return res.json({
     success: true,
     message: "Invoices fetched successfully",
-    data,
+    invoices,
+    data: invoices,
   });
 }
 
 export async function createInvoiceHandler(req, res) {
   const parsed = createInvoiceSchema.parse(req.body);
+  const invoice = await createInvoice(parsed);
 
-  const data = await createInvoice(parsed);
-
-  res.status(201).json({
+  return res.status(201).json({
     success: true,
     message: "Invoice created successfully",
-    data,
+    invoice,
+    data: invoice,
   });
 }
 
 export async function getInvoiceHandler(req, res) {
-  const data = await getInvoiceById(req.params.id);
+  const invoice = await getInvoiceById(req.params.id);
 
-  res.json({
+  return res.json({
     success: true,
     message: "Invoice fetched successfully",
-    data,
+    invoice,
+    data: invoice,
   });
 }
-/**
- * GET CURRENT BILLING
- */
 
+/**
+ * CURRENT SCHOOL BILLING
+ */
 
 export async function getCurrentBillingHandler(req, res) {
   try {
@@ -229,8 +257,8 @@ export async function getCurrentBillingHandler(req, res) {
       success: true,
       data,
     });
-  } catch (err) {
-    console.error("getCurrentBillingHandler error:", err);
+  } catch (error) {
+    console.error("getCurrentBillingHandler error:", error);
 
     return res.status(500).json({
       success: false,
@@ -239,49 +267,42 @@ export async function getCurrentBillingHandler(req, res) {
   }
 }
 
-export async function upgradeSubscriptionHandler(
-  req,
-  res
-) {
-  const data =
-    await upgradeSubscription(
-      req.user,
-      req.body
-    );
+/**
+ * SUBSCRIPTION UPGRADE
+ */
 
-  res.status(200).json({
+export async function upgradeSubscriptionHandler(req, res) {
+  const data = await upgradeSubscription(req.user, req.body);
+
+  return res.status(200).json({
     success: true,
-    message:
-      "Subscription upgrade initialized successfully",
+    message: "Subscription upgrade initialized successfully",
     data,
   });
 }
+
 /**
- * =========================================
- * BILLING HISTORY
- * =========================================
+ * SCHOOL BILLING HISTORY
  */
 
 export async function getBillingHistoryHandler(req, res) {
   try {
-    const user = req.user;
-
-    if (!user?.schoolId) {
+    if (!req.user?.schoolId) {
       return res.status(403).json({
         success: false,
         message: "School context missing",
       });
     }
 
-    const data = await getBillingHistory(user);
+    const data = await getBillingHistory(req.user);
 
     return res.json({
       success: true,
       message: "Billing history fetched successfully",
       data,
     });
-  } catch (err) {
-    console.error("getBillingHistoryHandler error:", err);
+  } catch (error) {
+    console.error("getBillingHistoryHandler error:", error);
 
     return res.status(500).json({
       success: false,
