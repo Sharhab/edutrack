@@ -96,10 +96,11 @@ export async function controlTenant(id, payload) {
   if (payload.subscriptionStatus !== undefined) {
     doc.subscriptionStatus = payload.subscriptionStatus;
   }
-  if (payload.expiryDate !== undefined) {
-    doc.expiryDate = payload.expiryDate || null;
-  }
-
+ if (payload.expiryDate !== undefined) {
+  doc.subscriptionExpiresAt = payload.expiryDate
+    ? new Date(payload.expiryDate)
+    : null;
+}
   await doc.save();
   return doc;
 }
