@@ -2,11 +2,6 @@ import mongoose from "mongoose";
 
 const termSchema = new mongoose.Schema(
   {
-    /**
-     * =========================
-     * SCHOOL
-     * =========================
-     */
     schoolId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "School",
@@ -14,11 +9,6 @@ const termSchema = new mongoose.Schema(
       index: true,
     },
 
-    /**
-     * =========================
-     * SESSION
-     * =========================
-     */
     sessionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Session",
@@ -26,27 +16,20 @@ const termSchema = new mongoose.Schema(
       index: true,
     },
 
-    /**
-     * =========================
-     * TERM NAME
-     * =========================
-     */
     name: {
       type: String,
-      enum: [
-        "First Term",
-        "Second Term",
-        "Third Term",
-      ],
       required: true,
       trim: true,
+      maxlength: 80,
     },
 
-    /**
-     * =========================
-     * TERM DATES
-     * =========================
-     */
+    order: {
+      type: Number,
+      required: true,
+      min: 1,
+      default: 1,
+    },
+
     startDate: {
       type: Date,
       default: null,
@@ -57,11 +40,6 @@ const termSchema = new mongoose.Schema(
       default: null,
     },
 
-    /**
-     * =========================
-     * ACTIVE TERM
-     * =========================
-     */
     isCurrent: {
       type: Boolean,
       default: false,
@@ -72,11 +50,6 @@ const termSchema = new mongoose.Schema(
   }
 );
 
-/**
- * =========================
- * UNIQUE TERM
- * =========================
- */
 termSchema.index(
   {
     schoolId: 1,
@@ -88,14 +61,12 @@ termSchema.index(
   }
 );
 
-/**
- * =========================
- * EXPORT
- * =========================
- */
+termSchema.index({
+  schoolId: 1,
+  sessionId: 1,
+  order: 1,
+});
+
 export const Term =
   mongoose.models.Term ||
-  mongoose.model(
-    "Term",
-    termSchema
-  );
+  mongoose.model("Term", termSchema);
