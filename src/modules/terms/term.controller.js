@@ -17,8 +17,16 @@ export async function createTermHandler(req, res) {
   });
 }
 
+
 export async function listTermsHandler(req, res) {
-  const data = await listTerms(req.user.schoolId);
+  const sessionId = req.query.sessionId
+    ? String(req.query.sessionId)
+    : undefined;
+
+  const data = await listTerms(
+    req.user.schoolId,
+    sessionId
+  );
 
   res.json({
     success: true,
