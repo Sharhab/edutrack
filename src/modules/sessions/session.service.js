@@ -80,27 +80,24 @@ export async function setCurrentSession(id, schoolId) {
     throw new ApiError(404, "Session not found");
   }
 
-  // Only one session can be current for this school.
+  const currentTerm = await Term.findOne({
+    schoolId,
+    sessionId: session._id,
+    isCurrent: true,
+  }).sort({ order: 1 });
+
   await Session.updateMany(
+    { schoolId },
+    { $set: { isCurrent: false } }
+  );
+
+  await Term.updateMany(
     { schoolId },
     { $set: { isCurrent: false } }
   );
 
   session.isCurrent = true;
   await session.save();
-
-  // A term from another session must not remain current.
-  await Term.updateMany(
-    { schoolId },
-    { $set: { isCurrent: false } }
-  );
-
-  // If the selected session already has a current term,
-  // restore it as the current term.
-  const currentTerm = await Term.findOne({
-    schoolId,
-    sessionId: session._id,
-  }).sort({ order: 1 });
 
   if (currentTerm) {
     currentTerm.isCurrent = true;
