@@ -16,18 +16,22 @@ type TenantsTableProps = {
   onControl: (tenant: Tenant) => void;
 };
 
+
 function StatusBadge({ label }: { label: string }) {
   const normalized = label.toLowerCase();
 
   const variant =
-    normalized === "active" || normalized === "verified"
+    normalized === "active" || normalized === "paid"
       ? "success"
-      : normalized === "trial" || normalized === "pending"
+      : normalized === "expired" ||
+          normalized === "cancelled" ||
+          normalized === "inactive"
         ? "warning"
-        : "default";
+        : "neutral";
 
   return <Badge label={label.replaceAll("_", " ")} variant={variant} />;
 }
+
 
 export default function TenantsTable({
   data,
