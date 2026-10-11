@@ -95,6 +95,31 @@ async function ensureUniqueSchool({ schoolName, adminEmail }) {
 }
 
 
+export async function syncSchoolBilling(schoolId, subscription) {
+  const school = await School.findById(schoolId);
+
+  if (!school) {
+    throw new ApiError(404, "School not found during billing sync");
+  }
+
+  school.plan = subscription.plan;
+  school.billingCycle = subscription.billingCycle;
+  school.subscriptionStatus = subscription.status;
+
+  school.subscriptionStartedAt = subscription.startsAt ?? null;
+  school.subscriptionExpiresAt = subscription.expiresAt ?? null;
+  school.trialStartAt = subscription.isTrial
+    ? subscription.startsAt ?? new Date()
+    : null;
+  school.trialEndsAt = subscription.trialEndsAt ?? null;
+
+  school.isActive = ["active", "trial"].includes(subscription.status);
+
+  await school.save();
+
+  return school;
+}
+
 /**
  * =========================
  * CREATE SCHOOL + ADMIN
