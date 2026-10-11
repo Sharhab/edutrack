@@ -42,6 +42,7 @@ function log(step, data = null) {
  * UNIQUE CHECK
  * =========================
  */
+
 async function ensureUniqueSchool({ schoolName, adminEmail }) {
   const slug = slugify(schoolName || "", {
     lower: true,
@@ -59,30 +60,40 @@ async function ensureUniqueSchool({ schoolName, adminEmail }) {
 
   const existingUser = await User.findOne({ email });
 
-  if (existingUser) {
-    throw new ApiError(400, "Admin email already exists");
+  if (!existingUser) {
+    return;
   }
+
+  // Only clean up an orphaned school-admin account.
+  // Do not remove super admins, teachers, students, parents,
+  // or admins whose school still exists.
+  if (
+    existingUser.role === "school_admin" &&
+    existingUser.schoolId
+  ) {
+    const linkedSchool = await School.exists({
+      _id: existingUser.schoolId,
+    });
+
+    if (!linkedSchool) {
+      await User.deleteOne({
+        _id: existingUser._id,
+        role: "school_admin",
+        schoolId: existingUser.schoolId,
+      });
+
+      // Confirm the email is now free before onboarding continues.
+      const remainingUser = await User.findOne({ email });
+
+      if (!remainingUser) {
+        return;
+      }
+    }
+  }
+
+  throw new ApiError(400, "Admin email already exists");
 }
 
-export async function syncSchoolBilling(schoolId, subscription) {
-  const school = await School.findById(schoolId);
-
-  if (!school) return;
-
-  school.plan = subscription.plan;
-  school.billingCycle = subscription.billingCycle;
-  school.subscriptionStatus = subscription.status;
-
-  school.subscriptionStartedAt = subscription.startsAt;
-  school.subscriptionExpiresAt = subscription.expiresAt;
-
-  school.trialStartAt = subscription.trialStartAt || null;
-  school.trialEndsAt = subscription.trialEndsAt || null;
-
-  school.isActive = subscription.status === "active";
-
-  await school.save();
-}
 
 /**
  * =========================
