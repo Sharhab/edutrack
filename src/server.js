@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { startFinanceScheduler } from "./modules/fees/finance.scheduler.js";
 import { StudentFee } from "./modules/finance/fees/studentFee.model.js";
 import { startBillingCron } from "./jobs/cron.js";
+import { startAcademicRolloverScheduler } from "./modules/academic/academic-rollover.scheduler.js";
 
 async function dropOldIndexSafely() {
   try {
@@ -33,7 +34,8 @@ async function startServer() {
 
     startBillingCron();
     startFinanceScheduler();
-
+    startAcademicRolloverScheduler();
+    
     app.listen(env.PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${env.PORT}`);
     });
