@@ -211,6 +211,7 @@ export async function refreshSchoolPaystackStatusHandler(req, res) {
 /* =========================================
    PAYMENT CALLBACK URL
 ========================================= */
+
 function getPaymentCallbackUrl(req, school) {
   const origin = req.get("origin");
 
@@ -228,23 +229,39 @@ function getPaymentCallbackUrl(req, school) {
 
   const hostname = url.hostname.toLowerCase();
 
-  if (
-    url.protocol !== "https:" ||
-    !hostname.endsWith(".edutrack.cloud") ||
-    hostname === "www.edutrack.cloud"
-  ) {
+  // Only allow HTTPS on explicitly trusted EduTrack domains.
+  if (url.protocol !== "https:") {
     throw new Error("Untrusted frontend origin");
   }
 
-  const slug = hostname.split(".")[0];
-  const expectedDomain = `${slug}.edutrack.cloud`;
+  const isRootDomain = hostname === "edutrack.cloud";
 
-  const schoolMatches =
-    school.slug === slug ||
-    school.domain?.toLowerCase() === expectedDomain;
+  const isSchoolSubdomain =
+    hostname.endsWith(".edutrack.cloud") &&
+    hostname !== "www.edutrack.cloud";
 
-  if (!schoolMatches) {
-    throw new Error("Frontend subdomain does not match this school");
+  if (!isRootDomain && !isSchoolSubdomain) {
+    throw new Error("Untrusted frontend origin");
+  }
+
+  // School subdomains must match the school being paid for.
+  if (isSchoolSubdomain) {
+    const slug = hostname.slice(
+      0,
+      -".edutrack.cloud".length
+    );
+
+    const expectedDomain = `${slug}.edutrack.cloud`;
+
+    const schoolMatches =
+      school.slug === slug ||
+      school.domain?.toLowerCase() === expectedDomain;
+
+    if (!schoolMatches) {
+      throw new Error(
+        "Frontend subdomain does not match this school"
+      );
+    }
   }
 
   return `${url.origin}/payment/success?schoolId=${encodeURIComponent(
