@@ -58,34 +58,27 @@ type TenantApiResponse = {
   summary?: TenantSummary;
 };
 
-function normalizeTenant(school: ApiSchool): Tenant {
-  const plan = school.plan || school.subscriptionPlan || "starter";
+
+function normalizeTenant(school: any): Tenant {
+  const rawPlan = school.plan || school.subscriptionPlan || "starter";
 
   return {
+    ...school,
     _id: school._id,
     schoolName: school.name || "Unnamed school",
-    slug: school.slug || "",
-    adminName: school.principalName || "",
     adminEmail: school.email || "",
     email: school.email || "",
-    phone: school.phone || "",
-    address: school.address || "",
+    adminName: school.principalName || "",
     domain: school.domain || school.customDomain || school.fullDomain || "",
-    plan: plan === "growth" || plan === "premium" ? plan : "starter",
+    plan: ["starter", "growth", "premium"].includes(rawPlan)
+      ? rawPlan
+      : "starter",
     status: school.isActive ? "active" : "inactive",
     isActive: Boolean(school.isActive),
     billingStatus: school.billingStatus || "unknown",
     subscriptionStatus: school.subscriptionStatus || "inactive",
     onboardingStatus: school.onboardingStatus || "pending",
-    billingCycle: school.billingCycle || "monthly",
     expiryDate: school.subscriptionExpiresAt || school.trialEndsAt || "",
-    subscriptionExpiresAt: school.subscriptionExpiresAt || "",
-    trialEndsAt: school.trialEndsAt || "",
-    createdAt: school.createdAt || "",
-    updatedAt: school.updatedAt || "",
-    logo: school.logo || "",
-    currentSession: school.currentSession || "",
-    currentTerm: school.currentTerm || "",
     paymentEnabled: Boolean(school.paymentSettings?.enabled),
     paystackConnected: Boolean(school.paymentSettings?.paystack?.connected),
     paystackVerified: Boolean(school.paymentSettings?.paystack?.isVerified),
@@ -97,21 +90,20 @@ export async function getTenants(): Promise<{
   tenants: Tenant[];
   summary: TenantSummary;
 }> {
-  const { data } = await api.get<TenantApiResponse>(TENANT_ENDPOINTS.list);
+  const { data } = await api.get(TENANT_ENDPOINTS.list);
 
-  // Current backend responds with { success, message, data: [...] }.
-  // Also accept { tenants: [...] } for compatibility with other API versions.
-  const rawTenants = Array.isArray(data.data)
+  // Your current backend returns { success, message, data: [...] }.
+  const rows = Array.isArray(data?.data)
     ? data.data
-    : Array.isArray(data.tenants)
+    : Array.isArray(data?.tenants)
       ? data.tenants
       : [];
 
-  const tenants = rawTenants.map(normalizeTenant);
+  const tenants: Tenant[] = rows.map(normalizeTenant);
 
   return {
     tenants,
-    summary: data.summary || {
+    summary: data?.summary || {
       total: tenants.length,
       active: tenants.filter((tenant) => tenant.isActive).length,
       inactive: tenants.filter((tenant) => !tenant.isActive).length,
@@ -119,6 +111,7 @@ export async function getTenants(): Promise<{
     },
   };
 }
+
 
 export async function createTenant(payload: TenantFormValues): Promise<Tenant> {
   const requestBody = {
