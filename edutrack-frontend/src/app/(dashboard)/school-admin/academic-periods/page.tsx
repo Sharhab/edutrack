@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import api from "../../../../lib/axios";
 import {
   AcademicSession,
   createSession,
@@ -22,12 +21,6 @@ function formatDate(value?: string | null) {
   if (Number.isNaN(date.getTime())) return "Not set";
 
   return date.toLocaleDateString();
-}
-
-function getSessionId(term: AcademicTerm) {
-  return typeof term.sessionId === "string"
-    ? term.sessionId
-    : term.sessionId?._id;
 }
 
 export default function AcademicPeriodsPage() {
