@@ -1,10 +1,12 @@
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import api from "../../lib/axios";
+import { getTerms, type AcademicTerm } from "../../lib/terms";
 import FormInput from "../../components/ui/FormInput";
 import SelectField from "../../components/ui/SelectField";
-import { SchoolProfileFormValues } from "../../types/settings";
+import type { SchoolProfileFormValues } from "../../types/settings";
 
 type SchoolProfileFormProps = {
   values: SchoolProfileFormValues;
@@ -20,6 +22,8 @@ type SessionOption = {
   _id: string;
   name: string;
   isCurrent?: boolean;
+  startDate?: string | null;
+  endDate?: string | null;
 };
 
 const presetColors = [
@@ -34,13 +38,6 @@ const presetColors = [
   "#0f172a",
 ];
 
-const termOptions = [
-  { label: "Select Term", value: "" },
-  { label: "1st Term", value: "1st Term" },
-  { label: "2nd Term", value: "2nd Term" },
-  { label: "3rd Term", value: "3rd Term" },
-];
-
 export default function SchoolProfileForm({
   values,
   onChange,
@@ -53,68 +50,133 @@ export default function SchoolProfileForm({
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState("");
 
-  // Load sessions once when the form mounts.
+  const [terms, setTerms] = useState<AcademicTerm[]>([]);
+  const [termsLoading, setTermsLoading] = useState(false);
+  const [termsError, setTermsError] = useState("");
+
+  const [previewUrl, setPreviewUrl] = useState("");
+
+  // Load academic sessions.
+  async function loadSessions() {
+    try {
+      setSessionsLoading(true);
+      setSessionsError("");
+
+      const response = await api.get("/sessions");
+      const data = response?.data?.data;
+
+      const sessionList: SessionOption[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.sessions)
+        ? data.sessions
+        : [];
+
+      setSessions(sessionList);
+
+      // Use the saved session if available. Otherwise use the current one.
+      if (
+        !values.currentSession &&
+        sessionList.length > 0
+      ) {
+        const selectedSession =
+          sessionList.find((session) => session.isCurrent) ??
+          sessionList[0];
+
+        onChange("currentSession", selectedSession.name);
+      }
+    } catch (error: any) {
+      setSessionsError(
+        error?.response?.data?.message ||
+          "Could not load academic sessions."
+      );
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
+
   useEffect(() => {
-    let mounted = true;
+    void loadSessions();
 
-    async function loadSessions() {
+    // Load sessions when the form mounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load terms for the selected session only.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTerms() {
+      const selectedSession = sessions.find(
+        (session) => session.name === values.currentSession
+      );
+
+      if (!selectedSession) {
+        setTerms([]);
+        setTermsError("");
+        setTermsLoading(false);
+
+        if (values.currentTerm) {
+          onChange("currentTerm", "");
+        }
+
+        return;
+      }
+
       try {
-        setSessionsLoading(true);
-        setSessionsError("");
+        setTermsLoading(true);
+        setTermsError("");
 
-        const response = await api.get("/sessions");
-        const data = response?.data?.data;
+        const result = await getTerms(selectedSession._id);
 
-        const sessionList: SessionOption[] = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.sessions)
-          ? data.sessions
-          : [];
+        if (cancelled) return;
 
-        if (!mounted) return;
+        setTerms(result);
 
-        setSessions(sessionList);
+        // Keep the saved term if it exists in this session.
+        const savedTermExists = result.some(
+          (term) => term.name === values.currentTerm
+        );
 
-        // Preserve the saved session. If none is saved, use the current
-        // session, or the first available session as a fallback.
-        if (!values.currentSession && sessionList.length > 0) {
-          const selectedSession =
-            sessionList.find((session) => session.isCurrent) ??
-            sessionList[0];
+        if (!savedTermExists) {
+          const currentTerm = result.find((term) => term.isCurrent);
 
-          onChange("currentSession", selectedSession.name);
+          onChange("currentTerm", currentTerm?.name || "");
         }
       } catch (error: any) {
-        if (!mounted) return;
+        if (cancelled) return;
 
-        setSessionsError(
+        setTerms([]);
+        setTermsError(
           error?.response?.data?.message ||
-            "Could not load academic sessions."
+            "Could not load terms for this session."
         );
       } finally {
-        if (mounted) {
-          setSessionsLoading(false);
+        if (!cancelled) {
+          setTermsLoading(false);
         }
       }
     }
 
-    loadSessions();
+    void loadTerms();
 
     return () => {
-      mounted = false;
+      cancelled = true;
     };
+  }, [sessions, values.currentSession]);
 
-    // This form loads its initial profile before mounting.
-    // We intentionally fetch sessions only once per mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const previewUrl = useMemo(() => {
-    if (values.logoFile) {
-      return URL.createObjectURL(values.logoFile);
+  // Create and clean up a local logo preview URL.
+  useEffect(() => {
+    if (!values.logoFile) {
+      setPreviewUrl(values.logoUrl || "");
+      return;
     }
 
-    return values.logoUrl || "";
+    const objectUrl = URL.createObjectURL(values.logoFile);
+    setPreviewUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
   }, [values.logoFile, values.logoUrl]);
 
   function handleLogoChange(file?: File) {
@@ -128,9 +190,44 @@ export default function SchoolProfileForm({
     onChange("logoUrl", "");
   }
 
+  function handleSessionChange(sessionName: string) {
+    onChange("currentSession", sessionName);
+
+    // Clear the previous session's term while the new terms load.
+    onChange("currentTerm", "");
+  }
+
+  const sessionOptions = useMemo(
+    () => [
+      {
+        label: sessionsLoading ? "Loading sessions..." : "Select Session",
+        value: "",
+      },
+      ...sessions.map((session) => ({
+        label: session.name,
+        value: session.name,
+      })),
+    ],
+    [sessions, sessionsLoading]
+  );
+
+  const termOptions = useMemo(
+    () => [
+      {
+        label: termsLoading ? "Loading terms..." : "Select Term",
+        value: "",
+      },
+      ...terms.map((term) => ({
+        label: term.name,
+        value: term.name,
+      })),
+    ],
+    [terms, termsLoading]
+  );
+
   return (
     <div className="space-y-6">
-      {/* BASIC DETAILS */}
+      {/* SCHOOL INFORMATION */}
       <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-white">
@@ -138,7 +235,7 @@ export default function SchoolProfileForm({
           </h3>
 
           <p className="mt-1 text-sm text-slate-400">
-            Basic information about your school
+            Basic information about your school.
           </p>
         </div>
 
@@ -155,7 +252,7 @@ export default function SchoolProfileForm({
             label="Principal Name"
             name="principalName"
             value={values.principalName}
-            placeholder="Mrs Amina Musa"
+            placeholder="Principal name"
             onChange={(value) => onChange("principalName", value)}
           />
         </div>
@@ -198,7 +295,7 @@ export default function SchoolProfileForm({
           </h3>
 
           <p className="mt-1 text-sm text-slate-400">
-            Current academic session and term
+            Select the academic session and its current term.
           </p>
         </div>
 
@@ -209,21 +306,8 @@ export default function SchoolProfileForm({
               label="Current Session"
               name="currentSession"
               value={values.currentSession}
-              onChange={(value) =>
-                onChange("currentSession", value)
-              }
-              options={[
-                {
-                  label: sessionsLoading
-                    ? "Loading sessions..."
-                    : "Select Session",
-                  value: "",
-                },
-                ...sessions.map((session) => ({
-                  label: session.name,
-                  value: session.name,
-                })),
-              ]}
+              onChange={handleSessionChange}
+              options={sessionOptions}
             />
 
             {sessionsError ? (
@@ -234,46 +318,7 @@ export default function SchoolProfileForm({
 
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      setSessionsLoading(true);
-                      setSessionsError("");
-
-                      const response = await api.get("/sessions");
-                      const data = response?.data?.data;
-
-                      const sessionList: SessionOption[] =
-                        Array.isArray(data)
-                          ? data
-                          : Array.isArray(data?.sessions)
-                          ? data.sessions
-                          : [];
-
-                      setSessions(sessionList);
-
-                      if (
-                        !values.currentSession &&
-                        sessionList.length > 0
-                      ) {
-                        const selectedSession =
-                          sessionList.find(
-                            (session) => session.isCurrent
-                          ) ?? sessionList[0];
-
-                        onChange(
-                          "currentSession",
-                          selectedSession.name
-                        );
-                      }
-                    } catch (error: any) {
-                      setSessionsError(
-                        error?.response?.data?.message ||
-                          "Could not load academic sessions."
-                      );
-                    } finally {
-                      setSessionsLoading(false);
-                    }
-                  }}
+                  onClick={() => void loadSessions()}
                   disabled={sessionsLoading}
                   className="text-sm font-medium text-cyan-300 hover:text-cyan-200 disabled:opacity-50"
                 >
@@ -286,21 +331,43 @@ export default function SchoolProfileForm({
             !sessionsError &&
             sessions.length === 0 ? (
               <p className="mt-2 text-sm text-slate-400">
-                No sessions found. Create a session first.
+                No sessions found. Create an academic session first.
               </p>
             ) : null}
           </div>
 
           {/* CURRENT TERM */}
-          <SelectField
-            label="Current Term"
-            name="currentTerm"
-            value={values.currentTerm}
-            onChange={(value) =>
-              onChange("currentTerm", value)
-            }
-            options={termOptions}
-          />
+          <div>
+            <SelectField
+              label="Current Term"
+              name="currentTerm"
+              value={values.currentTerm}
+              onChange={(value) => onChange("currentTerm", value)}
+              options={termOptions}
+            />
+
+            {termsError ? (
+              <p className="mt-2 text-sm text-red-300">
+                {termsError}
+              </p>
+            ) : null}
+
+            {!values.currentSession ? (
+              <p className="mt-2 text-sm text-slate-400">
+                Select a session to load its terms.
+              </p>
+            ) : null}
+
+            {!termsLoading &&
+            !termsError &&
+            values.currentSession &&
+            terms.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-400">
+                No terms found for this session. Create terms for this
+                session first.
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -312,7 +379,7 @@ export default function SchoolProfileForm({
           </h3>
 
           <p className="mt-1 text-sm text-slate-400">
-            Customize your school appearance
+            Customize your school's appearance.
           </p>
         </div>
 
@@ -322,14 +389,15 @@ export default function SchoolProfileForm({
             School Logo
           </label>
 
-          <div
+          <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="group flex cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-8 transition hover:border-cyan-400/40 hover:bg-cyan-500/5"
+            className="group flex w-full cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-8 transition hover:border-cyan-400/40 hover:bg-cyan-500/5"
           >
             {previewUrl ? (
               <img
                 src={previewUrl}
-                alt="School logo"
+                alt="School logo preview"
                 className="mb-4 h-28 w-28 rounded-2xl object-cover shadow-lg"
               />
             ) : (
@@ -338,31 +406,31 @@ export default function SchoolProfileForm({
               </div>
             )}
 
-            <p className="text-sm font-medium text-white">
+            <span className="text-sm font-medium text-white">
               Click to upload logo
-            </p>
+            </span>
 
-            <p className="mt-1 text-xs text-slate-400">
+            <span className="mt-1 text-xs text-slate-400">
               PNG, JPG or WEBP
-            </p>
+            </span>
+          </button>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
 
-                if (file) {
-                  handleLogoChange(file);
-                }
+              if (file) {
+                handleLogoChange(file);
+              }
 
-                // Allow choosing the same file again.
-                event.currentTarget.value = "";
-              }}
-            />
-          </div>
+              // Allow selecting the same file again.
+              event.currentTarget.value = "";
+            }}
+          />
 
           {previewUrl ? (
             <button
@@ -398,12 +466,11 @@ export default function SchoolProfileForm({
               />
             ))}
 
-            {/* CUSTOM COLOR */}
             <label className="relative flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5">
               <input
                 type="color"
                 aria-label="Choose custom theme color"
-                value={values.themeColor}
+                value={values.themeColor || "#06b6d4"}
                 onChange={(event) =>
                   onChange("themeColor", event.target.value)
                 }
@@ -428,7 +495,7 @@ export default function SchoolProfileForm({
         </button>
 
         <p className="text-sm text-slate-400">
-          Changes update your school branding instantly.
+          Save your school information and academic defaults.
         </p>
       </div>
     </div>
