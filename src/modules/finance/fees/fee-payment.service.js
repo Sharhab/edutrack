@@ -186,38 +186,41 @@ export async function createFeePlan({
   const SessionModel = mongoose.model("Session");
   const TermModel = mongoose.model("Term");
 
-  const [classExists, sessionExists, termExists] =
-    await Promise.all([
-      ClassModel.findOne({ _id: classId, schoolId }),
-      SessionModel.findOne({ _id: sessionId, schoolId }),
-      TermModel.findOne({ _id: termId, schoolId }),
-    ]);
+  
+const [classExists, sessionExists, termExists] =
+  await Promise.all([
+    ClassModel.findOne({
+      _id: classId,
+      schoolId,
+    }),
 
-  if (!classExists) {
-    throw new ApiError(404, "Class not found");
-  }
+    SessionModel.findOne({
+      _id: sessionId,
+      schoolId,
+    }),
 
-  if (!sessionExists) {
-    throw new ApiError(404, "Session not found");
-  }
+    // The term must belong to the selected session.
+    TermModel.findOne({
+      _id: termId,
+      schoolId,
+      sessionId,
+    }),
+  ]);
 
-  if (!termExists) {
-    throw new ApiError(404, "Term not found");
-  }
+if (!classExists) {
+  throw new ApiError(404, "Class not found");
+}
 
-  const existingPlan = await FeeStructure.findOne({
-    schoolId,
-    classId,
-    sessionId,
-    termId,
-  });
+if (!sessionExists) {
+  throw new ApiError(404, "Session not found");
+}
 
-  if (existingPlan) {
-    throw new ApiError(
-      409,
-      "Fee plan already exists for this class, session and term"
-    );
-  }
+if (!termExists) {
+  throw new ApiError(
+    400,
+    "Term not found or does not belong to the selected session"
+  );
+}
 
   return FeeStructure.create({
     schoolId,
