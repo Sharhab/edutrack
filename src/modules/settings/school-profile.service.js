@@ -81,240 +81,198 @@ function mapProfile(
 ========================================= */
 
 export async function getSchoolProfile(user) {
-  const school =
-    await School.findById(user.schoolId);
+  const school = await School.findById(user.schoolId);
 
   if (!school) {
-    throw new ApiError(
-      404,
-      "School profile not found"
-    );
+    throw new ApiError(404, "School profile not found");
   }
 
-  const [
-    currentSession,
-    currentTerm,
-  ] = await Promise.all([
-    Session.findOne({
-      schoolId: user.schoolId,
-      isCurrent: true,
-    }),
+  // Resolve the current session first.
+  let currentSession = await Session.findOne({
+    schoolId: user.schoolId,
+    isCurrent: true,
+  });
 
-    Term.findOne({
+  // Backward compatibility for schools with a saved session name.
+  if (!currentSession && school.currentSession) {
+    currentSession = await Session.findOne({
       schoolId: user.schoolId,
-      isCurrent: true,
-    }),
-  ]);
+      name: school.currentSession,
+    });
+  }
 
-  return mapProfile(
-    school,
-    currentSession,
-    currentTerm
-  );
+  // Only load a current term that belongs to this session.
+  let currentTerm = null;
+
+  if (currentSession) {
+    currentTerm = await Term.findOne({
+      schoolId: user.schoolId,
+      sessionId: currentSession._id,
+      isCurrent: true,
+    }).sort({ order: 1, startDate: 1 });
+  }
+
+  return mapProfile(school, currentSession, currentTerm);
 }
 
-/* =========================================
-   UPDATE SCHOOL PROFILE
-========================================= */
-
-export async function updateSchoolProfile(
-  payload,
-  user
-) {
-  const school =
-    await School.findById(user.schoolId);
+export async function updateSchoolProfile(payload, user) {
+  const school = await School.findById(user.schoolId);
 
   if (!school) {
-    throw new ApiError(
-      404,
-      "School profile not found"
-    );
+    throw new ApiError(404, "School profile not found");
   }
 
-  // =========================
-  // BASIC INFORMATION
-  // =========================
+  /*
+   * Resolve the academic records BEFORE changing current flags.
+   * The settings form may send either a session/term ID or its name.
+   */
+  let selectedSession = null;
+  let selectedTerm = null;
 
-  if (
-    payload.schoolName !== undefined
-  ) {
-    school.name =
-      payload.schoolName.trim();
+  if (payload.currentSession !== undefined) {
+    const sessionValue = String(payload.currentSession).trim();
+
+    if (sessionValue) {
+      const sessionQuery = { schoolId: user.schoolId };
+
+      if (mongoose.Types.ObjectId.isValid(sessionValue)) {
+        sessionQuery._id = sessionValue;
+      } else {
+        sessionQuery.name = sessionValue;
+      }
+
+      selectedSession = await Session.findOne(sessionQuery);
+
+      if (!selectedSession) {
+        throw new ApiError(
+          400,
+          "The selected academic session was not found"
+        );
+      }
+    }
+  } else {
+    selectedSession = await Session.findOne({
+      schoolId: user.schoolId,
+      isCurrent: true,
+    });
+
+    if (!selectedSession && school.currentSession) {
+      selectedSession = await Session.findOne({
+        schoolId: user.schoolId,
+        name: school.currentSession,
+      });
+    }
   }
 
-  if (
-    payload.email !== undefined
-  ) {
-    school.email =
-      payload.email
-        .trim()
-        .toLowerCase();
+  if (payload.currentTerm !== undefined) {
+    const termValue = String(payload.currentTerm).trim();
+
+    if (termValue) {
+      if (!selectedSession) {
+        throw new ApiError(
+          400,
+          "Select an academic session before selecting a term"
+        );
+      }
+
+      const termQuery = {
+        schoolId: user.schoolId,
+        sessionId: selectedSession._id,
+      };
+
+      if (mongoose.Types.ObjectId.isValid(termValue)) {
+        termQuery._id = termValue;
+      } else {
+        termQuery.name = termValue;
+      }
+
+      selectedTerm = await Term.findOne(termQuery);
+
+      if (!selectedTerm) {
+        throw new ApiError(
+          400,
+          "The selected term does not belong to the selected session"
+        );
+      }
+    }
+  } else if (selectedSession) {
+    selectedTerm = await Term.findOne({
+      schoolId: user.schoolId,
+      sessionId: selectedSession._id,
+      isCurrent: true,
+    }).sort({ order: 1, startDate: 1 });
   }
 
-  if (
-    payload.phone !== undefined
-  ) {
-    school.phone =
-      payload.phone.trim();
+  // Update ordinary profile fields.
+  if (payload.schoolName !== undefined) {
+    school.name = payload.schoolName.trim();
   }
 
-  if (
-    payload.address !== undefined
-  ) {
-    school.address =
-      payload.address.trim();
+  if (payload.email !== undefined) {
+    school.email = payload.email.trim().toLowerCase();
   }
 
-  if (
-    payload.principalName !== undefined
-  ) {
-    school.principalName =
-      payload.principalName.trim();
+  if (payload.phone !== undefined) {
+    school.phone = payload.phone.trim();
   }
 
-  if (
-    payload.themeColor !== undefined
-  ) {
-    school.themeColor =
-      payload.themeColor;
+  if (payload.address !== undefined) {
+    school.address = payload.address.trim();
   }
 
-  if (
-    payload.domain !== undefined
-  ) {
-    school.domain =
-      payload.domain
-        .trim()
-        .toLowerCase();
+  if (payload.principalName !== undefined) {
+    school.principalName = payload.principalName.trim();
   }
 
-  // =========================
-  // LOGO
-  // =========================
-
-  if (
-    payload.logoUrl !== undefined
-  ) {
-    school.logo =
-      payload.logoUrl;
+  if (payload.themeColor !== undefined) {
+    school.themeColor = payload.themeColor;
   }
 
-  // =========================
-  // CURRENT SESSION
-  // =========================
+  if (payload.domain !== undefined) {
+    school.domain = payload.domain.trim().toLowerCase();
+  }
 
-  if (payload.currentSession) {
+  if (payload.logoUrl !== undefined) {
+    school.logo = payload.logoUrl;
+  }
+
+  // Update session and term together.
+  if (payload.currentSession !== undefined ||
+      payload.currentTerm !== undefined) {
     await Session.updateMany(
-      {
-        schoolId:
-          user.schoolId,
-      },
-      {
-        isCurrent: false,
-      }
+      { schoolId: user.schoolId },
+      { $set: { isCurrent: false } }
     );
 
-    const sessionQuery = {
-      schoolId:
-        user.schoolId,
-    };
-
-    if (
-      mongoose.Types.ObjectId.isValid(
-        payload.currentSession
-      )
-    ) {
-      sessionQuery._id =
-        payload.currentSession;
-    } else {
-      sessionQuery.name =
-        payload.currentSession;
-    }
-
-    const session =
-      await Session.findOneAndUpdate(
-        sessionQuery,
-        {
-          $set: {
-            isCurrent: true,
-          },
-        },
-        {
-          new: true,
-        }
-      );
-
-    school.currentSession =
-      session?.name ||
-      payload.currentSession;
-  }
-
-  // =========================
-  // CURRENT TERM
-  // =========================
-
-  if (payload.currentTerm) {
     await Term.updateMany(
-      {
-        schoolId:
-          user.schoolId,
-      },
-      {
-        isCurrent: false,
-      }
+      { schoolId: user.schoolId },
+      { $set: { isCurrent: false } }
     );
 
-    const termQuery = {
-      schoolId:
-        user.schoolId,
-    };
+    if (selectedSession) {
+      selectedSession.isCurrent = true;
+      await selectedSession.save();
 
-    if (
-      mongoose.Types.ObjectId.isValid(
-        payload.currentTerm
-      )
-    ) {
-      termQuery._id =
-        payload.currentTerm;
+      school.currentSession = selectedSession.name;
     } else {
-      termQuery.name =
-        payload.currentTerm;
+      school.currentSession = "";
     }
 
-    const term =
-      await Term.findOneAndUpdate(
-        termQuery,
-        {
-          $set: {
-            isCurrent: true,
-          },
-        },
-        {
-          new: true,
-        }
-      );
+    if (selectedTerm) {
+      selectedTerm.isCurrent = true;
+      await selectedTerm.save();
 
-    school.currentTerm =
-      term?.name ||
-      payload.currentTerm;
+      school.currentTerm = selectedTerm.name;
+    } else {
+      school.currentTerm = "";
+    }
   }
-
-  // =========================
-  // SAVE SCHOOL
-  // =========================
 
   await school.save();
 
-  // =========================
-  // RETURN UPDATED PROFILE
-  // =========================
-
+  // Return the actual persisted records, not the submitted form values.
   return getSchoolProfile(user);
 }
-
-/* =========================================
-   UPLOAD SCHOOL LOGO
-========================================= */
 
 export async function uploadSchoolLogo(
   file,
