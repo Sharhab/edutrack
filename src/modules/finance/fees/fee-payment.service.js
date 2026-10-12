@@ -814,7 +814,6 @@ export async function getSchoolPayments(user) {
 /* =========================================
    RECORD MANUAL PAYMENT
 ========================================= */
-
 export async function recordManualPayment({
   schoolId,
   studentId,
@@ -832,20 +831,12 @@ export async function recordManualPayment({
     );
   }
 
-  if (invoiceId) {
-    validateObjectId(invoiceId, "invoiceId");
-  }
-
-  if (studentFeeId) {
-    validateObjectId(studentFeeId, "studentFeeId");
-  }
+  if (invoiceId) validateObjectId(invoiceId, "invoiceId");
+  if (studentFeeId) validateObjectId(studentFeeId, "studentFeeId");
 
   const paymentAmount = Math.round(Number(amount) * 100) / 100;
 
-  if (
-    !Number.isFinite(paymentAmount) ||
-    paymentAmount <= 0
-  ) {
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
     throw new ApiError(400, "Invalid payment amount");
   }
 
@@ -857,11 +848,6 @@ export async function recordManualPayment({
     let invoice = null;
     let studentFee = null;
 
-    /**
-     * =========================================
-     * RESOLVE INVOICE AND STUDENT FEE
-     * =========================================
-     */
     if (invoiceId) {
       invoice = await Invoice.findOne({
         _id: invoiceId,
@@ -884,17 +870,13 @@ export async function recordManualPayment({
         schoolId,
         studentId,
         feePlanId: invoice.feeStructureId,
+        sessionId: invoice.sessionId
+          ? invoice.sessionId
+          : { $exists: false },
+        termId: invoice.termId
+          ? invoice.termId
+          : { $exists: false },
       };
-
-      // Match the invoice's exact academic period,
-      // including legacy records with missing IDs.
-      feeQuery.sessionId = invoice.sessionId
-        ? invoice.sessionId
-        : { $exists: false };
-
-      feeQuery.termId = invoice.termId
-        ? invoice.termId
-        : { $exists: false };
 
       studentFee = await StudentFee.findOne(feeQuery)
         .session(dbSession);
@@ -924,11 +906,6 @@ export async function recordManualPayment({
       });
     }
 
-    /**
-     * =========================================
-     * VALIDATE BALANCE
-     * =========================================
-     */
     const total = Math.round(
       Number(studentFee.totalAmount || 0) * 100
     ) / 100;
@@ -944,10 +921,7 @@ export async function recordManualPayment({
       alreadyPaid < 0 ||
       alreadyPaid > total + 0.01
     ) {
-      throw new ApiError(
-        409,
-        "Student fee amounts are invalid"
-      );
+      throw new ApiError(409, "Student fee amounts are invalid");
     }
 
     const balance = Math.max(
@@ -968,11 +942,72 @@ export async function recordManualPayment({
 
     /**
      * =========================================
-     * UPDATE BALANCE SAFELY
-     *
-     * Compare-and-update prevents this request
-     * from overwriting a balance changed by
-     * another payment operation.
+     * ENFORCE FEE PAYMENT POLICY
+     * =========================================
+     */
+    const feePlan = await FeeStructure.findOne({
+      _id: studentFee.feePlanId,
+      schoolId,
+    })
+      .select("paymentPolicy")
+      .session(dbSession);
+
+    const policy = feePlan?.paymentPolicy || {
+      mode: "full_only",
+    };
+
+    const mode = policy.mode || "full_only";
+    const tolerance = 0.01;
+
+    if (mode === "full_only") {
+      if (Math.abs(paymentAmount - balance) > tolerance) {
+        throw new ApiError(
+          400,
+          "This fee requires full payment of the outstanding balance"
+        );
+      }
+    } else if (mode === "flexible_partial") {
+      const minimum = Number(
+        policy.minimumPaymentAmount || 0
+      );
+
+      if (
+        minimum > 0 &&
+        paymentAmount < minimum - tolerance &&
+        paymentAmount < balance - tolerance
+      ) {
+        throw new ApiError(
+          400,
+          `The minimum payment is ${minimum}`
+        );
+      }
+    } else if (mode === "fixed_installment") {
+      const installment = Number(policy.installmentAmount);
+
+      if (!Number.isFinite(installment) || installment <= 0) {
+        throw new ApiError(
+          400,
+          "The fee installment policy is not configured correctly"
+        );
+      }
+
+      const requiredAmount = Math.min(installment, balance);
+
+      if (
+        Math.abs(paymentAmount - requiredAmount) > tolerance
+      ) {
+        throw new ApiError(
+          400,
+          `Payment must match the required installment amount of ${requiredAmount}`
+        );
+      }
+    } else {
+      throw new ApiError(400, "Unsupported fee payment policy");
+    }
+
+    /**
+     * =========================================
+     * UPDATE FEE BALANCE SAFELY
      * =========================================
      */
     const newAmountPaid = Math.round(
@@ -984,10 +1019,7 @@ export async function recordManualPayment({
       0
     );
 
-    const newStatus = paymentStatus(
-      newAmountPaid,
-      total
-    );
+    const newStatus = paymentStatus(newAmountPaid, total);
 
     const feeFilter = {
       _id: studentFee._id,
@@ -1001,9 +1033,7 @@ export async function recordManualPayment({
               { amountPaid: null },
             ],
           }
-        : {
-            amountPaid: studentFee.amountPaid,
-          }),
+        : { amountPaid: studentFee.amountPaid }),
     };
 
     const feeUpdate = await StudentFee.updateOne(
@@ -1021,13 +1051,13 @@ export async function recordManualPayment({
     if (feeUpdate.modifiedCount !== 1) {
       throw new ApiError(
         409,
-        "Student fee changed during payment processing. Please refresh and try again."
+        "Student fee changed during payment processing. Refresh and try again."
       );
     }
 
     /**
      * =========================================
-     * CREATE PAYMENT RECORD
+     * PAYMENT RECORD
      * =========================================
      */
     const paymentMethod = getPaymentMethod(method);
@@ -1054,7 +1084,7 @@ export async function recordManualPayment({
 
     /**
      * =========================================
-     * SYNC INVOICE
+     * INVOICE
      * =========================================
      */
     if (invoice) {
@@ -1070,7 +1100,7 @@ export async function recordManualPayment({
 
     /**
      * =========================================
-     * LEDGER ENTRY
+     * LEDGER
      * =========================================
      */
     await Ledger.create(
@@ -1129,7 +1159,6 @@ export async function recordManualPayment({
 
     await dbSession.commitTransaction();
 
-    // Return the updated values to the caller.
     studentFee.amountPaid = newAmountPaid;
     studentFee.balance = newBalance;
     studentFee.status = newStatus;
@@ -1150,6 +1179,7 @@ export async function recordManualPayment({
     await dbSession.endSession();
   }
 }
+
 /* =========================================
    CANCEL PAYMENT
 ========================================= */
