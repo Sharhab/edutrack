@@ -1,35 +1,127 @@
 import { ClassModel } from "./class.model.js";
 import { User } from "../users/user.model.js";
-
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
-
 import { ApiError } from "../../utils/apiError.js";
 
 /**
- * =========================================
- * GENERATE SLUG
- * =========================================
+ * Generate a URL-friendly class slug.
  */
 function generateSlug(name) {
-  return name
+  return String(name || "")
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "-");
 }
 
 /**
- * =========================================
+ * Resolve the school's current academic context.
+ *
+ * A current term must belong to the current session.
+ * Existing class records are never changed by this helper.
+ */
+async function getCurrentAcademicContext(schoolId) {
+  const currentSessions = await Session.find({
+    schoolId,
+    isCurrent: true,
+  }).select("_id name");
+
+  if (currentSessions.length > 1) {
+    throw new ApiError(
+      409,
+      "Multiple current academic sessions found. Correct the school's academic settings first."
+    );
+  }
+
+  if (currentSessions.length === 0) {
+    const currentTerms = await Term.countDocuments({
+      schoolId,
+      isCurrent: true,
+    });
+
+    if (currentTerms > 0) {
+      throw new ApiError(
+        409,
+        "A current term exists without a current session. Correct the school's academic settings first."
+      );
+    }
+
+    return {
+      currentSession: null,
+      currentTerm: null,
+    };
+  }
+
+  const currentSession = currentSessions[0];
+
+  const currentTerms = await Term.find({
+    schoolId,
+    sessionId: currentSession._id,
+    isCurrent: true,
+  }).select("_id name");
+
+  if (currentTerms.length > 1) {
+    throw new ApiError(
+      409,
+      "Multiple current terms found for the current session. Correct the school's academic settings first."
+    );
+  }
+
+  // Detect a current term incorrectly attached to another session.
+  const misplacedCurrentTerm = await Term.exists({
+    schoolId,
+    isCurrent: true,
+    sessionId: { $ne: currentSession._id },
+  });
+
+  if (misplacedCurrentTerm) {
+    throw new ApiError(
+      409,
+      "The current term does not belong to the current session. Correct the school's academic settings first."
+    );
+  }
+
+  return {
+    currentSession,
+    currentTerm: currentTerms[0] || null,
+  };
+}
+
+/**
+ * Validate that a class teacher belongs to this school.
+ */
+async function validateClassTeacher(classTeacherId, schoolId) {
+  if (!classTeacherId) return null;
+
+  const teacher = await User.findOne({
+    _id: classTeacherId,
+    schoolId,
+    role: "teacher",
+  });
+
+  if (!teacher) {
+    throw new ApiError(
+      404,
+      "Selected class teacher not found in this school"
+    );
+  }
+
+  return teacher;
+}
+
+/**
  * CREATE CLASS
- * =========================================
  */
 export async function createClass(payload, schoolId) {
-  /**
-   * CHECK EXISTING CLASS
-   */
+  const name = String(payload.name || "").trim();
+
+  if (!name) {
+    throw new ApiError(400, "Class name is required");
+  }
+
   const exists = await ClassModel.findOne({
     schoolId,
-    name: payload.name,
+    name,
   });
 
   if (exists) {
@@ -39,65 +131,20 @@ export async function createClass(payload, schoolId) {
     );
   }
 
-  /**
-   * VALIDATE CLASS TEACHER
-   */
-  if (payload.classTeacherId) {
-    const teacher = await User.findOne({
-      _id: payload.classTeacherId,
-      schoolId,
-      role: "teacher",
-    });
+  await validateClassTeacher(payload.classTeacherId, schoolId);
 
-    if (!teacher) {
-      throw new ApiError(
-        404,
-        "Selected class teacher not found in this school"
-      );
-    }
-  }
+  const { currentSession, currentTerm } =
+    await getCurrentAcademicContext(schoolId);
 
-  /**
-   * GET CURRENT SESSION
-   */
-  const currentSession = await Session.findOne({
-    schoolId,
-    isCurrent: true,
-  });
-
-  /**
-   * GET CURRENT TERM
-   */
-  let currentTerm = null;
-
-  if (currentSession) {
-    currentTerm = await Term.findOne({
-      schoolId,
-      sessionId: currentSession._id,
-      isCurrent: true,
-    });
-  }
-
-  /**
-   * CREATE CLASS
-   */
   const data = await ClassModel.create({
     schoolId,
-
     sessionId: currentSession?._id || null,
     termId: currentTerm?._id || null,
-
-    name: payload.name,
-
-    slug: generateSlug(payload.name),
-
+    name,
+    slug: generateSlug(name),
     level: payload.level || "primary",
-
-    classTeacherId:
-      payload.classTeacherId || null,
-
-    capacity: payload.capacity || 40,
-
+    classTeacherId: payload.classTeacherId || null,
+    capacity: payload.capacity ?? 40,
     isActive: true,
   });
 
@@ -105,50 +152,25 @@ export async function createClass(payload, schoolId) {
 }
 
 /**
- * =========================================
  * LIST CLASSES
- * =========================================
  */
 export async function listClasses(schoolId) {
-
-   const classes = await ClassModel.find({
-    schoolId,
-  });
-
-  console.log(
-    "FOUND CLASSES:",
-    classes.length
-  );
-
-  return ClassModel.find({
-    schoolId,
-  })
-    .populate(
-      "classTeacherId",
-      "firstName lastName email"
-    )
+  return ClassModel.find({ schoolId })
+    .populate("classTeacherId", "firstName lastName email")
     .populate("sessionId", "name")
     .populate("termId", "name")
     .sort({ createdAt: -1 });
 }
 
 /**
- * =========================================
  * GET CLASS
- * =========================================
  */
-export async function getClassById(
-  id,
-  schoolId
-) {
+export async function getClassById(id, schoolId) {
   const data = await ClassModel.findOne({
     _id: id,
     schoolId,
   })
-    .populate(
-      "classTeacherId",
-      "firstName lastName email"
-    )
+    .populate("classTeacherId", "firstName lastName email")
     .populate("sessionId", "name")
     .populate("termId", "name");
 
@@ -160,15 +182,11 @@ export async function getClassById(
 }
 
 /**
- * =========================================
  * UPDATE CLASS
- * =========================================
+ *
+ * Academic period fields are intentionally not changed here.
  */
-export async function updateClass(
-  id,
-  payload,
-  schoolId
-) {
+export async function updateClass(id, payload, schoolId) {
   const data = await ClassModel.findOne({
     _id: id,
     schoolId,
@@ -178,70 +196,41 @@ export async function updateClass(
     throw new ApiError(404, "Class not found");
   }
 
-  /**
-   * CHECK DUPLICATE NAME
-   */
-  if (
-    payload.name &&
-    payload.name !== data.name
-  ) {
-    const exists = await ClassModel.findOne({
-      schoolId,
-      name: payload.name,
-      _id: { $ne: id },
-    });
-
-    if (exists) {
-      throw new ApiError(
-        400,
-        "Another class with this name already exists"
-      );
-    }
-  }
-
-  /**
-   * VALIDATE TEACHER
-   */
-  if (payload.classTeacherId) {
-    const teacher = await User.findOne({
-      _id: payload.classTeacherId,
-      schoolId,
-      role: "teacher",
-    });
-
-    if (!teacher) {
-      throw new ApiError(
-        404,
-        "Selected class teacher not found in this school"
-      );
-    }
-  }
-
-  /**
-   * REMOVE TEACHER
-   */
-  if (payload.classTeacherId === null) {
-    data.classTeacherId = null;
-  }
-
-  /**
-   * UPDATE VALUES
-   */
   if (payload.name !== undefined) {
-    data.name = payload.name;
-    data.slug = generateSlug(payload.name);
+    const name = String(payload.name || "").trim();
+
+    if (!name) {
+      throw new ApiError(400, "Class name is required");
+    }
+
+    if (name !== data.name) {
+      const exists = await ClassModel.findOne({
+        schoolId,
+        name,
+        _id: { $ne: id },
+      });
+
+      if (exists) {
+        throw new ApiError(
+          400,
+          "Another class with this name already exists"
+        );
+      }
+    }
+
+    data.name = name;
+    data.slug = generateSlug(name);
+  }
+
+  if (payload.classTeacherId) {
+    await validateClassTeacher(payload.classTeacherId, schoolId);
+    data.classTeacherId = payload.classTeacherId;
+  } else if (payload.classTeacherId === null) {
+    data.classTeacherId = null;
   }
 
   if (payload.level !== undefined) {
     data.level = payload.level;
-  }
-
-  if (
-    payload.classTeacherId !== undefined &&
-    payload.classTeacherId !== null
-  ) {
-    data.classTeacherId =
-      payload.classTeacherId;
   }
 
   if (payload.capacity !== undefined) {
@@ -254,19 +243,13 @@ export async function updateClass(
 }
 
 /**
- * =========================================
  * DELETE CLASS
- * =========================================
  */
-export async function deleteClass(
-  id,
-  schoolId
-) {
-  const data =
-    await ClassModel.findOneAndDelete({
-      _id: id,
-      schoolId,
-    });
+export async function deleteClass(id, schoolId) {
+  const data = await ClassModel.findOneAndDelete({
+    _id: id,
+    schoolId,
+  });
 
   if (!data) {
     throw new ApiError(404, "Class not found");
@@ -275,124 +258,74 @@ export async function deleteClass(
   return data;
 }
 
-export async function bulkUpsertClasses(
-  rows,
-  schoolId
-) {
+/**
+ * BULK CREATE / UPDATE CLASSES
+ *
+ * Existing classes keep their existing sessionId and termId.
+ * Only newly created classes receive the current academic context.
+ */
+export async function bulkUpsertClasses(rows, schoolId) {
+  if (!Array.isArray(rows)) {
+    throw new ApiError(400, "Classes must be provided as an array");
+  }
+
   let created = 0;
   let updated = 0;
   let failed = 0;
 
   const results = [];
 
-  const currentSession =
-    await Session.findOne({
-      schoolId,
-      isCurrent: true,
-    });
-
-  let currentTerm = null;
-
-  if (currentSession) {
-    currentTerm =
-      await Term.findOne({
-        schoolId,
-        sessionId:
-          currentSession._id,
-        isCurrent: true,
-      });
-  }
+  // Resolve once for the entire import.
+  const { currentSession, currentTerm } =
+    await getCurrentAcademicContext(schoolId);
 
   for (const row of rows) {
     try {
-      const className =
-        row.name?.trim();
+      const className = String(row?.name || "").trim();
 
       if (!className) {
         failed++;
 
         results.push({
-          name: row.name || "",
+          name: row?.name || "",
           action: "failed",
-          error:
-            "Class name is required",
+          error: "Class name is required",
         });
 
         continue;
       }
 
-      /**
-       * OPTIONAL TEACHER VALIDATION
-       */
       if (row.classTeacherId) {
-        const teacher =
-          await User.findOne({
-            _id: row.classTeacherId,
-            schoolId,
-            role: "teacher",
-          });
-
-        if (!teacher) {
-          throw new ApiError(
-            404,
-            `Teacher not found for class ${className}`
-          );
-        }
+        await validateClassTeacher(row.classTeacherId, schoolId);
       }
 
-      const existing =
-        await ClassModel.findOne({
-          schoolId,
-          name: className,
-        });
+      const existing = await ClassModel.findOne({
+        schoolId,
+        name: className,
+      });
 
-      /**
-       * UPDATE EXISTING
-       */
       if (existing) {
-        if (
-          row.level !== undefined
-        ) {
-          existing.level =
-            row.level;
+        if (row.level !== undefined) {
+          existing.level = row.level;
         }
 
-        if (
-          row.code !== undefined
-        ) {
-          existing.code =
-            row.code;
+        if (row.code !== undefined) {
+          existing.code = row.code;
         }
 
-        if (
-          row.capacity !==
-          undefined
-        ) {
-          existing.capacity =
-            Number(
-              row.capacity
-            ) || 0;
+        if (row.capacity !== undefined) {
+          existing.capacity = Number(row.capacity) || 0;
         }
 
-        if (
-          row.classTeacherId !==
-          undefined
-        ) {
-          existing.classTeacherId =
-            row.classTeacherId ||
-            null;
+        if (row.classTeacherId !== undefined) {
+          existing.classTeacherId = row.classTeacherId || null;
         }
 
-        if (
-          row.isActive !==
-          undefined
-        ) {
-          existing.isActive =
-            Boolean(
-              row.isActive
-            );
+        if (row.isActive !== undefined) {
+          existing.isActive = Boolean(row.isActive);
         }
 
+        // Do not change existing.sessionId or existing.termId.
         await existing.save();
 
         updated++;
@@ -400,92 +333,50 @@ export async function bulkUpsertClasses(
         results.push({
           name: className,
           action: "updated",
-          classId:
-            existing._id,
+          classId: existing._id,
         });
+
+        continue;
       }
 
-      /**
-       * CREATE NEW
-       */
-      else {
-        const createdClass =
-          await ClassModel.create({
-            schoolId,
+      const createdClass = await ClassModel.create({
+        schoolId,
+        sessionId: currentSession?._id || null,
+        termId: currentTerm?._id || null,
+        name: className,
+        slug: generateSlug(className),
+        level: row.level || "primary",
+        code: row.code || "",
+        classTeacherId: row.classTeacherId || null,
+        capacity: Number(row.capacity) || 40,
+        isActive: row.isActive ?? true,
+      });
 
-            sessionId:
-              currentSession?._id ||
-              null,
+      created++;
 
-            termId:
-              currentTerm?._id ||
-              null,
-
-            name: className,
-
-            slug:
-              generateSlug(
-                className
-              ),
-
-            level:
-              row.level || "",
-
-            code:
-              row.code || "",
-
-            classTeacherId:
-              row.classTeacherId ||
-              null,
-
-            capacity:
-              Number(
-                row.capacity
-              ) || 40,
-
-            isActive:
-              row.isActive ??
-              true,
-          });
-
-        created++;
-
-        results.push({
-          name: className,
-          action: "created",
-          classId:
-            createdClass._id,
-        });
-      }
+      results.push({
+        name: className,
+        action: "created",
+        classId: createdClass._id,
+      });
     } catch (error) {
       failed++;
 
       results.push({
-        name:
-          row?.name || "",
+        name: row?.name || "",
         action: "failed",
-        error:
-          error?.message ||
-          "Unknown error",
+        error: error?.message || "Unknown error",
       });
     }
   }
 
   return {
     total: rows.length,
-
     created,
     updated,
     failed,
-
-    sessionId:
-      currentSession?._id ||
-      null,
-
-    termId:
-      currentTerm?._id ||
-      null,
-
+    sessionId: currentSession?._id || null,
+    termId: currentTerm?._id || null,
     results,
   };
 }
