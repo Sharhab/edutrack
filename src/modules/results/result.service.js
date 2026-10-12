@@ -447,6 +447,12 @@ export async function bulkUpsertResults({
     );
   }
 
+   await validateResultAcademicPeriod({
+  schoolId,
+  sessionId,
+  termId,
+});
+   
   await ensureTeacherCanEnter({
     user,
     schoolId,
