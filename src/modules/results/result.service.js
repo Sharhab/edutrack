@@ -1,13 +1,10 @@
 import mongoose from "mongoose";
-
 import { Result } from "./result.model.js";
-
 import { computeGrade } from "./grade.utils.js";
-
 import { ApiError } from "../../utils/apiError.js";
-
 import { Teacher } from "../teachers/teacher.model.js";
-
+import { Session } from "../sessions/session.model.js";
+import { Term } from "../terms/term.model.js";
 /* =========================================
    CORE UTILS (SINGLE SOURCE OF TRUTH)
 ========================================= */
@@ -205,6 +202,48 @@ function formatResult(result) {
   };
 }
 
+
+async function validateResultAcademicPeriod({
+  schoolId,
+  sessionId,
+  termId,
+}) {
+  if (!sessionId || !termId) {
+    throw new ApiError(
+      400,
+      "Academic session and term are required"
+    );
+  }
+
+  const session = await Session.findOne({
+    _id: sessionId,
+    schoolId,
+  });
+
+  if (!session) {
+    throw new ApiError(
+      400,
+      "Invalid academic session"
+    );
+  }
+
+  const term = await Term.findOne({
+    _id: termId,
+    schoolId,
+    sessionId: session._id,
+  });
+
+  if (!term) {
+    throw new ApiError(
+      400,
+      "Invalid term or the term does not belong to the selected session"
+    );
+  }
+
+  return { session, term };
+}
+
+
 /* =========================================
    TEACHER VALIDATION (STANDARDIZED)
 ========================================= */
@@ -293,7 +332,13 @@ export async function createOrUpdateResult(
   user
 ) {
   const schoolId = user.schoolId;
-
+   
+await validateResultAcademicPeriod({
+  schoolId,
+  sessionId: payload.sessionId,
+  termId: payload.termId,
+});
+   
   const computed =
     calculateResultFields(payload);
 
