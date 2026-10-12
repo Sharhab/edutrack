@@ -832,12 +832,20 @@ export async function recordManualPayment({
     );
   }
 
-  if (invoiceId) validateObjectId(invoiceId, "invoiceId");
-  if (studentFeeId) validateObjectId(studentFeeId, "studentFeeId");
+  if (invoiceId) {
+    validateObjectId(invoiceId, "invoiceId");
+  }
 
-  const paymentAmount = Number(amount);
+  if (studentFeeId) {
+    validateObjectId(studentFeeId, "studentFeeId");
+  }
 
-  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+  const paymentAmount = Math.round(Number(amount) * 100) / 100;
+
+  if (
+    !Number.isFinite(paymentAmount) ||
+    paymentAmount <= 0
+  ) {
     throw new ApiError(400, "Invalid payment amount");
   }
 
@@ -849,6 +857,11 @@ export async function recordManualPayment({
     let invoice = null;
     let studentFee = null;
 
+    /**
+     * =========================================
+     * RESOLVE INVOICE AND STUDENT FEE
+     * =========================================
+     */
     if (invoiceId) {
       invoice = await Invoice.findOne({
         _id: invoiceId,
@@ -860,26 +873,36 @@ export async function recordManualPayment({
         throw new ApiError(404, "Invoice not found");
       }
 
+      if (!invoice.feeStructureId) {
+        throw new ApiError(
+          409,
+          "Invoice is not linked to a fee plan"
+        );
+      }
+
       const feeQuery = {
         schoolId,
         studentId,
         feePlanId: invoice.feeStructureId,
       };
 
-      if (invoice.sessionId) {
-        feeQuery.sessionId = invoice.sessionId;
-      }
+      // Match the invoice's exact academic period,
+      // including legacy records with missing IDs.
+      feeQuery.sessionId = invoice.sessionId
+        ? invoice.sessionId
+        : { $exists: false };
 
-      if (invoice.termId) {
-        feeQuery.termId = invoice.termId;
-      }
+      feeQuery.termId = invoice.termId
+        ? invoice.termId
+        : { $exists: false };
 
-      studentFee = await StudentFee.findOne(feeQuery).session(dbSession);
+      studentFee = await StudentFee.findOne(feeQuery)
+        .session(dbSession);
 
       if (!studentFee) {
         throw new ApiError(
           404,
-          "Student fee linked to this invoice was not found"
+          "Student fee linked to this invoice and academic period was not found"
         );
       }
     } else {
@@ -901,22 +924,116 @@ export async function recordManualPayment({
       });
     }
 
-    const total = Number(studentFee.totalAmount || 0);
-    const alreadyPaid = Number(studentFee.amountPaid || 0);
-    const balance = Math.max(total - alreadyPaid, 0);
+    /**
+     * =========================================
+     * VALIDATE BALANCE
+     * =========================================
+     */
+    const total = Math.round(
+      Number(studentFee.totalAmount || 0) * 100
+    ) / 100;
+
+    const alreadyPaid = Math.round(
+      Number(studentFee.amountPaid || 0) * 100
+    ) / 100;
+
+    if (
+      !Number.isFinite(total) ||
+      !Number.isFinite(alreadyPaid) ||
+      total <= 0 ||
+      alreadyPaid < 0 ||
+      alreadyPaid > total + 0.01
+    ) {
+      throw new ApiError(
+        409,
+        "Student fee amounts are invalid"
+      );
+    }
+
+    const balance = Math.max(
+      Math.round((total - alreadyPaid) * 100) / 100,
+      0
+    );
 
     if (balance <= 0) {
       throw new ApiError(400, "Fee already fully paid");
     }
 
-    if (paymentAmount > balance) {
+    if (paymentAmount > balance + 0.001) {
       throw new ApiError(
         400,
         `Payment exceeds remaining balance (${balance})`
       );
     }
 
+    /**
+     * =========================================
+     * UPDATE BALANCE SAFELY
+     *
+     * Compare-and-update prevents this request
+     * from overwriting a balance changed by
+     * another payment operation.
+     * =========================================
+     */
+    const newAmountPaid = Math.round(
+      (alreadyPaid + paymentAmount) * 100
+    ) / 100;
+
+    const newBalance = Math.max(
+      Math.round((total - newAmountPaid) * 100) / 100,
+      0
+    );
+
+    const newStatus = paymentStatus(
+      newAmountPaid,
+      total
+    );
+
+    const feeFilter = {
+      _id: studentFee._id,
+      schoolId,
+      studentId,
+      totalAmount: studentFee.totalAmount,
+      ...(studentFee.amountPaid == null
+        ? {
+            $or: [
+              { amountPaid: { $exists: false } },
+              { amountPaid: null },
+            ],
+          }
+        : {
+            amountPaid: studentFee.amountPaid,
+          }),
+    };
+
+    const feeUpdate = await StudentFee.updateOne(
+      feeFilter,
+      {
+        $set: {
+          amountPaid: newAmountPaid,
+          balance: newBalance,
+          status: newStatus,
+        },
+      },
+      { session: dbSession }
+    );
+
+    if (feeUpdate.modifiedCount !== 1) {
+      throw new ApiError(
+        409,
+        "Student fee changed during payment processing. Please refresh and try again."
+      );
+    }
+
+    /**
+     * =========================================
+     * CREATE PAYMENT RECORD
+     * =========================================
+     */
     const paymentMethod = getPaymentMethod(method);
+
+    const paymentReference =
+      `MAN-${new mongoose.Types.ObjectId().toString()}`;
 
     const [payment] = await Payment.create(
       [
@@ -926,7 +1043,7 @@ export async function recordManualPayment({
           studentFeeId: studentFee._id,
           amount: paymentAmount,
           paymentMethod,
-          reference: `MAN-${new mongoose.Types.ObjectId().toString()}`,
+          reference: paymentReference,
           status: "success",
           paidAt: new Date(),
           note: "Manual fee payment",
@@ -935,29 +1052,27 @@ export async function recordManualPayment({
       { session: dbSession }
     );
 
-    studentFee.amountPaid = alreadyPaid + paymentAmount;
-    studentFee.balance = Math.max(
-      total - studentFee.amountPaid,
-      0
-    );
-    studentFee.status = paymentStatus(
-      studentFee.amountPaid,
-      total
-    );
-
-    await studentFee.save({ session: dbSession });
-
+    /**
+     * =========================================
+     * SYNC INVOICE
+     * =========================================
+     */
     if (invoice) {
       invoice.amount = total;
       invoice.totalAmount = total;
-      invoice.amountPaid = studentFee.amountPaid;
-      invoice.balanceAmount = studentFee.balance;
-      invoice.paymentStatus = studentFee.status;
-      invoice.status = studentFee.status;
+      invoice.amountPaid = newAmountPaid;
+      invoice.balanceAmount = newBalance;
+      invoice.paymentStatus = newStatus;
+      invoice.status = newStatus;
 
       await invoice.save({ session: dbSession });
     }
 
+    /**
+     * =========================================
+     * LEDGER ENTRY
+     * =========================================
+     */
     await Ledger.create(
       [
         {
@@ -965,13 +1080,28 @@ export async function recordManualPayment({
           studentId,
           type: "payment",
           amount: paymentAmount,
-          balanceAfter: studentFee.balance,
+          balanceAfter: newBalance,
           reference: String(payment._id),
           description: "Manual fee payment",
         },
       ],
       { session: dbSession }
     );
+
+    /**
+     * =========================================
+     * RECEIPT
+     * =========================================
+     */
+    const receiptMethod =
+      paymentMethod === "bank_transfer"
+        ? "bank_transfer"
+        : paymentMethod === "pos"
+          ? "pos"
+          : paymentMethod === "online" ||
+              paymentMethod === "card"
+            ? "manual"
+            : paymentMethod;
 
     const [receipt] = await Receipt.create(
       [
@@ -981,21 +1111,13 @@ export async function recordManualPayment({
           studentId,
           studentFeeId: studentFee._id,
           amount: paymentAmount,
-          amountPaid: studentFee.amountPaid,
-          method:
-            paymentMethod === "bank_transfer"
-              ? "bank_transfer"
-              : paymentMethod === "pos"
-                ? "pos"
-                : paymentMethod === "online" ||
-                    paymentMethod === "card"
-                  ? "manual"
-                  : paymentMethod,
+          amountPaid: newAmountPaid,
+          method: receiptMethod,
           status: "success",
-          reference: payment.reference,
+          reference: paymentReference,
           title: studentFee.title,
           totalAmount: total,
-          balance: studentFee.balance,
+          balance: newBalance,
           session: studentFee.session || "",
           term: studentFee.term || "",
           receiptNumber: createReceiptNumber(),
@@ -1007,23 +1129,27 @@ export async function recordManualPayment({
 
     await dbSession.commitTransaction();
 
+    // Return the updated values to the caller.
+    studentFee.amountPaid = newAmountPaid;
+    studentFee.balance = newBalance;
+    studentFee.status = newStatus;
+
     return {
       payment,
       receipt,
       studentFee,
       invoice,
     };
-  } catch (err) {
+  } catch (error) {
     if (dbSession.inTransaction()) {
       await dbSession.abortTransaction();
     }
 
-    throw err;
+    throw error;
   } finally {
     await dbSession.endSession();
   }
 }
-
 /* =========================================
    CANCEL PAYMENT
 ========================================= */
