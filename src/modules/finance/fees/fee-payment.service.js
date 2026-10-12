@@ -457,9 +457,46 @@ export async function assignFeeToStudent({
     .populate("sessionId", "name")
     .populate("termId", "name");
 
-  if (!feePlan) {
-    throw new ApiError(404, "Active fee plan not found");
-  }
+ 
+if (!feePlan) {
+  throw new ApiError(404, "Active fee plan not found");
+}
+
+const planSessionId = String(
+  feePlan.sessionId?._id || feePlan.sessionId || ""
+);
+
+const planTermId = String(
+  feePlan.termId?._id || feePlan.termId || ""
+);
+
+if (!planSessionId || !planTermId) {
+  throw new ApiError(
+    409,
+    "Fee plan is missing its academic session or term"
+  );
+}
+
+const [validSession, validTerm] = await Promise.all([
+  mongoose.model("Session").findOne({
+    _id: planSessionId,
+    schoolId,
+  }),
+
+  mongoose.model("Term").findOne({
+    _id: planTermId,
+    schoolId,
+    sessionId: planSessionId,
+  }),
+]);
+
+if (!validSession || !validTerm) {
+  throw new ApiError(
+    409,
+    "Fee plan has an invalid session or a term that does not belong to that session"
+  );
+}
+
 
   const student = await mongoose.model("Student").findOne({
     _id: studentId,
@@ -597,26 +634,69 @@ export async function assignFeeToClass({
   const students = await mongoose.model("Student").find({
     schoolId,
     classId,
-  });
+  }).select("_id firstName lastName admissionNumber");
 
   const results = [];
 
-  for (const student of students) {
-    const result = await assignFeeToStudent({
-      schoolId,
-      studentId: student._id,
-      feePlanId,
-    });
+  let assigned = 0;
+  let alreadyAssigned = 0;
+  let failed = 0;
 
-    results.push({
-      studentId: student._id,
-      ...result,
-    });
+  for (const student of students) {
+    try {
+      const result = await assignFeeToStudent({
+        schoolId,
+        studentId: student._id,
+        feePlanId,
+      });
+
+      const wasAlreadyAssigned =
+        result.message === "Fee already assigned";
+
+      if (wasAlreadyAssigned) {
+        alreadyAssigned++;
+      } else {
+        assigned++;
+      }
+
+      results.push({
+        studentId: student._id,
+        studentName: [
+          student.firstName,
+          student.lastName,
+        ].filter(Boolean).join(" "),
+        admissionNumber: student.admissionNumber || "",
+        action: wasAlreadyAssigned ? "already_assigned" : "assigned",
+        message: result.message,
+      });
+    } catch (error) {
+      failed++;
+
+      results.push({
+        studentId: student._id,
+        studentName: [
+          student.firstName,
+          student.lastName,
+        ].filter(Boolean).join(" "),
+        admissionNumber: student.admissionNumber || "",
+        action: "failed",
+        error: error?.message || "Fee assignment failed",
+      });
+    }
   }
 
   return {
-    success: true,
-    message: "Class fee assignment completed",
+    success: failed === 0,
+    message:
+      failed === 0
+        ? "Class fee assignment completed"
+        : "Class fee assignment completed with some failures",
+    summary: {
+      totalStudents: students.length,
+      assigned,
+      alreadyAssigned,
+      failed,
+    },
     data: results,
   };
 }
