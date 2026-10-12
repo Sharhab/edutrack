@@ -1,7 +1,6 @@
 
 import { Parent } from "../parents/parent.model.js";
 import { Student } from "../students/student.model.js";
-import { Invoice } from "../finance/models/invoice.model.js";
 import { Payment } from "../finance/fees/fee-payment.model.js";
 import { StudentFee } from "../finance/fees/studentFee.model.js";
 import { Attendance } from "../attendance/attendance.model.js";
@@ -9,6 +8,7 @@ import { Result } from "../results/result.model.js";
 import { Announcement } from "../announcements/announcement.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
+import { School } from "../schools/school.model.js";
 import Class from "../classes/class.model.js";
 
 import { ApiError } from "../../utils/apiError.js";
@@ -21,10 +21,7 @@ import { ApiError } from "../../utils/apiError.js";
 async function getParentProfile(parentUserId) {
   const parent = await Parent.findOne({
     userId: parentUserId,
-  }).populate(
-    "userId",
-    "firstName lastName email phone"
-  );
+  }).populate("userId", "firstName lastName email phone");
 
   if (!parent) {
     throw new ApiError(404, "Parent not found");
@@ -35,41 +32,75 @@ async function getParentProfile(parentUserId) {
 
 /**
  * =========================================
+ * GET CURRENT ACADEMIC SESSION AND TERM
+ *
+ * Prefer database current flags.
+ * Fall back to the school's saved settings
+ * when those flags are out of sync.
+ * A term must belong to the selected session.
+ * =========================================
+ */
+async function getCurrentAcademicContext(schoolId) {
+  const school = await School.findById(schoolId);
+
+  if (!school) {
+    return {
+      activeSession: null,
+      activeTerm: null,
+    };
+  }
+
+  // 1. Resolve the current session using its flag.
+  let activeSession = await Session.findOne({
+    schoolId,
+    isCurrent: true,
+  }).sort({ createdAt: -1 });
+
+  // 2. Fall back to the session saved in School settings.
+  if (!activeSession && school.currentSession) {
+    activeSession = await Session.findOne({
+      schoolId,
+      name: school.currentSession,
+    });
+  }
+
+  // 3. Resolve the term only within the selected session.
+  let activeTerm = null;
+
+  if (activeSession) {
+    activeTerm = await Term.findOne({
+      schoolId,
+      sessionId: activeSession._id,
+      isCurrent: true,
+    }).sort({ createdAt: -1 });
+
+    // 4. Fall back to the school's saved term.
+    if (!activeTerm && school.currentTerm) {
+      activeTerm = await Term.findOne({
+        schoolId,
+        sessionId: activeSession._id,
+        name: school.currentTerm,
+      });
+    }
+  }
+
+  return {
+    activeSession,
+    activeTerm,
+  };
+}
+
+/**
+ * =========================================
  * PARENT DASHBOARD
  * =========================================
  */
 export async function getParentDashboard(parentUserId) {
   const parent = await getParentProfile(parentUserId);
-
   const studentIds = parent.studentIds || [];
 
-  /**
-   * =========================================
-   * ACTIVE SESSION + TERM
-   *
-   * Session and Term schemas use isCurrent,
-   * not isActive.
-   * =========================================
-   */
-  const activeSession = await Session.findOne({
-    schoolId: parent.schoolId,
-    isCurrent: true,
-  }).sort({ createdAt: -1 });
-
-  const activeTermQuery = {
-    schoolId: parent.schoolId,
-    isCurrent: true,
-  };
-
-  // Prefer the current term belonging to the
-  // current session, when a current session exists.
-  if (activeSession) {
-    activeTermQuery.sessionId = activeSession._id;
-  }
-
-  const activeTerm = await Term.findOne(
-    activeTermQuery
-  ).sort({ createdAt: -1 });
+  const { activeSession, activeTerm } =
+    await getCurrentAcademicContext(parent.schoolId);
 
   /**
    * =========================================
@@ -204,17 +235,14 @@ export async function getParentDashboard(parentUserId) {
 
     return {
       _id: student._id,
-
       firstName: student.firstName,
       lastName: student.lastName,
       admissionNumber: student.admissionNumber,
-
       className: student.classId?.name || "No Class",
-
       attendanceRate,
 
-      // Prefer the child's latest fee record.
-      // Fall back to the school's current period.
+      // Use the child's latest fee period when available.
+      // Otherwise use the school's current academic context.
       session:
         latestChildFee?.session ||
         activeSession?.name ||
@@ -237,12 +265,10 @@ export async function getParentDashboard(parentUserId) {
   return {
     parent: {
       id: parent._id,
-
       firstName: parent.userId?.firstName || "",
       lastName: parent.userId?.lastName || "",
       email: parent.userId?.email || "",
       phone: parent.userId?.phone || "",
-
       occupation: parent.occupation,
       relationshipToStudent: parent.relationshipToStudent,
     },
@@ -260,7 +286,7 @@ export async function getParentDashboard(parentUserId) {
     children,
     announcements,
 
-    // Keep legacy UI compatibility.
+    // Legacy UI compatibility.
     invoices: studentFees,
 
     // Current source of truth for parent fee balances.
@@ -325,13 +351,11 @@ export async function getChildFinance(studentId, schoolId) {
 
   return {
     studentId,
-
     finance: {
       totalBilled,
       totalPaid,
       balance,
     },
-
     studentFees,
     payments,
   };
