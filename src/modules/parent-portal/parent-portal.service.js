@@ -95,12 +95,18 @@ async function getCurrentAcademicContext(schoolId) {
  * PARENT DASHBOARD
  * =========================================
  */
+/**
+ * =========================================
+ * PARENT DASHBOARD
+ * =========================================
+ */
 export async function getParentDashboard(parentUserId) {
   const parent = await getParentProfile(parentUserId);
   const studentIds = parent.studentIds || [];
+  const schoolId = parent.schoolId;
 
   const { activeSession, activeTerm } =
-    await getCurrentAcademicContext(parent.schoolId);
+    await getCurrentAcademicContext(schoolId);
 
   /**
    * =========================================
@@ -109,18 +115,20 @@ export async function getParentDashboard(parentUserId) {
    */
   const students = await Student.find({
     _id: { $in: studentIds },
-    schoolId: parent.schoolId,
+    schoolId,
   }).populate("classId", "name");
 
   /**
    * =========================================
    * STUDENT FEES
-   * SOURCE OF TRUTH FOR FEE BALANCES
+   * StudentFee is the source of truth for
+   * billed amounts, payments and balances.
+   * Keep previous-term unpaid balances.
    * =========================================
    */
   const studentFees = await StudentFee.find({
     studentId: { $in: studentIds },
-    schoolId: parent.schoolId,
+    schoolId,
   })
     .populate({
       path: "feePlanId",
@@ -135,7 +143,7 @@ export async function getParentDashboard(parentUserId) {
    */
   const payments = await Payment.find({
     studentId: { $in: studentIds },
-    schoolId: parent.schoolId,
+    schoolId,
   }).sort({ createdAt: -1 });
 
   /**
@@ -145,7 +153,7 @@ export async function getParentDashboard(parentUserId) {
    */
   const attendance = await Attendance.find({
     studentId: { $in: studentIds },
-    schoolId: parent.schoolId,
+    schoolId,
   });
 
   /**
@@ -155,8 +163,8 @@ export async function getParentDashboard(parentUserId) {
    */
   const results = await Result.find({
     studentId: { $in: studentIds },
-    schoolId: parent.schoolId,
-  });
+    schoolId,
+  }).sort({ createdAt: -1 });
 
   /**
    * =========================================
@@ -164,7 +172,7 @@ export async function getParentDashboard(parentUserId) {
    * =========================================
    */
   const announcements = await Announcement.find({
-    schoolId: parent.schoolId,
+    schoolId,
     $or: [
       { targetAudience: "all" },
       { targetAudience: "parents" },
@@ -175,7 +183,10 @@ export async function getParentDashboard(parentUserId) {
 
   /**
    * =========================================
-   * FINANCE SUMMARY
+   * ALL-TIME FINANCE SUMMARY
+   *
+   * Includes unpaid balances from previous
+   * terms and the current term.
    * =========================================
    */
   const totalOutstanding = studentFees.reduce(
@@ -195,13 +206,68 @@ export async function getParentDashboard(parentUserId) {
 
   /**
    * =========================================
+   * CURRENT-TERM FEES
+   *
+   * Prefer sessionId and termId.
+   * Support older records that only store
+   * session and term names.
+   * =========================================
+   */
+  const currentTermFees =
+    activeSession && activeTerm
+      ? studentFees.filter((fee) => {
+          const feeSessionId = fee.sessionId
+            ? String(fee.sessionId)
+            : "";
+
+          const feeTermId = fee.termId
+            ? String(fee.termId)
+            : "";
+
+          // Use IDs when both are available.
+          if (feeSessionId && feeTermId) {
+            return (
+              feeSessionId === String(activeSession._id) &&
+              feeTermId === String(activeTerm._id)
+            );
+          }
+
+          // Legacy records without both IDs.
+          return (
+            String(fee.session || "") ===
+              String(activeSession.name || "") &&
+            String(fee.term || "") ===
+              String(activeTerm.name || "")
+          );
+        })
+      : [];
+
+  const currentTermBilled = currentTermFees.reduce(
+    (sum, fee) => sum + Number(fee.totalAmount || 0),
+    0
+  );
+
+  const currentTermPaid = currentTermFees.reduce(
+    (sum, fee) => sum + Number(fee.amountPaid || 0),
+    0
+  );
+
+  const currentTermOutstanding = currentTermFees.reduce(
+    (sum, fee) => sum + Number(fee.balance || 0),
+    0
+  );
+
+  /**
+   * =========================================
    * CHILDREN SUMMARY
    * =========================================
    */
   const children = students.map((student) => {
+    const studentId = String(student._id);
+
     const studentAttendance = attendance.filter(
       (record) =>
-        String(record.studentId) === String(student._id)
+        String(record.studentId) === studentId
     );
 
     const presentDays = studentAttendance.filter(
@@ -209,29 +275,64 @@ export async function getParentDashboard(parentUserId) {
     ).length;
 
     const attendanceRate = studentAttendance.length
-      ? (
-          (presentDays / studentAttendance.length) *
-          100
-        ).toFixed(2)
-      : "0";
+      ? Number(
+          (
+            (presentDays / studentAttendance.length) *
+            100
+          ).toFixed(2)
+        )
+      : 0;
 
-    const latestResult = results
-      .filter(
+    const latestResult =
+      results.find(
         (result) =>
-          String(result.studentId) === String(student._id)
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt || 0) -
-          new Date(a.createdAt || 0)
-      )[0];
+          String(result.studentId) === studentId
+      ) || null;
 
     const childFees = studentFees.filter(
       (fee) =>
-        String(fee.studentId) === String(student._id)
+        String(fee.studentId) === studentId
     );
 
-    const latestChildFee = childFees[0];
+    const latestChildFee = childFees[0] || null;
+
+    const childCurrentTermFees = currentTermFees.filter(
+      (fee) =>
+        String(fee.studentId) === studentId
+    );
+
+    const childTotalBilled = childFees.reduce(
+      (sum, fee) => sum + Number(fee.totalAmount || 0),
+      0
+    );
+
+    const childTotalPaid = childFees.reduce(
+      (sum, fee) => sum + Number(fee.amountPaid || 0),
+      0
+    );
+
+    const childTotalOutstanding = childFees.reduce(
+      (sum, fee) => sum + Number(fee.balance || 0),
+      0
+    );
+
+    const childCurrentTermBilled =
+      childCurrentTermFees.reduce(
+        (sum, fee) => sum + Number(fee.totalAmount || 0),
+        0
+      );
+
+    const childCurrentTermPaid =
+      childCurrentTermFees.reduce(
+        (sum, fee) => sum + Number(fee.amountPaid || 0),
+        0
+      );
+
+    const childCurrentTermOutstanding =
+      childCurrentTermFees.reduce(
+        (sum, fee) => sum + Number(fee.balance || 0),
+        0
+      );
 
     return {
       _id: student._id,
@@ -241,8 +342,7 @@ export async function getParentDashboard(parentUserId) {
       className: student.classId?.name || "No Class",
       attendanceRate,
 
-      // Use the child's latest fee period when available.
-      // Otherwise use the school's current academic context.
+      // Preserve the existing child period fields.
       session:
         latestChildFee?.session ||
         activeSession?.name ||
@@ -254,6 +354,20 @@ export async function getParentDashboard(parentUserId) {
         "",
 
       latestResult,
+
+      // All-time balances for this child.
+      finance: {
+        totalBilled: childTotalBilled,
+        totalPaid: childTotalPaid,
+        totalOutstanding: childTotalOutstanding,
+      },
+
+      // Current-term balances for this child.
+      currentTermFinance: {
+        totalBilled: childCurrentTermBilled,
+        totalPaid: childCurrentTermPaid,
+        totalOutstanding: childCurrentTermOutstanding,
+      },
     };
   });
 
@@ -276,11 +390,23 @@ export async function getParentDashboard(parentUserId) {
     currentSession: activeSession?.name || "",
     currentTerm: activeTerm?.name || "",
 
+    // Preserve existing all-time stats.
     stats: {
       totalChildren: students.length,
       totalPaid,
       totalOutstanding,
       totalBilled,
+
+      // Additional current-term stats.
+      currentTermPaid,
+      currentTermOutstanding,
+      currentTermBilled,
+    },
+
+    currentTermFinance: {
+      totalBilled: currentTermBilled,
+      totalPaid: currentTermPaid,
+      totalOutstanding: currentTermOutstanding,
     },
 
     children,
@@ -289,7 +415,7 @@ export async function getParentDashboard(parentUserId) {
     // Legacy UI compatibility.
     invoices: studentFees,
 
-    // Current source of truth for parent fee balances.
+    // Source of truth for parent fee balances.
     studentFees,
 
     payments,
