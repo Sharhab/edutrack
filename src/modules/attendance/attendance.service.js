@@ -11,39 +11,49 @@ import { ApiError } from "../../utils/apiError.js";
 
 // ================= HELPERS =================
 
+
+
 async function validateAcademicRefs({
   classId,
   sessionId,
   termId,
   schoolId,
 }) {
-  const classDoc = await ClassModel.findOne({
-    _id: classId,
-    schoolId,
-  });
+  const [classDoc, sessionDoc, termDoc] =
+    await Promise.all([
+      ClassModel.findOne({
+        _id: classId,
+        schoolId,
+      }),
+
+      Session.findOne({
+        _id: sessionId,
+        schoolId,
+      }),
+
+      Term.findOne({
+        _id: termId,
+        schoolId,
+        sessionId,
+      }),
+    ]);
 
   if (!classDoc) {
     throw new ApiError(400, "Invalid class");
   }
 
-  const sessionDoc = await Session.findOne({
-    _id: sessionId,
-    schoolId,
-  });
-
   if (!sessionDoc) {
     throw new ApiError(400, "Invalid session");
   }
 
-  const termDoc = await Term.findOne({
-    _id: termId,
-    schoolId,
-  });
-
   if (!termDoc) {
-    throw new ApiError(400, "Invalid term");
+    throw new ApiError(
+      400,
+      "Invalid term or the term does not belong to the selected session"
+    );
   }
 }
+
 
 async function validateStudents(records, classId, schoolId) {
   const studentIds = records.map((r) => r.studentId);
