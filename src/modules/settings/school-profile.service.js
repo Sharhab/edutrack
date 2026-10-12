@@ -6,15 +6,106 @@ import { Term } from "../terms/term.model.js";
 import { ApiError } from "../../utils/apiError.js";
 import cloudinary from "../../../cloudinary.js";
 
-/* =========================================
-   PROFILE MAPPER
-========================================= */
+/**
+ * =========================================
+ * ACADEMIC CONTEXT HELPERS
+ * =========================================
+ */
 
-function mapProfile(
-  school,
-  currentSession,
-  currentTerm
-) {
+function isValidObjectId(value) {
+  return mongoose.Types.ObjectId.isValid(String(value || ""));
+}
+
+async function findSessionByValue(value, schoolId) {
+  const normalized = String(value ?? "").trim();
+
+  if (!normalized) return null;
+
+  const query = { schoolId };
+
+  if (isValidObjectId(normalized)) {
+    query._id = normalized;
+  } else {
+    query.name = normalized;
+  }
+
+  return Session.findOne(query);
+}
+
+async function findTermByValue(value, schoolId, sessionId) {
+  const normalized = String(value ?? "").trim();
+
+  if (!normalized || !sessionId) return null;
+
+  const query = {
+    schoolId,
+    sessionId,
+  };
+
+  if (isValidObjectId(normalized)) {
+    query._id = normalized;
+  } else {
+    query.name = normalized;
+  }
+
+  return Term.findOne(query);
+}
+
+/**
+ * Return the actual current academic records.
+ * The term must belong to the selected session.
+ *
+ * When database flags are missing, saved school
+ * values can be used to resolve the records, but
+ * stale school strings are never returned as if
+ * they were valid records.
+ */
+async function resolveAcademicContext(school) {
+  const schoolId = school._id;
+
+  let currentSession = await Session.findOne({
+    schoolId,
+    isCurrent: true,
+  }).sort({ createdAt: -1 });
+
+  if (!currentSession && school.currentSession) {
+    currentSession = await findSessionByValue(
+      school.currentSession,
+      schoolId
+    );
+  }
+
+  let currentTerm = null;
+
+  if (currentSession) {
+    currentTerm = await Term.findOne({
+      schoolId,
+      sessionId: currentSession._id,
+      isCurrent: true,
+    }).sort({ order: 1, startDate: 1, createdAt: 1 });
+
+    if (!currentTerm && school.currentTerm) {
+      currentTerm = await findTermByValue(
+        school.currentTerm,
+        schoolId,
+        currentSession._id
+      );
+    }
+  }
+
+  return {
+    currentSession,
+    currentTerm,
+  };
+}
+
+/**
+ * =========================================
+ * PROFILE MAPPER
+ * =========================================
+ */
+
+function mapProfile(school, currentSession, currentTerm) {
   const apiUrl =
     process.env.APP_URL ||
     "https://edutrack-dpui.onrender.com";
@@ -22,19 +113,12 @@ function mapProfile(
   let logoUrl = "";
 
   if (school.logo) {
-    /*
-     * Cloudinary / external URL
-     */
     if (
       school.logo.startsWith("http://") ||
       school.logo.startsWith("https://")
     ) {
       logoUrl = school.logo;
     } else {
-      /*
-       * Backward compatibility for old
-       * locally stored logo paths.
-       */
       logoUrl = `${apiUrl}${school.logo}`;
     }
   }
@@ -47,38 +131,30 @@ function mapProfile(
     phone: school.phone,
     address: school.address,
 
-    principalName:
-      school.principalName || "",
+    principalName: school.principalName || "",
 
-    currentSession:
-      currentSession?.name ||
-      school.currentSession ||
-      "",
-
+    // Only report academic periods backed by real records.
+    currentSession: currentSession?.name || "",
     currentTerm:
-      currentTerm?.name ||
-      school.currentTerm ||
-      "",
+      currentSession && currentTerm ? currentTerm.name : "",
 
     logoUrl,
 
-    themeColor:
-      school.themeColor ||
-      "#06b6d4",
+    themeColor: school.themeColor || "#06b6d4",
 
     domain: school.domain || "",
-    fullDomain:
-      school.fullDomain || "",
-    customDomain:
-      school.customDomain || "",
+    fullDomain: school.fullDomain || "",
+    customDomain: school.customDomain || "",
 
     slug: school.slug,
   };
 }
 
-/* =========================================
-   GET SCHOOL PROFILE
-========================================= */
+/**
+ * =========================================
+ * GET SCHOOL PROFILE
+ * =========================================
+ */
 
 export async function getSchoolProfile(user) {
   const school = await School.findById(user.schoolId);
@@ -87,33 +163,17 @@ export async function getSchoolProfile(user) {
     throw new ApiError(404, "School profile not found");
   }
 
-  // Resolve the current session first.
-  let currentSession = await Session.findOne({
-    schoolId: user.schoolId,
-    isCurrent: true,
-  });
-
-  // Backward compatibility for schools with a saved session name.
-  if (!currentSession && school.currentSession) {
-    currentSession = await Session.findOne({
-      schoolId: user.schoolId,
-      name: school.currentSession,
-    });
-  }
-
-  // Only load a current term that belongs to this session.
-  let currentTerm = null;
-
-  if (currentSession) {
-    currentTerm = await Term.findOne({
-      schoolId: user.schoolId,
-      sessionId: currentSession._id,
-      isCurrent: true,
-    }).sort({ order: 1, startDate: 1 });
-  }
+  const { currentSession, currentTerm } =
+    await resolveAcademicContext(school);
 
   return mapProfile(school, currentSession, currentTerm);
 }
+
+/**
+ * =========================================
+ * UPDATE SCHOOL PROFILE
+ * =========================================
+ */
 
 export async function updateSchoolProfile(payload, user) {
   const school = await School.findById(user.schoolId);
@@ -122,26 +182,21 @@ export async function updateSchoolProfile(payload, user) {
     throw new ApiError(404, "School profile not found");
   }
 
-  /*
-   * Resolve the academic records BEFORE changing current flags.
-   * The settings form may send either a session/term ID or its name.
-   */
+  const academicFieldsSubmitted =
+    payload.currentSession !== undefined ||
+    payload.currentTerm !== undefined;
+
   let selectedSession = null;
   let selectedTerm = null;
 
   if (payload.currentSession !== undefined) {
-    const sessionValue = String(payload.currentSession).trim();
+    const sessionValue = String(payload.currentSession ?? "").trim();
 
     if (sessionValue) {
-      const sessionQuery = { schoolId: user.schoolId };
-
-      if (mongoose.Types.ObjectId.isValid(sessionValue)) {
-        sessionQuery._id = sessionValue;
-      } else {
-        sessionQuery.name = sessionValue;
-      }
-
-      selectedSession = await Session.findOne(sessionQuery);
+      selectedSession = await findSessionByValue(
+        sessionValue,
+        user.schoolId
+      );
 
       if (!selectedSession) {
         throw new ApiError(
@@ -151,21 +206,12 @@ export async function updateSchoolProfile(payload, user) {
       }
     }
   } else {
-    selectedSession = await Session.findOne({
-      schoolId: user.schoolId,
-      isCurrent: true,
-    });
-
-    if (!selectedSession && school.currentSession) {
-      selectedSession = await Session.findOne({
-        schoolId: user.schoolId,
-        name: school.currentSession,
-      });
-    }
+    const existingContext = await resolveAcademicContext(school);
+    selectedSession = existingContext.currentSession;
   }
 
   if (payload.currentTerm !== undefined) {
-    const termValue = String(payload.currentTerm).trim();
+    const termValue = String(payload.currentTerm ?? "").trim();
 
     if (termValue) {
       if (!selectedSession) {
@@ -175,18 +221,11 @@ export async function updateSchoolProfile(payload, user) {
         );
       }
 
-      const termQuery = {
-        schoolId: user.schoolId,
-        sessionId: selectedSession._id,
-      };
-
-      if (mongoose.Types.ObjectId.isValid(termValue)) {
-        termQuery._id = termValue;
-      } else {
-        termQuery.name = termValue;
-      }
-
-      selectedTerm = await Term.findOne(termQuery);
+      selectedTerm = await findTermByValue(
+        termValue,
+        user.schoolId,
+        selectedSession._id
+      );
 
       if (!selectedTerm) {
         throw new ApiError(
@@ -196,32 +235,35 @@ export async function updateSchoolProfile(payload, user) {
       }
     }
   } else if (selectedSession) {
+    // Keep the current term only if it belongs to the selected session.
     selectedTerm = await Term.findOne({
       schoolId: user.schoolId,
       sessionId: selectedSession._id,
       isCurrent: true,
-    }).sort({ order: 1, startDate: 1 });
+    }).sort({ order: 1, startDate: 1, createdAt: 1 });
   }
 
-  // Update ordinary profile fields.
+  /**
+   * Update ordinary school profile fields.
+   */
   if (payload.schoolName !== undefined) {
-    school.name = payload.schoolName.trim();
+    school.name = String(payload.schoolName ?? "").trim();
   }
 
   if (payload.email !== undefined) {
-    school.email = payload.email.trim().toLowerCase();
+    school.email = String(payload.email ?? "").trim().toLowerCase();
   }
 
   if (payload.phone !== undefined) {
-    school.phone = payload.phone.trim();
+    school.phone = String(payload.phone ?? "").trim();
   }
 
   if (payload.address !== undefined) {
-    school.address = payload.address.trim();
+    school.address = String(payload.address ?? "").trim();
   }
 
   if (payload.principalName !== undefined) {
-    school.principalName = payload.principalName.trim();
+    school.principalName = String(payload.principalName ?? "").trim();
   }
 
   if (payload.themeColor !== undefined) {
@@ -229,16 +271,18 @@ export async function updateSchoolProfile(payload, user) {
   }
 
   if (payload.domain !== undefined) {
-    school.domain = payload.domain.trim().toLowerCase();
+    school.domain = String(payload.domain ?? "").trim().toLowerCase();
   }
 
   if (payload.logoUrl !== undefined) {
     school.logo = payload.logoUrl;
   }
 
-  // Update session and term together.
-  if (payload.currentSession !== undefined ||
-      payload.currentTerm !== undefined) {
+  /**
+   * Synchronize academic flags and school settings.
+   * Validate the selected records before changing flags.
+   */
+  if (academicFieldsSubmitted) {
     await Session.updateMany(
       { schoolId: user.schoolId },
       { $set: { isCurrent: false } }
@@ -250,17 +294,25 @@ export async function updateSchoolProfile(payload, user) {
     );
 
     if (selectedSession) {
-      selectedSession.isCurrent = true;
-      await selectedSession.save();
+      await Session.updateOne(
+        { _id: selectedSession._id, schoolId: user.schoolId },
+        { $set: { isCurrent: true } }
+      );
 
       school.currentSession = selectedSession.name;
     } else {
       school.currentSession = "";
     }
 
-    if (selectedTerm) {
-      selectedTerm.isCurrent = true;
-      await selectedTerm.save();
+    if (selectedSession && selectedTerm) {
+      await Term.updateOne(
+        {
+          _id: selectedTerm._id,
+          schoolId: user.schoolId,
+          sessionId: selectedSession._id,
+        },
+        { $set: { isCurrent: true } }
+      );
 
       school.currentTerm = selectedTerm.name;
     } else {
@@ -270,311 +322,119 @@ export async function updateSchoolProfile(payload, user) {
 
   await school.save();
 
-  // Return the actual persisted records, not the submitted form values.
   return getSchoolProfile(user);
 }
 
-export async function uploadSchoolLogo(
-  file,
-  user
-) {
-  const school =
-    await School.findById(user.schoolId);
+/**
+ * =========================================
+ * UPLOAD SCHOOL LOGO
+ * =========================================
+ */
+
+export async function uploadSchoolLogo(file, user) {
+  const school = await School.findById(user.schoolId);
 
   if (!school) {
-    throw new ApiError(
-      404,
-      "School profile not found"
-    );
+    throw new ApiError(404, "School profile not found");
   }
 
   if (!file?.buffer) {
-    throw new ApiError(
-      400,
-      "Logo file is required"
-    );
+    throw new ApiError(400, "Logo file is required");
   }
 
-  /*
-   * Upload directly from memory to Cloudinary.
-   */
   let result;
 
   try {
-    console.log(
-      "================================="
-    );
+    result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "edutrack/school-logos",
+          resource_type: "image",
+          public_id: `school-${user.schoolId}`,
+          overwrite: true,
+          invalidate: true,
+        },
+        (error, uploaded) => {
+          if (error) {
+            reject(error);
+            return;
+          }
 
-    console.log(
-      "🟢 SCHOOL LOGO UPLOAD START"
-    );
-
-    console.log(
-      "School ID:",
-      user.schoolId
-    );
-
-    console.log(
-      "File:",
-      {
-        originalname:
-          file.originalname,
-        mimetype:
-          file.mimetype,
-        size:
-          file.size,
-        bufferLength:
-          file.buffer?.length,
-      }
-    );
-
-    console.log(
-      "Cloudinary configuration:",
-      {
-        cloudName:
-          !!process.env.CLOUDINARY_CLOUD_NAME,
-        apiKey:
-          !!process.env.CLOUDINARY_API_KEY,
-        apiSecret:
-          !!process.env.CLOUDINARY_API_SECRET,
-      }
-    );
-
-    console.log(
-      "================================="
-    );
-
-    result =
-      await new Promise(
-        (resolve, reject) => {
-          const stream =
-            cloudinary.uploader.upload_stream(
-              {
-                folder:
-                  "edutrack/school-logos",
-
-                resource_type:
-                  "image",
-
-                /*
-                 * One logo per school.
-                 */
-                public_id:
-                  `school-${user.schoolId}`,
-
-                overwrite:
-                  true,
-
-                invalidate:
-                  true,
-              },
-
-              (
-                error,
-                uploaded
-              ) => {
-                if (error) {
-                  console.error(
-                    "❌ CLOUDINARY UPLOAD ERROR:"
-                  );
-
-                  console.error(
-                    error
-                  );
-
-                  reject(error);
-
-                  return;
-                }
-
-                console.log(
-                  "✅ CLOUDINARY UPLOAD SUCCESS"
-                );
-
-                console.log(
-                  "Public ID:",
-                  uploaded?.public_id
-                );
-
-                console.log(
-                  "Secure URL:",
-                  uploaded?.secure_url
-                );
-
-                resolve(
-                  uploaded
-                );
-              }
-            );
-
-          stream.on(
-            "error",
-            (error) => {
-              console.error(
-                "❌ CLOUDINARY STREAM ERROR:"
-              );
-
-              console.error(
-                error
-              );
-
-              reject(error);
-            }
-          );
-
-          stream.end(
-            file.buffer
-          );
+          resolve(uploaded);
         }
       );
+
+      stream.on("error", reject);
+      stream.end(file.buffer);
+    });
   } catch (error) {
     console.error(
-      "================================="
-    );
-
-    console.error(
-      "❌ SCHOOL LOGO UPLOAD FAILED"
-    );
-
-    console.error(
-      "Message:",
-      error?.message
-    );
-
-    console.error(
-      "Name:",
-      error?.name
-    );
-
-    console.error(
-      "HTTP code:",
-      error?.http_code
-    );
-
-    console.error(
-      "Full error:",
-      error
-    );
-
-    console.error(
-      "================================="
+      "[SCHOOL LOGO UPLOAD] Cloudinary error:",
+      error?.message || error
     );
 
     throw new ApiError(
       500,
-      error?.message ||
-        "Failed to upload school logo"
+      error?.message || "Failed to upload school logo"
     );
   }
 
-  // =========================
-  // VERIFY CLOUDINARY RESULT
-  // =========================
-
   if (!result?.secure_url) {
-    console.error(
-      "❌ CLOUDINARY RETURNED NO SECURE URL",
-      result
-    );
-
     throw new ApiError(
       500,
       "Cloudinary did not return a secure URL"
     );
   }
 
-  // =========================
-  // SAVE CLOUDINARY URL
-  // =========================
-
-  school.logo =
-    result.secure_url;
-
+  school.logo = result.secure_url;
   await school.save();
 
-  console.log(
-    "✅ SCHOOL LOGO SAVED TO MONGODB:"
-  );
-
-  console.log(
-    result.secure_url
-  );
-
-  // =========================
-  // RETURN UPDATED PROFILE
-  // =========================
-
-  const profile =
-    await getSchoolProfile(user);
+  const profile = await getSchoolProfile(user);
 
   return {
-    logoUrl:
-      result.secure_url,
-
+    logoUrl: result.secure_url,
     profile,
   };
 }
 
-/* =========================================
-   DELETE SCHOOL LOGO
-========================================= */
+/**
+ * =========================================
+ * DELETE SCHOOL LOGO
+ * =========================================
+ */
 
-export async function deleteSchoolLogo(
-  user
-) {
-  const school =
-    await School.findById(user.schoolId);
+export async function deleteSchoolLogo(user) {
+  const school = await School.findById(user.schoolId);
 
   if (!school) {
-    throw new ApiError(
-      404,
-      "School profile not found"
-    );
+    throw new ApiError(404, "School profile not found");
   }
 
-  /*
-   * If the existing logo is a Cloudinary
-   * URL, remove the Cloudinary asset.
-   */
   if (
     school.logo &&
-    school.logo.includes(
-      "res.cloudinary.com"
-    )
+    school.logo.includes("res.cloudinary.com")
   ) {
     try {
       const publicId =
         `edutrack/school-logos/school-${user.schoolId}`;
 
-      await cloudinary.uploader.destroy(
-        publicId,
-        {
-          resource_type:
-            "image",
-
-          invalidate:
-            true,
-        }
-      );
+      await cloudinary.uploader.destroy(publicId, {
+        resource_type: "image",
+        invalidate: true,
+      });
     } catch (error) {
+      // The database logo is still cleared if Cloudinary deletion fails.
       console.error(
-        "⚠️ Failed to delete Cloudinary school logo:",
-        error?.message ||
-          error
+        "[SCHOOL LOGO DELETE] Cloudinary error:",
+        error?.message || error
       );
     }
   }
 
-  // =========================
-  // CLEAR LOGO
-  // =========================
-
   school.logo = "";
-
   await school.save();
 
   return {
     logoUrl: "",
   };
 }
-
