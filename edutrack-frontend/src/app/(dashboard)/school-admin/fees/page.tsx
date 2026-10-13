@@ -202,14 +202,20 @@ export default function FeePlansPage() {
     return matching;
   }, [terms, form.sessionId]);
 
-  const bulkTerms = useMemo(() => {
-    if (!bulkSessionId) return [];
-    const matching = terms.filter((term) => {
-      const termSessionId = getReferenceId(term.sessionId);
-      return !termSessionId || termSessionId === bulkSessionId;
-    });
-    return matching;
-  }, [terms, bulkSessionId]);
+ 
+const bulkTerms = useMemo(() => {
+  if (!bulkSessionId) return [];
+
+  const matching = terms.filter((term) => {
+    const termSessionId = term.sessionId
+      ? getReferenceId(term.sessionId)
+      : "";
+
+    return !termSessionId || termSessionId === bulkSessionId;
+  });
+
+  return matching;
+}, [terms, bulkSessionId]);
 
   const selectedModeDescription = useMemo(
     () =>
