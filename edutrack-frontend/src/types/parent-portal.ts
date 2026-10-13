@@ -1,3 +1,18 @@
+export interface ParentFinanceSummary {
+  totalBilled: number;
+  totalPaid: number;
+  totalOutstanding: number;
+}
+
+export interface ParentDashboardStats {
+  totalChildren: number;
+  totalPaid: number;
+  totalOutstanding: number;
+  totalBilled: number;
+  currentTermBilled: number;
+  currentTermPaid: number;
+  currentTermOutstanding: number;
+}
 export interface ParentChild {
   _id: string;
   firstName: string;
