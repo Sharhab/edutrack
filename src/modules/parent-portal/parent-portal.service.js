@@ -343,15 +343,16 @@ export async function getParentDashboard(parentUserId) {
       attendanceRate,
 
       // Preserve the existing child period fields.
-      session:
-        latestChildFee?.session ||
-        activeSession?.name ||
-        "",
+     // Active period takes priority over the newest fee record.
+session:
+  activeSession?.name ||
+  latestChildFee?.session ||
+  "",
 
-      term:
-        latestChildFee?.term ||
-        activeTerm?.name ||
-        "",
+term:
+  activeTerm?.name ||
+  latestChildFee?.term ||
+  "",
 
       latestResult,
 
