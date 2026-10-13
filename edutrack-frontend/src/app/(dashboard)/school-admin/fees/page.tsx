@@ -193,14 +193,20 @@ export default function FeePlansPage() {
     void loadAll();
   }, [loadAll]);
 
-  const formTerms = useMemo(() => {
-    if (!form.sessionId) return [];
-    const matching = terms.filter((term) => {
-      const termSessionId = getReferenceId(term.sessionId);
-      return !termSessionId || termSessionId === form.sessionId;
-    });
-    return matching;
-  }, [terms, form.sessionId]);
+  
+const formTerms = useMemo(() => {
+  if (!form.sessionId) return [];
+
+  const matching = terms.filter((term) => {
+    const termSessionId = term.sessionId
+      ? getReferenceId(term.sessionId)
+      : "";
+
+    return !termSessionId || termSessionId === form.sessionId;
+  });
+
+  return matching;
+}, [terms, form.sessionId]);
 
  
 const bulkTerms = useMemo(() => {
