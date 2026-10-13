@@ -14,10 +14,13 @@ export async function getSchoolAdminDashboardHandler(
   next
 ) {
   try {
-    const data =
-      await getSchoolAdminDashboard(
-        req.user
-      );
+    const data = await getSchoolAdminDashboard(
+      req.user,
+      {
+        sessionId: req.query.sessionId,
+        termId: req.query.termId,
+      }
+    );
 
     return res.json({
       success: true,
@@ -29,6 +32,8 @@ export async function getSchoolAdminDashboardHandler(
     next(error);
   }
 }
+
+
 
 /* =========================================
    PARENT DASHBOARD
