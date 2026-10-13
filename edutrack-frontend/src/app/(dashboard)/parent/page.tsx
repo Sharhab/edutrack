@@ -685,6 +685,30 @@ export default function ParentDashboardPage() {
             </div>
           </SectionCard>
         </div>
+        
+{/* CURRENT TERM FINANCE */}
+<SectionCard
+  title={`Current Term — ${data.currentTerm || "Not set"}`}
+  subtitle={`Academic session: ${data.currentSession || "Not set"}`}
+>
+  <div className="grid gap-4 sm:grid-cols-3">
+    <StatCard
+      title="Current Term Billed"
+      value={money(data.stats?.currentTermBilled)}
+    />
+
+    <StatCard
+      title="Current Term Paid"
+      value={money(data.stats?.currentTermPaid)}
+    />
+
+    <StatCard
+      title="Current Term Outstanding"
+      value={money(data.stats?.currentTermOutstanding)}
+    />
+  </div>
+</SectionCard>
+
       </div>
 
       {/* PAYMENT DIALOG */}
