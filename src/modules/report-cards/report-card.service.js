@@ -32,6 +32,40 @@ function calculateAverage(total, count) {
 }
 
 /* =========================================================
+   ACADEMIC PERIOD VALIDATION
+   A term must belong to the selected session and school.
+========================================================= */
+async function getValidatedAcademicPeriod({
+  schoolId,
+  sessionId,
+  termId,
+}) {
+  const session = await Session.findOne({
+    _id: sessionId,
+    schoolId,
+  });
+
+  if (!session) {
+    throw new ApiError(404, "Session not found");
+  }
+
+  const term = await Term.findOne({
+    _id: termId,
+    schoolId,
+    sessionId: session._id,
+  });
+
+  if (!term) {
+    throw new ApiError(
+      400,
+      "Term not found or does not belong to the selected session"
+    );
+  }
+
+  return { session, term };
+}
+
+/* =========================================================
    PERFORMANCE COMMENTS
    Data-driven comments for report cards
 ========================================================= */
@@ -122,25 +156,19 @@ const performanceComments = {
   },
 };
 
-
 /* =========================================================
    PERFORMANCE LEVEL
 ========================================================= */
 
 function getPerformanceLevel(averageScore) {
   if (averageScore >= 80) return "Excellent";
-
   if (averageScore >= 70) return "Very Good";
-
   if (averageScore >= 60) return "Good";
-
   if (averageScore >= 50) return "Fair";
-
   if (averageScore >= 40) return "Pass";
 
   return "Needs Improvement";
 }
-
 
 /* =========================================================
    COMMENT HELPERS
@@ -153,7 +181,6 @@ function pickComment(comments, seed = 0) {
 
   return comments[Math.abs(seed) % comments.length];
 }
-
 
 /* =========================================================
    BUILD PERFORMANCE COMMENT
@@ -290,6 +317,7 @@ function buildReportCardComments({
     principal: principalComment,
   };
 }
+
 /* =========================================================
    ATTENDANCE SUMMARY
 ========================================================= */
@@ -390,46 +418,6 @@ async function getReportCardAttendance({
       .lean();
 
   /* -------------------------------------------------------
-     DEBUG
-  ------------------------------------------------------- */
-
-  console.log(
-    "REPORT CARD ATTENDANCE DEBUG",
-    {
-      studentId: String(studentId),
-      classId: String(classId),
-      sessionId: String(sessionId),
-      termId: String(termId),
-
-      attendanceCount:
-        attendanceRecords.length,
-
-      attendance:
-        attendanceRecords.map((record) => ({
-          _id: String(record._id),
-          studentId:
-            record.studentId
-              ? String(record.studentId)
-              : null,
-          classId:
-            record.classId
-              ? String(record.classId)
-              : null,
-          sessionId:
-            record.sessionId
-              ? String(record.sessionId)
-              : null,
-          termId:
-            record.termId
-              ? String(record.termId)
-              : null,
-          date: record.date,
-          status: record.status,
-        })),
-    }
-  );
-
-  /* -------------------------------------------------------
      IF FOUND
   ------------------------------------------------------- */
 
@@ -439,90 +427,8 @@ async function getReportCardAttendance({
         attendanceRecords
       );
 
-    console.log(
-      "REPORT CARD ATTENDANCE SUMMARY",
-      summary
-    );
-
     return summary;
   }
-
-  /* -------------------------------------------------------
-     DIAGNOSTIC:
-     CHECK ALL ATTENDANCE FOR THIS STUDENT
-     
-     This does NOT use the result.
-     It only helps us identify mismatched academic IDs.
-  ------------------------------------------------------- */
-
-  const allStudentAttendance =
-    await Attendance.find({
-      schoolId,
-      studentId,
-    })
-      .select(
-        "_id studentId classId sessionId termId date status"
-      )
-      .sort({
-        date: 1,
-        createdAt: 1,
-      })
-      .lean();
-
-  console.log(
-    "ALL STUDENT ATTENDANCE DEBUG",
-    {
-      studentId: String(studentId),
-
-      totalRecords:
-        allStudentAttendance.length,
-
-      attendance:
-        allStudentAttendance.map((record) => ({
-          _id: String(record._id),
-
-          studentId:
-            record.studentId
-              ? String(record.studentId)
-              : null,
-
-          classId:
-            record.classId
-              ? String(record.classId)
-              : null,
-
-          sessionId:
-            record.sessionId
-              ? String(record.sessionId)
-              : null,
-
-          termId:
-            record.termId
-              ? String(record.termId)
-              : null,
-
-          date: record.date,
-          status: record.status,
-        })),
-    }
-  );
-
-  /* -------------------------------------------------------
-     NOT FOUND
-  ------------------------------------------------------- */
-
-  console.log(
-    "REPORT CARD ATTENDANCE NOT FOUND:",
-    {
-      studentId: String(studentId),
-      classId: String(classId),
-      sessionId: String(sessionId),
-      termId: String(termId),
-
-      totalStudentAttendance:
-        allStudentAttendance.length,
-    }
-  );
 
   return {
     total: 0,
@@ -646,32 +552,12 @@ export async function generateStudentReportCard({
      SESSION + TERM
   ------------------------------------------------------- */
 
-  const [session, term] =
-    await Promise.all([
-      Session.findOne({
-        _id: sessionObjectId,
-        schoolId,
-      }),
-
-      Term.findOne({
-        _id: termObjectId,
-        schoolId,
-      }),
-    ]);
-
-  if (!session) {
-    throw new ApiError(
-      404,
-      "Session not found"
-    );
-  }
-
-  if (!term) {
-    throw new ApiError(
-      404,
-      "Term not found"
-    );
-  }
+  const { session, term } =
+    await getValidatedAcademicPeriod({
+      schoolId,
+      sessionId: sessionObjectId,
+      termId: termObjectId,
+    });
 
   /* -------------------------------------------------------
      RESULTS
@@ -722,13 +608,13 @@ export async function generateStudentReportCard({
       results.length
     );
 
-   const comments =
-  buildReportCardComments({
-    averageScore,
-    results,
-    attendance,
-    studentId: studentObjectId,
-  });
+  const comments =
+    buildReportCardComments({
+      averageScore,
+      results,
+      attendance,
+      studentId: studentObjectId,
+    });
 
   /* -------------------------------------------------------
      CLASSMATES
@@ -880,22 +766,22 @@ export async function generateStudentReportCard({
       ),
 
       summary: {
-  subjectsCount:
-    results.length,
+        subjectsCount:
+          results.length,
 
-  totalScore,
+        totalScore,
 
-  averageScore,
+        averageScore,
 
-  position,
+        position,
 
-  positionLabel:
-    ordinal(position),
-},
+        positionLabel:
+          ordinal(position),
+      },
 
-attendance,
+      attendance,
 
-comments,
+      comments,
     },
   };
 }
@@ -1004,32 +890,12 @@ export async function generateClassReportSheet({
      SESSION + TERM
   ------------------------------------------------------- */
 
-  const [session, term] =
-    await Promise.all([
-      Session.findOne({
-        _id: sessionObjectId,
-        schoolId,
-      }),
-
-      Term.findOne({
-        _id: termObjectId,
-        schoolId,
-      }),
-    ]);
-
-  if (!session) {
-    throw new ApiError(
-      404,
-      "Session not found"
-    );
-  }
-
-  if (!term) {
-    throw new ApiError(
-      404,
-      "Term not found"
-    );
-  }
+  const { session, term } =
+    await getValidatedAcademicPeriod({
+      schoolId,
+      sessionId: sessionObjectId,
+      termId: termObjectId,
+    });
 
   /* -------------------------------------------------------
      STUDENTS
@@ -1066,22 +932,6 @@ export async function generateClassReportSheet({
       "subjectId",
       "name code"
     );
-
-  console.log(
-    "CLASS REPORT DEBUG"
-  );
-
-  console.log({
-    classId,
-    sessionId,
-    termId,
-
-    totalStudents:
-      students.length,
-
-    totalResults:
-      results.length,
-  });
 
   /* -------------------------------------------------------
      MAP STUDENTS
@@ -1319,6 +1169,13 @@ export async function generateClassReportCardsBundle({
       "Class not found"
     );
   }
+
+  // Validate the academic period even when the class has no active students.
+  await getValidatedAcademicPeriod({
+    schoolId,
+    sessionId: new mongoose.Types.ObjectId(sessionId),
+    termId: new mongoose.Types.ObjectId(termId),
+  });
 
   /* -------------------------------------------------------
      STUDENTS
