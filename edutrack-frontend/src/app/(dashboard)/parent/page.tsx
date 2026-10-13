@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -77,6 +76,7 @@ export default function ParentDashboardPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [payingFeeId, setPayingFeeId] = useState<string | null>(
     null
   );
@@ -84,6 +84,7 @@ export default function ParentDashboardPage() {
   const [selectedFee, setSelectedFee] = useState<StudentFee | null>(
     null
   );
+
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentError, setPaymentError] = useState("");
 
@@ -220,8 +221,8 @@ export default function ParentDashboardPage() {
         policy.minimumPaymentAmount || 0
       );
 
-      // The remaining balance may be paid even when it is
-      // smaller than the configured minimum.
+      // Allow payment of the full remaining balance even when
+      // that balance is below the configured minimum.
       if (
         minimum > 0 &&
         amount < minimum &&
@@ -267,7 +268,7 @@ export default function ParentDashboardPage() {
         );
       }
 
-      // Keep the existing hosted Paystack checkout flow.
+      // Preserve the existing hosted Paystack checkout flow.
       window.location.assign(authorizationUrl);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
@@ -332,7 +333,8 @@ export default function ParentDashboardPage() {
     ? (() => {
         const child = data.children?.find(
           (item: any) =>
-            String(item._id) === String(getStudentId(selectedFee))
+            String(item._id) ===
+            String(getStudentId(selectedFee))
         );
 
         return child
@@ -383,11 +385,15 @@ export default function ParentDashboardPage() {
         </div>
       </div>
 
-      {/* SUMMARY */}
+      {/* ALL-TIME SUMMARY */}
       <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="My Children"
-          value={data.stats?.totalChildren || data.children?.length || 0}
+          value={
+            data.stats?.totalChildren ||
+            data.children?.length ||
+            0
+          }
         />
 
         <StatCard
@@ -406,8 +412,41 @@ export default function ParentDashboardPage() {
         />
       </div>
 
+      {/* CURRENT TERM FINANCE */}
+      <SectionCard
+        title={`Current Term — ${data.currentTerm || "Not set"}`}
+        subtitle={`Academic session: ${data.currentSession || "Not set"}`}
+      >
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <StatCard
+            title="Current Term Billed"
+            value={money(
+              data.stats?.currentTermBilled ??
+                data.currentTermFinance?.totalBilled
+            )}
+          />
+
+          <StatCard
+            title="Current Term Paid"
+            value={money(
+              data.stats?.currentTermPaid ??
+                data.currentTermFinance?.totalPaid
+            )}
+          />
+
+          <StatCard
+            title="Current Term Outstanding"
+            value={money(
+              data.stats?.currentTermOutstanding ??
+                data.currentTermFinance?.totalOutstanding
+            )}
+          />
+        </div>
+      </SectionCard>
+
       {/* CHILDREN AND SIDEBAR */}
       <div className="grid gap-6 xl:grid-cols-3">
+        {/* CHILDREN */}
         <div className="xl:col-span-2">
           <SectionCard
             title="My Children"
@@ -483,12 +522,16 @@ export default function ParentDashboardPage() {
 
                             <p>
                               Session:{" "}
-                              {child.session || data.currentSession || "N/A"}
+                              {child.session ||
+                                data.currentSession ||
+                                "N/A"}
                             </p>
 
                             <p>
                               Term:{" "}
-                              {child.term || data.currentTerm || "N/A"}
+                              {child.term ||
+                                data.currentTerm ||
+                                "N/A"}
                             </p>
                           </div>
                         </div>
@@ -548,6 +591,7 @@ export default function ParentDashboardPage() {
 
         {/* SIDEBAR */}
         <div className="space-y-6">
+          {/* ANNOUNCEMENTS */}
           <div id="announcements">
             <SectionCard
               title="Announcements"
@@ -575,7 +619,9 @@ export default function ParentDashboardPage() {
 
                       {item.createdAt && (
                         <p className="mt-3 text-xs text-slate-500">
-                          {new Date(item.createdAt).toLocaleDateString()}
+                          {new Date(
+                            item.createdAt
+                          ).toLocaleDateString()}
                         </p>
                       )}
                     </div>
@@ -585,6 +631,7 @@ export default function ParentDashboardPage() {
             </SectionCard>
           </div>
 
+          {/* UPCOMING FEES */}
           <div id="upcoming-fees">
             <SectionCard
               title="Upcoming Fees"
@@ -600,7 +647,8 @@ export default function ParentDashboardPage() {
                   upcomingFees.slice(0, 8).map((fee) => {
                     const child = data.children?.find(
                       (item: any) =>
-                        String(item._id) === String(getStudentId(fee))
+                        String(item._id) ===
+                        String(getStudentId(fee))
                     );
 
                     return (
@@ -647,6 +695,7 @@ export default function ParentDashboardPage() {
             </SectionCard>
           </div>
 
+          {/* ALL-TIME PAYMENT SUMMARY */}
           <SectionCard
             title="Payment Summary"
             subtitle="Your recorded fee totals"
@@ -678,6 +727,7 @@ export default function ParentDashboardPage() {
                   <CalendarDays size={15} className="mr-2" />
                   Current term
                 </span>
+
                 <span className="text-right text-white">
                   {data.currentTerm || "Not set"}
                 </span>
@@ -685,30 +735,6 @@ export default function ParentDashboardPage() {
             </div>
           </SectionCard>
         </div>
-        
-{/* CURRENT TERM FINANCE */}
-<SectionCard
-  title={`Current Term — ${data.currentTerm || "Not set"}`}
-  subtitle={`Academic session: ${data.currentSession || "Not set"}`}
->
-  <div className="grid gap-4 sm:grid-cols-3">
-    <StatCard
-      title="Current Term Billed"
-      value={money(data.stats?.currentTermBilled)}
-    />
-
-    <StatCard
-      title="Current Term Paid"
-      value={money(data.stats?.currentTermPaid)}
-    />
-
-    <StatCard
-      title="Current Term Outstanding"
-      value={money(data.stats?.currentTermOutstanding)}
-    />
-  </div>
-</SectionCard>
-
       </div>
 
       {/* PAYMENT DIALOG */}
@@ -728,6 +754,7 @@ export default function ParentDashboardPage() {
             aria-labelledby="payment-dialog-title"
             className="my-auto w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
           >
+            {/* DIALOG HEADER */}
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2
@@ -753,6 +780,7 @@ export default function ParentDashboardPage() {
               </button>
             </div>
 
+            {/* SELECTED FEE */}
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
               <p className="text-sm text-slate-400">
                 {selectedFee.title || "School Fees"}
@@ -783,6 +811,7 @@ export default function ParentDashboardPage() {
               </div>
             </div>
 
+            {/* FLEXIBLE PARTIAL PAYMENT */}
             {selectedMode === "flexible_partial" && (
               <div className="mt-5">
                 <label
@@ -809,13 +838,17 @@ export default function ParentDashboardPage() {
                   placeholder="Enter payment amount"
                 />
 
-                {Number(selectedPolicy.minimumPaymentAmount || 0) > 0 && (
+                {Number(
+                  selectedPolicy.minimumPaymentAmount || 0
+                ) > 0 && (
                   <p className="mt-2 text-xs text-slate-400">
                     Minimum payment:{" "}
-                    {money(selectedPolicy.minimumPaymentAmount)}
+                    {money(
+                      selectedPolicy.minimumPaymentAmount
+                    )}
                     {" • "}
-                    You may pay a smaller amount if it clears the full
-                    remaining balance.
+                    You may pay a smaller amount if it clears the
+                    full remaining balance.
                   </p>
                 )}
 
@@ -832,6 +865,7 @@ export default function ParentDashboardPage() {
               </div>
             )}
 
+            {/* FIXED INSTALLMENT */}
             {selectedMode === "fixed_installment" && (
               <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-sm text-slate-400">
@@ -841,7 +875,9 @@ export default function ParentDashboardPage() {
                 <p className="mt-1 text-xl font-bold text-white">
                   {money(
                     Math.min(
-                      Number(selectedPolicy.installmentAmount || 0),
+                      Number(
+                        selectedPolicy.installmentAmount || 0
+                      ),
                       selectedBalance
                     )
                   )}
@@ -856,6 +892,7 @@ export default function ParentDashboardPage() {
               </div>
             )}
 
+            {/* FULL PAYMENT */}
             {selectedMode === "full_only" && (
               <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-sm text-slate-400">
@@ -872,6 +909,7 @@ export default function ParentDashboardPage() {
               </div>
             )}
 
+            {/* REMAINING BALANCE */}
             <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
               <span className="text-sm text-slate-400">
                 Balance after payment
@@ -882,6 +920,7 @@ export default function ParentDashboardPage() {
               </span>
             </div>
 
+            {/* PAYMENT ERROR */}
             {paymentError && (
               <div
                 role="alert"
@@ -891,6 +930,7 @@ export default function ParentDashboardPage() {
               </div>
             )}
 
+            {/* PAYMENT ACTIONS */}
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
@@ -913,6 +953,7 @@ export default function ParentDashboardPage() {
                 className="btn-primary inline-flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <CreditCard size={16} className="mr-2" />
+
                 {payingFeeId === selectedFee._id
                   ? "Connecting to Paystack..."
                   : "Continue to Paystack"}
