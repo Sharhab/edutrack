@@ -66,6 +66,21 @@ const {
   loading,
   recentAnnouncements,
   recentResults,
+
+  sessions,
+  terms,
+
+  selectedSession,
+  selectedTerm,
+
+  selectedSessionId,
+  selectedTermId,
+
+  setSelectedSessionId,
+  setSelectedTermId,
+
+  isCurrentPeriod,
+  periodsLoading,
 } = useSchoolAdminDashboard();
   /* =========================================
      SAFE FINANCE ALIGNMENT
@@ -120,7 +135,114 @@ const {
           HERO
       ========================================= */}
       <TenantDashboardHero />
+      {/* ACADEMIC PERIOD SELECTOR */}
+<div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+  <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div>
+      <h2 className="text-lg font-semibold text-slate-900">
+        Academic Period
+      </h2>
 
+      <p className="mt-1 text-sm text-slate-500">
+        Select a session and term to view the
+        corresponding school records and finances.
+      </p>
+
+      <span
+        className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+          isCurrentPeriod
+            ? "bg-green-100 text-green-700"
+            : "bg-amber-100 text-amber-700"
+        }`}
+      >
+        {isCurrentPeriod
+          ? "Current academic period"
+          : "Historical academic period"}
+      </span>
+    </div>
+
+    <div className="grid w-full gap-3 md:max-w-xl md:grid-cols-2">
+      <div>
+        <label
+          htmlFor="dashboard-session"
+          className="mb-1 block text-sm font-medium text-slate-700"
+        >
+          Academic session
+        </label>
+
+        <select
+          id="dashboard-session"
+          value={selectedSessionId}
+          disabled={periodsLoading}
+          onChange={(event) => {
+            setSelectedTermId("");
+            setSelectedSessionId(event.target.value);
+          }}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-cyan-500"
+        >
+          {sessions.map((session) => (
+            <option
+              key={session._id}
+              value={session._id}
+            >
+              {session.name}
+              {session.isCurrent ? " (Current)" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label
+          htmlFor="dashboard-term"
+          className="mb-1 block text-sm font-medium text-slate-700"
+        >
+          Academic term
+        </label>
+
+        <select
+          id="dashboard-term"
+          value={selectedTermId}
+          disabled={
+            periodsLoading ||
+            !selectedSessionId ||
+            terms.length === 0
+          }
+          onChange={(event) =>
+            setSelectedTermId(event.target.value)
+          }
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-cyan-500"
+        >
+          {terms.map((term) => (
+            <option
+              key={term._id}
+              value={term._id}
+            >
+              {term.name}
+              {term.isCurrent ? " (Current)" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  {selectedSession && selectedTerm && (
+    <p className="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-500">
+      Viewing:{" "}
+      <span className="font-medium text-slate-800">
+        {selectedSession.name} · {selectedTerm.name}
+      </span>
+    </p>
+  )}
+
+  {!periodsLoading && sessions.length === 0 && (
+    <p className="mt-3 text-sm text-amber-700">
+      No academic sessions were found. Configure a session
+      and term before using the period dashboard.
+    </p>
+  )}
+</div>
        
       <SubscriptionBanner
         daysLeft={subscription?.daysLeft}
