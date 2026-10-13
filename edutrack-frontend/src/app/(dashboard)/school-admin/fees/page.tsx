@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -39,7 +38,11 @@ type ClassItem = {
   section?: string | { name?: string } | null;
 };
 type SessionItem = { _id: string; name: string };
-type TermItem = { _id: string; name: string };
+type TermItem = {
+  _id: string;
+  name: string;
+  sessionId?: SelectReference;
+};
 
 type StudentItem = {
   _id: string;
@@ -138,17 +141,17 @@ export default function FeePlansPage() {
     classId: "",
     feePlanId: "",
   });
-const [bulkTitle, setBulkTitle] = useState("");
-const [bulkDescription, setBulkDescription] = useState("");
-const [bulkSessionId, setBulkSessionId] = useState("");
-const [bulkTermId, setBulkTermId] = useState("");
-const [bulkPaymentMode, setBulkPaymentMode] =
-  useState<PaymentMode>("full_only");
-const [bulkMinimumPayment, setBulkMinimumPayment] = useState("");
-const [bulkInstallment, setBulkInstallment] = useState("");
+  const [bulkTitle, setBulkTitle] = useState("");
+  const [bulkDescription, setBulkDescription] = useState("");
+  const [bulkSessionId, setBulkSessionId] = useState("");
+  const [bulkTermId, setBulkTermId] = useState("");
+  const [bulkPaymentMode, setBulkPaymentMode] =
+    useState<PaymentMode>("full_only");
+  const [bulkMinimumPayment, setBulkMinimumPayment] = useState("");
+  const [bulkInstallment, setBulkInstallment] = useState("");
 
-const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
-const [classAmounts, setClassAmounts] = useState<Record<string, string>>({});
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [classAmounts, setClassAmounts] = useState<Record<string, string>>({});
   
   const loadAll = useCallback(async () => {
     setLoadingData(true);
@@ -189,6 +192,24 @@ const [classAmounts, setClassAmounts] = useState<Record<string, string>>({});
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  const formTerms = useMemo(() => {
+    if (!form.sessionId) return [];
+    const matching = terms.filter((term) => {
+      const termSessionId = getReferenceId(term.sessionId);
+      return !termSessionId || termSessionId === form.sessionId;
+    });
+    return matching;
+  }, [terms, form.sessionId]);
+
+  const bulkTerms = useMemo(() => {
+    if (!bulkSessionId) return [];
+    const matching = terms.filter((term) => {
+      const termSessionId = getReferenceId(term.sessionId);
+      return !termSessionId || termSessionId === bulkSessionId;
+    });
+    return matching;
+  }, [terms, bulkSessionId]);
 
   const selectedModeDescription = useMemo(
     () =>
@@ -254,7 +275,7 @@ const [classAmounts, setClassAmounts] = useState<Record<string, string>>({});
     setPageError("");
     setNotice("");
   }
-function getClassLevelLabel(item: ClassItem): string {
+  function getClassLevelLabel(item: ClassItem): string {
   const value = item.level ?? item.schoolLevel ?? item.section;
 
   if (typeof value === "string" && value.trim()) return value;
@@ -263,7 +284,7 @@ function getClassLevelLabel(item: ClassItem): string {
   return "Other classes";
 }
 
-const groupedClasses = classes.reduce<Record<string, ClassItem[]>>(
+  const groupedClasses = classes.reduce<Record<string, ClassItem[]>>(
   (groups, item) => {
     const label = getClassLevelLabel(item);
     (groups[label] ||= []).push(item);
@@ -272,7 +293,7 @@ const groupedClasses = classes.reduce<Record<string, ClassItem[]>>(
   {}
 );
 
-function toggleBulkClass(classId: string) {
+  function toggleBulkClass(classId: string) {
   setSelectedClassIds((current) =>
     current.includes(classId)
       ? current.filter((id) => id !== classId)
@@ -280,11 +301,194 @@ function toggleBulkClass(classId: string) {
   );
 }
 
-function updateClassAmount(classId: string, amount: string) {
+  function updateClassAmount(classId: string, amount: string) {
   setClassAmounts((current) => ({
     ...current,
     [classId]: amount,
   }));
+}
+
+const bulkTotal = selectedClassIds.reduce(
+  (sum, classId) => sum + (Number(classAmounts[classId]) || 0),
+  0
+);
+
+async function submitBulkClassFees(
+  event: React.FormEvent<HTMLFormElement>
+) {
+  event.preventDefault();
+  setPageError("");
+  setNotice("");
+
+  if (!bulkTitle.trim()) {
+    setPageError("Enter a fee-plan title.");
+    return;
+  }
+
+  if (!bulkSessionId || !bulkTermId) {
+    setPageError("Select an academic session and term.");
+    return;
+  }
+
+  if (selectedClassIds.length === 0) {
+    setPageError("Select at least one class.");
+    return;
+  }
+
+  const amounts = selectedClassIds.map((classId) =>
+    Number(classAmounts[classId])
+  );
+
+  if (amounts.some((amount) => !Number.isFinite(amount) || amount <= 0)) {
+    setPageError(
+      "Enter a valid fee amount greater than zero for every selected class."
+    );
+    return;
+  }
+
+  const minimumSelectedAmount = Math.min(...amounts);
+  const minimumPayment =
+    bulkMinimumPayment.trim() === "" ? null : Number(bulkMinimumPayment);
+  const installment =
+    bulkInstallment.trim() === "" ? null : Number(bulkInstallment);
+
+  if (
+    bulkPaymentMode === "flexible_partial" &&
+    minimumPayment !== null &&
+    (!Number.isFinite(minimumPayment) ||
+      minimumPayment <= 0 ||
+      minimumPayment > minimumSelectedAmount)
+  ) {
+    setPageError(
+      "The minimum payment cannot exceed any selected class fee."
+    );
+    return;
+  }
+
+  if (
+    bulkPaymentMode === "fixed_installment" &&
+    (installment === null ||
+      !Number.isFinite(installment) ||
+      installment <= 0 ||
+      installment > minimumSelectedAmount)
+  ) {
+    setPageError(
+      "The installment cannot exceed any selected class fee."
+    );
+    return;
+  }
+
+  const paymentPolicy: PaymentPolicy = {
+    mode: bulkPaymentMode,
+    minimumPaymentAmount:
+      bulkPaymentMode === "flexible_partial" ? minimumPayment : null,
+    installmentAmount:
+      bulkPaymentMode === "fixed_installment" ? installment : null,
+  };
+
+  setLoading(true);
+  const failures: string[] = [];
+  let created = 0;
+  let updated = 0;
+  let assigned = 0;
+
+  try {
+    for (const classId of selectedClassIds) {
+      const schoolClass = classes.find((item) => item._id === classId);
+      const className = schoolClass?.name || classId;
+      const amount = Number(classAmounts[classId]);
+
+      try {
+        const existingPlan = feePlans.find(
+          (plan) =>
+            getReferenceId(plan.classId) === classId &&
+            getReferenceId(plan.sessionId) === bulkSessionId &&
+            getReferenceId(plan.termId) === bulkTermId
+        );
+
+        const payload = {
+          title: bulkTitle.trim(),
+          amount,
+          description: bulkDescription.trim(),
+          paymentPolicy,
+        };
+
+        let feePlanId: string;
+
+        if (existingPlan) {
+          // Existing student invoices/payment records are not rewritten here.
+          await api.patch(
+            `/finance/fees/plans/${existingPlan._id}`,
+            payload
+          );
+          feePlanId = existingPlan._id;
+          updated++;
+        } else {
+          const response = await api.post("/finance/fees/plans", {
+            ...payload,
+            classId,
+            sessionId: bulkSessionId,
+            termId: bulkTermId,
+          });
+
+          feePlanId = response.data?.data?._id;
+          if (!feePlanId) {
+            throw new Error(
+              "The server did not return the created fee-plan ID."
+            );
+          }
+          created++;
+        }
+
+        // Uses the existing idempotent class assignment route.
+        const assignmentResponse = await api.post(
+          "/finance/fees/assign-class",
+          { classId, feePlanId }
+        );
+        const summary = assignmentResponse.data?.data?.summary;
+
+        if (summary?.failed > 0) {
+          failures.push(
+            `${className}: ${summary.failed} student assignment(s) failed.`
+          );
+        } else {
+          assigned++;
+        }
+      } catch (error: unknown) {
+        failures.push(
+          `${className}: ${getErrorMessage(
+            error,
+            "Fee creation or assignment failed."
+          )}`
+        );
+      }
+    }
+
+    await loadAll();
+
+    const summaryMessage =
+      `Created ${created} plan(s), updated ${updated} existing plan(s), ` +
+      `and completed assignment for ${assigned} class(es).`;
+
+    if (failures.length > 0) {
+      setNotice(summaryMessage);
+      setPageError(
+        `Some classes need attention:\n${failures.join("\n")}`
+      );
+    } else {
+      setNotice(
+        `${summaryMessage} Existing student balances and payment history were not reset by this page.`
+      );
+      setSelectedClassIds([]);
+      setClassAmounts({});
+    }
+  } catch (error: unknown) {
+    setPageError(
+      getErrorMessage(error, "Bulk fee assignment failed.")
+    );
+  } finally {
+    setLoading(false);
+  }
 }
   
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -606,7 +810,11 @@ function updateClassAmount(classId: string, amount: string) {
                 disabled={Boolean(editingPlanId)}
                 value={form.sessionId}
                 onChange={(event) =>
-                  setForm({ ...form, sessionId: event.target.value })
+                  setForm({
+                    ...form,
+                    sessionId: event.target.value,
+                    termId: "",
+                  })
                 }
                 className="w-full rounded-xl border border-white/10 bg-black/30 p-3 disabled:opacity-60"
               >
@@ -623,7 +831,7 @@ function updateClassAmount(classId: string, amount: string) {
               <span>Term</span>
               <select
                 required
-                disabled={Boolean(editingPlanId)}
+                disabled={Boolean(editingPlanId) || !form.sessionId}
                 value={form.termId}
                 onChange={(event) =>
                   setForm({ ...form, termId: event.target.value })
@@ -631,7 +839,7 @@ function updateClassAmount(classId: string, amount: string) {
                 className="w-full rounded-xl border border-white/10 bg-black/30 p-3 disabled:opacity-60"
               >
                 <option value="">Select term</option>
-                {terms.map((item) => (
+                {formTerms.map((item) => (
                   <option key={item._id} value={item._id}>
                     {item.name}
                   </option>
@@ -803,7 +1011,10 @@ function updateClassAmount(classId: string, amount: string) {
         <select
           required
           value={bulkSessionId}
-          onChange={(event) => setBulkSessionId(event.target.value)}
+          onChange={(event) => {
+            setBulkSessionId(event.target.value);
+            setBulkTermId("");
+          }}
           className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
         >
           <option value="">Select session</option>
@@ -820,11 +1031,12 @@ function updateClassAmount(classId: string, amount: string) {
         <select
           required
           value={bulkTermId}
+          disabled={!bulkSessionId}
           onChange={(event) => setBulkTermId(event.target.value)}
           className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
         >
           <option value="">Select term</option>
-          {terms.map((item) => (
+          {bulkTerms.map((item) => (
             <option key={item._id} value={item._id}>
               {item.name}
             </option>
@@ -975,6 +1187,16 @@ function updateClassAmount(classId: string, amount: string) {
           </span>
         </label>
       )}
+    </div>
+
+    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+      <p className="text-sm text-white/60">
+        Illustrative total across selected classes
+      </p>
+      <p className="mt-1 text-2xl font-bold">{formatMoney(bulkTotal)}</p>
+      <p className="mt-1 text-xs text-white/50">
+        This sums one fee amount per selected class, not the amount billed to all students.
+      </p>
     </div>
 
     <button
@@ -1208,6 +1430,5 @@ function updateClassAmount(classId: string, amount: string) {
           </button>
         </form>
       </section>
-    </div>
-  );
+    </div>  );
 }
