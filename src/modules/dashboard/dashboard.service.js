@@ -40,68 +40,160 @@ function normalizeSchoolId(user) {
     user.schoolId
   );
 }
-
-export async function getSchoolAdminDashboard(user) {
-  const schoolId = new mongoose.Types.ObjectId(
-    String(user.schoolId)
-  );
-
+export async function getSchoolAdminDashboard(user, selection = {}) {
+  const schoolId = normalizeSchoolId(user);
   const school = await School.findById(schoolId);
 
   if (!school) {
     throw new ApiError(404, "School not found");
   }
 
-  // Resolve the active session.
-  let activeSession = await Session.findOne({
-    schoolId,
-    isCurrent: true,
-  }).sort({ createdAt: -1 });
+  const requestedSessionId = String(
+    selection.sessionId || ""
+  ).trim();
 
-  if (!activeSession && school.currentSession) {
-    activeSession = await Session.findOne({
-      schoolId,
-      name: school.currentSession,
-    });
+  const requestedTermId = String(
+    selection.termId || ""
+  ).trim();
+
+  if (
+    requestedSessionId &&
+    !mongoose.Types.ObjectId.isValid(requestedSessionId)
+  ) {
+    throw new ApiError(400, "Invalid sessionId");
   }
 
-  // Resolve the active term within that session.
+  if (
+    requestedTermId &&
+    !mongoose.Types.ObjectId.isValid(requestedTermId)
+  ) {
+    throw new ApiError(400, "Invalid termId");
+  }
+
+  let activeSession = null;
   let activeTerm = null;
 
-  if (activeSession) {
+  // If a term is selected, verify it belongs to this school
+  // and, when supplied, the selected session.
+  if (requestedTermId) {
+    activeTerm = await Term.findOne({
+      _id: requestedTermId,
+      schoolId,
+      ...(requestedSessionId
+        ? { sessionId: requestedSessionId }
+        : {}),
+    });
+
+    if (!activeTerm) {
+      throw new ApiError(
+        400,
+        "Selected term does not belong to this school or session"
+      );
+    }
+
+    activeSession = await Session.findOne({
+      _id: activeTerm.sessionId,
+      schoolId,
+    });
+
+    if (!activeSession) {
+      throw new ApiError(
+        404,
+        "The selected term's session was not found"
+      );
+    }
+  } else if (requestedSessionId) {
+    activeSession = await Session.findOne({
+      _id: requestedSessionId,
+      schoolId,
+    });
+
+    if (!activeSession) {
+      throw new ApiError(
+        404,
+        "Selected session not found"
+      );
+    }
+  } else {
+    // Default to the school's current session.
+    activeSession = await Session.findOne({
+      schoolId,
+      isCurrent: true,
+    }).sort({ createdAt: -1 });
+
+    if (!activeSession && school.currentSession) {
+      activeSession = await Session.findOne({
+        schoolId,
+        name: school.currentSession,
+      });
+    }
+  }
+
+  if (activeSession && !activeTerm) {
+    // Prefer the current term in the selected session.
     activeTerm = await Term.findOne({
       schoolId,
       sessionId: activeSession._id,
       isCurrent: true,
     }).sort({ createdAt: -1 });
 
-    if (!activeTerm && school.currentTerm) {
+    if (
+      !activeTerm &&
+      !requestedSessionId &&
+      school.currentTerm
+    ) {
       activeTerm = await Term.findOne({
         schoolId,
         sessionId: activeSession._id,
         name: school.currentTerm,
       });
     }
+
+    // If browsing an old session, default to its latest term.
+    if (!activeTerm && requestedSessionId) {
+      activeTerm = await Term.findOne({
+        schoolId,
+        sessionId: activeSession._id,
+      }).sort({
+        order: -1,
+        startDate: -1,
+        createdAt: -1,
+      });
+    }
   }
 
-  const periodMatch =
+  const hasSelectedPeriod = Boolean(
     activeSession && activeTerm
-      ? {
-          schoolId,
-          $or: [
-            {
-              sessionId: activeSession._id,
-              termId: activeTerm._id,
-            },
-            {
-              sessionId: { $exists: false },
-              termId: { $exists: false },
-              session: activeSession.name,
-              term: activeTerm.name,
-            },
-          ],
-        }
-      : null;
+  );
+
+  // Current-period fee obligations. Legacy records that contain
+  // session/term names instead of IDs are supported as well.
+  const periodMatch = hasSelectedPeriod
+    ? {
+        schoolId,
+        $or: [
+          {
+            sessionId: activeSession._id,
+            termId: activeTerm._id,
+          },
+          {
+            sessionId: { $exists: false },
+            termId: { $exists: false },
+            session: activeSession.name,
+            term: activeTerm.name,
+          },
+        ],
+      }
+    : null;
+
+  const attendanceMatch = hasSelectedPeriod
+    ? {
+        schoolId,
+        sessionId: activeSession._id,
+        termId: activeTerm._id,
+        status: "present",
+      }
+    : null;
 
   const [
     students,
@@ -110,10 +202,12 @@ export async function getSchoolAdminDashboard(user) {
     subjects,
     attendance,
     allFinanceRows,
-    currentFinanceRows,
+    selectedFinanceRows,
     recentAnnouncements,
     recentResults,
+    selectedFees,
   ] = await Promise.all([
+    // These are school-wide directory counts.
     Student.countDocuments({ schoolId }),
 
     Teacher.countDocuments({
@@ -122,9 +216,14 @@ export async function getSchoolAdminDashboard(user) {
     }),
 
     ClassModel.countDocuments({ schoolId }),
-    SubjectModel.countDocuments({ schoolId }),
-    Attendance.countDocuments({ schoolId }),
 
+    SubjectModel.countDocuments({ schoolId }),
+
+    attendanceMatch
+      ? Attendance.countDocuments(attendanceMatch)
+      : Promise.resolve(0),
+
+    // Keep all-time totals available for a separate report.
     StudentFee.aggregate([
       { $match: { schoolId } },
       {
@@ -136,18 +235,27 @@ export async function getSchoolAdminDashboard(user) {
           invoicesTotal: { $sum: 1 },
           invoicesPaid: {
             $sum: {
-              $cond: [{ $eq: ["$status", "paid"] }, 1, 0],
+              $cond: [
+                { $eq: ["$status", "paid"] },
+                1,
+                0,
+              ],
             },
           },
           invoicesPending: {
             $sum: {
-              $cond: [{ $gt: ["$balance", 0] }, 1, 0],
+              $cond: [
+                { $gt: ["$balance", 0] },
+                1,
+                0,
+              ],
             },
           },
         },
       },
     ]),
 
+    // Main finance figures are restricted to the selected term.
     periodMatch
       ? StudentFee.aggregate([
           { $match: periodMatch },
@@ -160,12 +268,20 @@ export async function getSchoolAdminDashboard(user) {
               invoicesTotal: { $sum: 1 },
               invoicesPaid: {
                 $sum: {
-                  $cond: [{ $eq: ["$status", "paid"] }, 1, 0],
+                  $cond: [
+                    { $eq: ["$status", "paid"] },
+                    1,
+                    0,
+                  ],
                 },
               },
               invoicesPending: {
                 $sum: {
-                  $cond: [{ $gt: ["$balance", 0] }, 1, 0],
+                  $cond: [
+                    { $gt: ["$balance", 0] },
+                    1,
+                    0,
+                  ],
                 },
               },
             },
@@ -173,20 +289,40 @@ export async function getSchoolAdminDashboard(user) {
         ])
       : Promise.resolve([]),
 
+    // Announcements remain school-wide.
     Announcement.find({ schoolId })
       .sort({ createdAt: -1 })
       .limit(5)
       .select("title message createdAt"),
 
-    Result.find({ schoolId })
-      .populate("studentId", "firstName lastName")
-      .populate("subjectId", "name code")
-      .sort({ createdAt: -1 })
-      .limit(10),
+    // Only return results from the selected academic period.
+    hasSelectedPeriod
+      ? Result.find({
+          schoolId,
+          sessionId: activeSession._id,
+          termId: activeTerm._id,
+        })
+          .populate(
+            "studentId",
+            "firstName lastName"
+          )
+          .populate(
+            "subjectId",
+            "name code"
+          )
+          .sort({ createdAt: -1 })
+          .limit(10)
+      : Promise.resolve([]),
+
+    periodMatch
+      ? StudentFee.find(periodMatch)
+          .select("_id")
+          .lean()
+      : Promise.resolve([]),
   ]);
 
   const all = allFinanceRows[0] || {};
-  const current = currentFinanceRows[0] || {};
+  const selected = selectedFinanceRows[0] || {};
 
   const finance = (row) => ({
     revenue: Number(row.revenue || 0),
@@ -197,9 +333,31 @@ export async function getSchoolAdminDashboard(user) {
     invoicesPending: Number(row.invoicesPending || 0),
   });
 
+  // Count successful payment records linked to fees in this period.
+  const selectedFeeIds = selectedFees.map(
+    (fee) => fee._id
+  );
+
+  const paymentsTotal = selectedFeeIds.length
+    ? await Payment.countDocuments({
+        schoolId,
+        studentFeeId: {
+          $in: selectedFeeIds,
+        },
+        status: "success",
+      })
+    : 0;
+
   return {
     currentSession: activeSession?.name || "",
     currentTerm: activeTerm?.name || "",
+    currentSessionId: activeSession?._id || null,
+    currentTermId: activeTerm?._id || null,
+
+    isCurrentPeriod: Boolean(
+      activeSession?.isCurrent &&
+      activeTerm?.isCurrent
+    ),
 
     stats: {
       students,
@@ -209,18 +367,13 @@ export async function getSchoolAdminDashboard(user) {
       subjects,
       attendance,
 
-      // Backward-compatible all-time values.
-      ...finance(all),
+      // These are now selected-period values.
+      ...finance(selected),
 
-      // Explicit current-term values.
-      currentTermRevenue: finance(current).revenue,
-      currentTermExpected: finance(current).expected,
-      currentTermOutstanding: finance(current).outstanding,
-      currentTermInvoicesTotal: finance(current).invoicesTotal,
-      currentTermInvoicesPaid: finance(current).invoicesPaid,
-      currentTermInvoicesPending: finance(current).invoicesPending,
+      // Preserve all-time figures for future reporting.
+      allTimeFinance: finance(all),
 
-      paymentsTotal: finance(all).invoicesPaid,
+      paymentsTotal,
     },
 
     recentAnnouncements,
