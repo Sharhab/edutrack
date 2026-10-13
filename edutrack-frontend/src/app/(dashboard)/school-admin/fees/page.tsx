@@ -31,7 +31,13 @@ type FeePlan = {
   paymentPolicy?: PaymentPolicy;
 };
 
-type ClassItem = { _id: string; name: string };
+type ClassItem = {
+  _id: string;
+  name: string;
+  level?: string | { name?: string } | null;
+  schoolLevel?: string | { name?: string } | null;
+  section?: string | { name?: string } | null;
+};
 type SessionItem = { _id: string; name: string };
 type TermItem = { _id: string; name: string };
 
@@ -132,7 +138,18 @@ export default function FeePlansPage() {
     classId: "",
     feePlanId: "",
   });
+const [bulkTitle, setBulkTitle] = useState("");
+const [bulkDescription, setBulkDescription] = useState("");
+const [bulkSessionId, setBulkSessionId] = useState("");
+const [bulkTermId, setBulkTermId] = useState("");
+const [bulkPaymentMode, setBulkPaymentMode] =
+  useState<PaymentMode>("full_only");
+const [bulkMinimumPayment, setBulkMinimumPayment] = useState("");
+const [bulkInstallment, setBulkInstallment] = useState("");
 
+const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+const [classAmounts, setClassAmounts] = useState<Record<string, string>>({});
+  
   const loadAll = useCallback(async () => {
     setLoadingData(true);
     setLoadError("");
@@ -237,7 +254,39 @@ export default function FeePlansPage() {
     setPageError("");
     setNotice("");
   }
+function getClassLevelLabel(item: ClassItem): string {
+  const value = item.level ?? item.schoolLevel ?? item.section;
 
+  if (typeof value === "string" && value.trim()) return value;
+  if (value && typeof value === "object" && value.name) return value.name;
+
+  return "Other classes";
+}
+
+const groupedClasses = classes.reduce<Record<string, ClassItem[]>>(
+  (groups, item) => {
+    const label = getClassLevelLabel(item);
+    (groups[label] ||= []).push(item);
+    return groups;
+  },
+  {}
+);
+
+function toggleBulkClass(classId: string) {
+  setSelectedClassIds((current) =>
+    current.includes(classId)
+      ? current.filter((id) => id !== classId)
+      : [...current, classId]
+  );
+}
+
+function updateClassAmount(classId: string, amount: string) {
+  setClassAmounts((current) => ({
+    ...current,
+    [classId]: amount,
+  }));
+}
+  
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPageError("");
@@ -725,6 +774,218 @@ export default function FeePlansPage() {
           </div>
         </form>
       </section>
+
+      <section className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+  <div>
+    <h2 className="text-lg font-semibold">Set Fees for Selected Classes</h2>
+    <p className="mt-1 text-sm text-white/60">
+      Choose the academic period, select only the classes that should receive
+      this fee, and enter an individual amount for each selected class.
+    </p>
+  </div>
+
+  <form onSubmit={submitBulkClassFees} className="space-y-5">
+    <div className="grid gap-4 sm:grid-cols-2">
+      <label className="space-y-1 text-sm">
+        <span>Fee-plan title</span>
+        <input
+          required
+          maxLength={120}
+          value={bulkTitle}
+          onChange={(event) => setBulkTitle(event.target.value)}
+          placeholder="Enter fee-plan title"
+          className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+        />
+      </label>
+
+      <label className="space-y-1 text-sm">
+        <span>Academic session</span>
+        <select
+          required
+          value={bulkSessionId}
+          onChange={(event) => setBulkSessionId(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+        >
+          <option value="">Select session</option>
+          {sessions.map((item) => (
+            <option key={item._id} value={item._id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="space-y-1 text-sm">
+        <span>Term</span>
+        <select
+          required
+          value={bulkTermId}
+          onChange={(event) => setBulkTermId(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+        >
+          <option value="">Select term</option>
+          {terms.map((item) => (
+            <option key={item._id} value={item._id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="space-y-1 text-sm">
+        <span>Description (optional)</span>
+        <input
+          maxLength={500}
+          value={bulkDescription}
+          onChange={(event) => setBulkDescription(event.target.value)}
+          placeholder="Describe what this fee covers"
+          className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+        />
+      </label>
+    </div>
+
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">Select classes and set amounts</h3>
+        <span className="text-sm text-white/60">
+          {selectedClassIds.length} selected
+        </span>
+      </div>
+
+      {Object.keys(groupedClasses).length === 0 ? (
+        <p className="text-sm text-white/60">
+          No classes were returned by the school classes API.
+        </p>
+      ) : (
+        Object.entries(groupedClasses).map(([level, levelClasses]) => (
+          <div
+            key={level}
+            className="space-y-3 rounded-xl border border-white/10 p-4"
+          >
+            <h4 className="font-medium">{level}</h4>
+
+            {levelClasses.map((item) => {
+              const selected = selectedClassIds.includes(item._id);
+              const existingPlan = feePlans.find(
+                (plan) =>
+                  getReferenceId(plan.classId) === item._id &&
+                  getReferenceId(plan.sessionId) === bulkSessionId &&
+                  getReferenceId(plan.termId) === bulkTermId
+              );
+
+              return (
+                <div
+                  key={item._id}
+                  className="grid gap-3 border-t border-white/10 pt-3 sm:grid-cols-[minmax(0,1fr)_minmax(150px,220px)] sm:items-center"
+                >
+                  <label className="flex items-start gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleBulkClass(item._id)}
+                      className="mt-1 h-4 w-4"
+                    />
+                    <span>
+                      <span className="block font-medium">{item.name}</span>
+                      {existingPlan && (
+                        <span className="mt-1 block text-xs text-amber-300">
+                          Existing plan: {existingPlan.title} —{" "}
+                          {formatMoney(existingPlan.totalAmount)}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+
+                  <label className="space-y-1 text-sm">
+                    <span className="text-white/60">Amount (₦)</span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      disabled={!selected}
+                      value={classAmounts[item._id] || ""}
+                      onChange={(event) =>
+                        updateClassAmount(item._id, event.target.value)
+                      }
+                      placeholder="Enter amount"
+                      className="w-full rounded-xl border border-white/10 bg-black/30 p-3 disabled:opacity-40"
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        ))
+      )}
+    </div>
+
+    <div className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
+      <h3 className="font-semibold">Parent Payment Policy</h3>
+
+      <label className="block space-y-1 text-sm">
+        <span>Payment policy</span>
+        <select
+          value={bulkPaymentMode}
+          onChange={(event) => {
+            setBulkPaymentMode(event.target.value as PaymentMode);
+            setBulkMinimumPayment("");
+            setBulkInstallment("");
+          }}
+          className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+        >
+          {PAYMENT_MODES.map((mode) => (
+            <option key={mode.value} value={mode.value}>
+              {mode.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {bulkPaymentMode === "flexible_partial" && (
+        <label className="block space-y-1 text-sm">
+          <span>Minimum payment (₦, optional)</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={bulkMinimumPayment}
+            onChange={(event) => setBulkMinimumPayment(event.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+          />
+          <span className="text-xs text-white/50">
+            This amount must not exceed any selected class fee.
+          </span>
+        </label>
+      )}
+
+      {bulkPaymentMode === "fixed_installment" && (
+        <label className="block space-y-1 text-sm">
+          <span>Installment amount (₦)</span>
+          <input
+            required
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={bulkInstallment}
+            onChange={(event) => setBulkInstallment(event.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-black/30 p-3"
+          />
+          <span className="text-xs text-white/50">
+            The installment must not exceed the fee for any selected class.
+          </span>
+        </label>
+      )}
+    </div>
+
+    <button
+      type="submit"
+      disabled={loading || loadingData || selectedClassIds.length === 0}
+      className="w-full rounded-xl bg-green-600 p-3 font-semibold hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {loading ? "Processing selected classes..." : "Create Plans and Assign Fees"}
+    </button>
+  </form>
+</section>
 
       {/* EXISTING FEE PLANS */}
       <section className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
