@@ -152,8 +152,7 @@ export default function ResultsAdminPage() {
             isCurrent: Boolean(term?.isCurrent),
             sessionId: term?.sessionId,
           }))
-          .filter((term) => Boolean(term._id && term.name));
-
+    .filter((term: TermOption) => Boolean(term._id && term.name));
         setTerms(sessionTerms);
         const currentTerm = sessionTerms.find((term) => term.isCurrent);
         setTermId(currentTerm?._id || sessionTerms[0]?._id || "");
