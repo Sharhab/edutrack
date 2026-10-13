@@ -1,16 +1,19 @@
 import api from "./axios";
 
+
 export type OptionItem = {
   _id: string;
   name: string;
   label?: string;
   value?: string;
+  isCurrent?: boolean;
 };
 
 function normalizeOption(item: any): OptionItem {
   return {
     _id: item?._id || item?.value || "",
     name: item?.name || item?.label || "",
+    isCurrent: item?.isCurrent ?? false,
   };
 }
 
