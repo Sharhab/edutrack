@@ -11,7 +11,9 @@ import { Result } from "../results/result.model.js";
 import { Announcement } from "../announcements/announcement.model.js";
 import { Payment } from "../finance/fees/fee-payment.model.js";
 import { StudentFee } from "../finance/fees/studentFee.model.js";
-
+import { Session } from "../sessions/session.model.js";
+import { Term } from "../terms/term.model.js";
+import { School } from "../schools/school.model.js";
 import {
   getParentProfileByUser,
   ensureParentOwnsStudent,
@@ -38,172 +40,192 @@ function normalizeSchoolId(user) {
     user.schoolId
   );
 }
-/* =========================================
-   SCHOOL ADMIN DASHBOARD
-   ===================================== */
 
 export async function getSchoolAdminDashboard(user) {
-const schoolId = user.schoolId;
+  const schoolId = new mongoose.Types.ObjectId(
+    String(user.schoolId)
+  );
 
-const [
-students,
-teachers,
-classes,
-subjects,
-attendance,
-feeStats,
-recentAnnouncements,
-recentResults,
-] = await Promise.all([
-Student.countDocuments({ schoolId }),
+  const school = await School.findById(schoolId);
 
+  if (!school) {
+    throw new ApiError(404, "School not found");
+  }
 
-Teacher.countDocuments({
-  schoolId,
-  status: "active",
-}),
+  // Resolve the active session.
+  let activeSession = await Session.findOne({
+    schoolId,
+    isCurrent: true,
+  }).sort({ createdAt: -1 });
 
-ClassModel.countDocuments({
-  schoolId,
-}),
+  if (!activeSession && school.currentSession) {
+    activeSession = await Session.findOne({
+      schoolId,
+      name: school.currentSession,
+    });
+  }
 
-SubjectModel.countDocuments({
-  schoolId,
-}),
+  // Resolve the active term within that session.
+  let activeTerm = null;
 
-Attendance.countDocuments({
-  schoolId,
-}),
+  if (activeSession) {
+    activeTerm = await Term.findOne({
+      schoolId,
+      sessionId: activeSession._id,
+      isCurrent: true,
+    }).sort({ createdAt: -1 });
 
-StudentFee.aggregate([
-  {
-    $match: {
-      schoolId: new mongoose.Types.ObjectId(
-        schoolId
-      ),
-    },
-  },
-  {
-    $group: {
-      _id: null,
+    if (!activeTerm && school.currentTerm) {
+      activeTerm = await Term.findOne({
+        schoolId,
+        sessionId: activeSession._id,
+        name: school.currentTerm,
+      });
+    }
+  }
 
-      totalRevenue: {
-        $sum: "$amountPaid",
-      },
-
-      totalExpected: {
-        $sum: "$totalAmount",
-      },
-
-      totalInvoices: {
-        $sum: 1,
-      },
-
-      paidInvoices: {
-        $sum: {
-          $cond: [
+  const periodMatch =
+    activeSession && activeTerm
+      ? {
+          schoolId,
+          $or: [
             {
-              $eq: [
-                "$status",
-                "paid",
-              ],
+              sessionId: activeSession._id,
+              termId: activeTerm._id,
             },
-            1,
-            0,
+            {
+              sessionId: { $exists: false },
+              termId: { $exists: false },
+              session: activeSession.name,
+              term: activeTerm.name,
+            },
           ],
+        }
+      : null;
+
+  const [
+    students,
+    teachers,
+    classes,
+    subjects,
+    attendance,
+    allFinanceRows,
+    currentFinanceRows,
+    recentAnnouncements,
+    recentResults,
+  ] = await Promise.all([
+    Student.countDocuments({ schoolId }),
+
+    Teacher.countDocuments({
+      schoolId,
+      status: "active",
+    }),
+
+    ClassModel.countDocuments({ schoolId }),
+    SubjectModel.countDocuments({ schoolId }),
+    Attendance.countDocuments({ schoolId }),
+
+    StudentFee.aggregate([
+      { $match: { schoolId } },
+      {
+        $group: {
+          _id: null,
+          revenue: { $sum: "$amountPaid" },
+          expected: { $sum: "$totalAmount" },
+          outstanding: { $sum: "$balance" },
+          invoicesTotal: { $sum: 1 },
+          invoicesPaid: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "paid"] }, 1, 0],
+            },
+          },
+          invoicesPending: {
+            $sum: {
+              $cond: [{ $gt: ["$balance", 0] }, 1, 0],
+            },
+          },
         },
       },
+    ]),
 
-      pendingInvoices: {
-        $sum: {
-          $cond: [
-            {
-              $ne: [
-                "$status",
-                "paid",
-              ],
+    periodMatch
+      ? StudentFee.aggregate([
+          { $match: periodMatch },
+          {
+            $group: {
+              _id: null,
+              revenue: { $sum: "$amountPaid" },
+              expected: { $sum: "$totalAmount" },
+              outstanding: { $sum: "$balance" },
+              invoicesTotal: { $sum: 1 },
+              invoicesPaid: {
+                $sum: {
+                  $cond: [{ $eq: ["$status", "paid"] }, 1, 0],
+                },
+              },
+              invoicesPending: {
+                $sum: {
+                  $cond: [{ $gt: ["$balance", 0] }, 1, 0],
+                },
+              },
             },
-            1,
-            0,
-          ],
-        },
-      },
+          },
+        ])
+      : Promise.resolve([]),
+
+    Announcement.find({ schoolId })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("title message createdAt"),
+
+    Result.find({ schoolId })
+      .populate("studentId", "firstName lastName")
+      .populate("subjectId", "name code")
+      .sort({ createdAt: -1 })
+      .limit(10),
+  ]);
+
+  const all = allFinanceRows[0] || {};
+  const current = currentFinanceRows[0] || {};
+
+  const finance = (row) => ({
+    revenue: Number(row.revenue || 0),
+    expected: Number(row.expected || 0),
+    outstanding: Number(row.outstanding || 0),
+    invoicesTotal: Number(row.invoicesTotal || 0),
+    invoicesPaid: Number(row.invoicesPaid || 0),
+    invoicesPending: Number(row.invoicesPending || 0),
+  });
+
+  return {
+    currentSession: activeSession?.name || "",
+    currentTerm: activeTerm?.name || "",
+
+    stats: {
+      students,
+      teachers,
+      parents: 0,
+      classes,
+      subjects,
+      attendance,
+
+      // Backward-compatible all-time values.
+      ...finance(all),
+
+      // Explicit current-term values.
+      currentTermRevenue: finance(current).revenue,
+      currentTermExpected: finance(current).expected,
+      currentTermOutstanding: finance(current).outstanding,
+      currentTermInvoicesTotal: finance(current).invoicesTotal,
+      currentTermInvoicesPaid: finance(current).invoicesPaid,
+      currentTermInvoicesPending: finance(current).invoicesPending,
+
+      paymentsTotal: finance(all).invoicesPaid,
     },
-  },
-]),
 
-Announcement.find({ schoolId })
-  .sort({ createdAt: -1 })
-  .limit(5)
-  .select(
-    "title message createdAt"
-  ),
-
-Result.find({ schoolId })
-  .populate(
-    "studentId",
-    "firstName lastName"
-  )
-  .populate(
-    "subjectId",
-    "name code"
-  )
-  .sort({ createdAt: -1 })
-  .limit(10),
-
-
-]);
-
-const finance = feeStats?.[0] || {
-totalRevenue: 0,
-totalExpected: 0,
-totalInvoices: 0,
-paidInvoices: 0,
-pendingInvoices: 0,
-};
-
-const outstanding =
-finance.totalExpected -
-finance.totalRevenue;
-
-return {
-stats: {
-students,
-teachers,
-
-
-  parents: 0,
-
-  classes,
-  subjects,
-  attendance,
-
-  revenue:
-    finance.totalRevenue,
-
-  expected:
-    finance.totalExpected,
-
-  outstanding,
-
-  invoicesTotal:
-    finance.totalInvoices,
-
-  invoicesPaid:
-    finance.paidInvoices,
-
-  invoicesPending:
-    finance.pendingInvoices,
-
-  paymentsTotal:
-    finance.paidInvoices,
-},
-
-recentAnnouncements,
-recentResults,
-
-
-};
+    recentAnnouncements,
+    recentResults,
+  };
 }
 
 /* =====================================
