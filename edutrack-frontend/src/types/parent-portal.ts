@@ -152,12 +152,12 @@ export interface ParentDashboardResponse {
     relationshipToStudent?: string;
   };
 
-  stats: {
-    totalChildren: number;
-    totalPaid: number;
-    totalOutstanding: number;
-    totalBilled: number;
-  };
+  currentSession: string;
+  currentTerm: string;
+
+  stats: ParentDashboardStats;
+
+  currentTermFinance: ParentFinanceSummary;
 
   children: ParentChild[];
 
@@ -165,13 +165,33 @@ export interface ParentDashboardResponse {
 
   invoices: ParentInvoice[];
 
+  studentFees: Array<{
+    _id: string;
+    studentId: string | { _id: string };
+    title?: string;
+    totalAmount: number;
+    amountPaid: number;
+    balance: number;
+    status?: string;
+    session?: string;
+    term?: string;
+    sessionId?: string;
+    termId?: string;
+    feePlanId?: string | {
+      _id?: string;
+      paymentPolicy?: {
+        mode?: "full_only" | "flexible_partial" | "fixed_installment";
+        minimumPaymentAmount?: number;
+        installmentAmount?: number;
+      };
+    } | null;
+  }>;
+
   payments: ParentPayment[];
 }
 
-export interface ParentPortalResponse {
-  children: ParentChild[];
-  announcements: ParentAnnouncement[];
-}
+export interface ParentPortalResponse
+  extends ParentDashboardResponse {}
 
 export interface ParentChildResultsResponse {
   results: ParentResult[];
