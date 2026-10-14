@@ -346,136 +346,84 @@ const {
           CORE STATS
       ========================================= */}
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <TenantStatCard
-          tenant={tenant}
-          title="Students"
-          value={
-            loading
-              ? "..."
-              : safeStats.students
-          }
-          subtitle="Registered students"
-          icon={
-            <GraduationCap
-              size={20}
-            />
-          }
-        />
+    
+{/* CORE STATS */}
 
-        <TenantStatCard
-          tenant={tenant}
-          title="Teachers"
-          value={
-            loading
-              ? "..."
-              : safeStats.teachers
-          }
-          subtitle="Teaching staff"
-          icon={<Users size={20} />}
-        />
+<TenantStatCard
+  tenant={tenant}
+  title="Students"
+  value={loading ? "..." : safeStats.students}
+  subtitle="Registered students"
+  icon={<GraduationCap size={20} />}
+  accentColor="#2563eb"
+/>
 
-        <TenantStatCard
-          tenant={tenant}
-          title="Classes"
-          value={
-            loading
-              ? "..."
-              : safeStats.classes
-          }
-          subtitle="Available classes"
-          icon={
-            <FileText size={20} />
-          }
-        />
+<TenantStatCard
+  tenant={tenant}
+  title="Teachers"
+  value={loading ? "..." : safeStats.teachers}
+  subtitle="Teaching staff"
+  icon={<Users size={20} />}
+  accentColor="#7c3aed"
+/>
 
-        <TenantStatCard
-          tenant={tenant}
-          title="Attendance Today"
-          value={
-            loading
-              ? "..."
-              : safeStats.attendance
-          }
-          subtitle="Students marked present"
-          icon={
-            <CalendarCheck
-              size={20}
-            />
-          }
-        />
-      </div>
+<TenantStatCard
+  tenant={tenant}
+  title="Classes"
+  value={loading ? "..." : safeStats.classes}
+  subtitle="Available classes"
+  icon={<FileText size={20} />}
+  accentColor="#0891b2"
+/>
 
-      {/* =========================================
-          FINANCE STATS
-      ========================================= */}
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <TenantStatCard
-          tenant={tenant}
-          title="Total Revenue"
-          value={
-            loading
-              ? "..."
-              : formatCurrency(
-                  safeStats.revenue
-                )
-          }
-          subtitle="Successful payments"
-          icon={
-            <DollarSign size={20} />
-          }
-        />
+<TenantStatCard
+  tenant={tenant}
+  title="Attendance Today"
+  value={loading ? "..." : safeStats.attendance}
+  subtitle="Students marked present"
+  icon={<CalendarCheck size={20} />}
+  accentColor="#059669"
+/>
 
-        <TenantStatCard
-          tenant={tenant}
-          title="Expected Revenue"
-          value={
-            loading
-              ? "..."
-              : formatCurrency(
-                  safeStats.expected
-                )
-          }
-          subtitle="Generated invoices"
-          icon={
-            <ArrowUpRight
-              size={20}
-            />
-          }
-        />
+{/* FINANCE STATS */}
 
-        <TenantStatCard
-          tenant={tenant}
-          title="Outstanding Fees"
-          value={
-            loading
-              ? "..."
-              : formatCurrency(
-                  safeStats.outstanding
-                )
-          }
-          subtitle="Pending balances"
-          icon={
-            <AlertCircle
-              size={20}
-            />
-          }
-        />
+<TenantStatCard
+  tenant={tenant}
+  title="Total Revenue"
+  value={loading ? "..." : formatCurrency(safeStats.revenue)}
+  subtitle="Successful payments"
+  icon={<DollarSign size={20} />}
+  accentColor="#16a34a"
+/>
 
-        <TenantStatCard
-          tenant={tenant}
-          title="Invoices"
-          value={
-            loading
-              ? "..."
-              : safeStats.invoicesTotal
-          }
-          subtitle={`${safeStats.invoicesPaid} paid`}
-          icon={
-            <CreditCard
-              size={20}
-            />
-          }
-        />
+<TenantStatCard
+  tenant={tenant}
+  title="Expected Revenue"
+  value={loading ? "..." : formatCurrency(safeStats.expected)}
+  subtitle="Generated invoices"
+  icon={<ArrowUpRight size={20} />}
+  accentColor="#4f46e5"
+/>
+
+<TenantStatCard
+  tenant={tenant}
+  title="Outstanding Fees"
+  value={loading ? "..." : formatCurrency(safeStats.outstanding)}
+  subtitle="Pending balances"
+  icon={<AlertCircle size={20} />}
+  accentColor="#dc2626"
+/>
+
+<TenantStatCard
+  tenant={tenant}
+  title="Invoices"
+  value={loading ? "..." : safeStats.invoicesTotal}
+  subtitle={`${safeStats.invoicesPaid} paid`}
+  icon={<CreditCard size={20} />}
+  accentColor="#c026d3"
+/>
+          
+        
       </div>
 
       {/* =========================================
