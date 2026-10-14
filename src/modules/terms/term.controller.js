@@ -1,10 +1,16 @@
-import { createTermSchema } from "./term.validation.js";
+import {
+  createTermSchema,
+  updateTermDatesSchema,
+} from "./term.validation.js";
+
 import {
   createTerm,
   getTermById,
   listTerms,
   setCurrentTerm,
+  updateTermDates,
 } from "./term.service.js";
+
 
 export async function createTermHandler(req, res) {
   const parsed = createTermSchema.parse(req.body);
@@ -17,6 +23,22 @@ export async function createTermHandler(req, res) {
   });
 }
 
+
+export async function updateTermDatesHandler(req, res) {
+  const parsed = updateTermDatesSchema.parse(req.body);
+
+  const data = await updateTermDates(
+    req.params.id,
+    req.user.schoolId,
+    parsed
+  );
+
+  return res.json({
+    success: true,
+    message: "Term dates updated successfully",
+    data,
+  });
+}
 
 export async function listTermsHandler(req, res) {
   const sessionId = req.query.sessionId
