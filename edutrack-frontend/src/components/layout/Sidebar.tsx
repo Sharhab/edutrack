@@ -89,7 +89,7 @@ const navByRole: Record<
 
   { label: "Results", href: "/school-admin/results", icon: BookOpen },
   { label: "Import Students", href: "/school-admin/students/import", icon: Upload },
-  { label: "Bulk Entry", href: "/school-admin/students/bulk", icon: Users },
+  { label: "Students Bulk Entry", href: "/school-admin/students/bulk", icon: Users },
   { label: "Report Cards", href: "/school-admin/results/report-cards", icon: FileText },
   { label: "Class Reports", href: "/school-admin/results/class-reports", icon: GraduationCap },
   { label: "Parents", href: "/school-admin/parents", icon: Users },
@@ -98,6 +98,11 @@ const navByRole: Record<
   label: "Academic Periods",
   href: "/school-admin/academic-periods",
   icon: CalendarDays,
+},
+   {
+label: "Academic Calendar",
+href: "/school-admin/academic-calendar",
+icon: CalendarDays,
 },
 { label: "Settings", href: "/school-admin/settings", icon: Settings },
 ],
