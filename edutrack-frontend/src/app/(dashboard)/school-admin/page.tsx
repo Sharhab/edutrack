@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useTenant } from "../../../components/tenant/TenantProvider";
 
-import TenantDashboardHero from "../../../components/tenant/TenantDashboardHero";
+
 import TenantStatCard from "../../../components/tenant/TenantStatCard";
 import TenantAccentCard from "../../../components/tenant/TenantAccentCard";
 import TenantActionButton from "../../../components/tenant/TenantActionButton";
@@ -133,10 +133,6 @@ const {
 
   return (
     <div className="space-y-6">
-      {/* =========================================
-          HERO
-      ========================================= */}
-      <TenantDashboardHero />
 {/* ACADEMIC PERIOD SELECTOR — SCHOOL BRANDED */}
 <section
   className="relative isolate overflow-hidden rounded-[2rem] border p-5 shadow-xl sm:p-6"
