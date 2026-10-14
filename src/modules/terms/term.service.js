@@ -186,3 +186,62 @@ export async function setCurrentTerm(id, schoolId) {
 
   return term;
 }
+
+
+export async function updateTermDates(
+  termId,
+  schoolId,
+  payload
+) {
+  const term = await Term.findOne({
+    _id: termId,
+    schoolId,
+  });
+
+  if (!term) {
+    throw new ApiError(404, "Term not found");
+  }
+
+  const nextStartDate =
+    payload.startDate !== undefined
+      ? payload.startDate
+        ? new Date(payload.startDate)
+        : null
+      : term.startDate;
+
+  const nextEndDate =
+    payload.endDate !== undefined
+      ? payload.endDate
+        ? new Date(payload.endDate)
+        : null
+      : term.endDate;
+
+  if (
+    nextStartDate &&
+    nextEndDate &&
+    nextStartDate > nextEndDate
+  ) {
+    throw new ApiError(
+      400,
+      "Term closing date must be on or after its start date"
+    );
+  }
+
+  if (payload.startDate !== undefined) {
+    term.startDate = nextStartDate;
+  }
+
+  if (payload.endDate !== undefined) {
+    term.endDate = nextEndDate;
+  }
+
+  await term.save();
+
+  return Term.findOne({
+    _id: term._id,
+    schoolId,
+  }).populate(
+    "sessionId",
+    "name startDate endDate isCurrent"
+  );
+}
