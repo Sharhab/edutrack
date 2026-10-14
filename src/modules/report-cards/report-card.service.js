@@ -62,7 +62,18 @@ async function getValidatedAcademicPeriod({
     );
   }
 
-  return { session, term };
+   
+  const nextTerm = await Term.findOne({
+    schoolId,
+    sessionId: session._id,
+    order: { $gt: term.order },
+  }).sort({
+    order: 1,
+    startDate: 1,
+  });
+
+  return { session, term, nextTerm };
+ 
 }
 
 /* =========================================================
