@@ -13,8 +13,9 @@ import {
   Wallet,
   Layers3,
   BadgeDollarSign,
+  CalendarRange,
+  Clock3,
 } from "lucide-react";
-
 import { useTenant } from "../../../components/tenant/TenantProvider";
 
 import TenantDashboardHero from "../../../components/tenant/TenantDashboardHero";
@@ -22,7 +23,7 @@ import TenantStatCard from "../../../components/tenant/TenantStatCard";
 import TenantAccentCard from "../../../components/tenant/TenantAccentCard";
 import TenantActionButton from "../../../components/tenant/TenantActionButton";
 import TenantLiveBrandPanel from "../../../components/tenant/TenantLiveBrandPanel";
-
+import TenantLogo from "../../../components/tenant/TenantLogo";
 import { useSchoolAdminDashboard } from "../../../hooks/useSchoolAdminDashboard";
 import SubscriptionBanner from "../../../components/subscription/SubscriptionBanner";
 import { useBilling } from "../../../hooks/useBillingStatus";
@@ -57,6 +58,7 @@ function formatCurrency(amount?: number) {
 
 export default function SchoolAdminDashboardPage() {
   const { tenant } = useTenant();
+const brandColor = tenant?.themeColor || "#06b6d4";
 
   const router = useRouter();
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
@@ -135,38 +137,99 @@ const {
           HERO
       ========================================= */}
       <TenantDashboardHero />
-      {/* ACADEMIC PERIOD SELECTOR */}
-<div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-  <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-    <div>
-      <h2 className="text-lg font-semibold text-slate-900">
-        Academic Period
-      </h2>
+{/* ACADEMIC PERIOD SELECTOR — SCHOOL BRANDED */}
+<section
+  className="relative isolate overflow-hidden rounded-[2rem] border p-5 shadow-xl sm:p-6"
+  style={{
+    borderColor: `${brandColor}66`,
+    background: `linear-gradient(125deg, ${brandColor}24 0%, rgba(15,23,42,0.98) 48%, rgba(2,6,23,0.98) 100%)`,
+    boxShadow: `0 18px 45px -30px ${brandColor}88`,
+  }}
+>
+  {/* Decorative brand glow */}
+  <div
+    aria-hidden="true"
+    className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full blur-3xl"
+    style={{ backgroundColor: `${brandColor}22` }}
+  />
 
-      <p className="mt-1 text-sm text-slate-500">
-        Select a session and term to view the
-        corresponding school records and finances.
-      </p>
+  <div className="relative flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+    {/* School identity */}
+    <div className="min-w-0">
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border bg-white/5"
+          style={{
+            borderColor: `${brandColor}77`,
+            color: brandColor,
+          }}
+        >
+          <CalendarRange size={23} />
+        </div>
+
+        <div>
+          <p
+            className="text-xs font-bold uppercase tracking-[0.22em]"
+            style={{ color: brandColor }}
+          >
+            School workspace
+          </p>
+
+          <h2 className="mt-1 text-xl font-bold text-white sm:text-2xl">
+            Academic Period
+          </h2>
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <TenantLogo
+          tenant={tenant}
+          size={42}
+          roundedClassName="rounded-xl"
+        />
+
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-white">
+            {tenant?.schoolName || "Your School"}
+          </p>
+
+          <p className="mt-1 max-w-md text-sm leading-relaxed text-slate-400">
+            Select a session and term to view the matching school records and finances.
+          </p>
+        </div>
+      </div>
 
       <span
-        className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-medium ${
-          isCurrentPeriod
-            ? "bg-green-100 text-green-700"
-            : "bg-amber-100 text-amber-700"
-        }`}
+        className="mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold"
+        style={{
+          borderColor: `${brandColor}66`,
+          backgroundColor: `${brandColor}1A`,
+          color: "#f8fafc",
+        }}
       >
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{
+            backgroundColor: isCurrentPeriod
+              ? "#4ade80"
+              : "#fbbf24",
+          }}
+        />
+
         {isCurrentPeriod
           ? "Current academic period"
           : "Historical academic period"}
       </span>
     </div>
 
-    <div className="grid w-full gap-3 md:max-w-xl md:grid-cols-2">
-      <div>
+    {/* Academic period selectors */}
+    <div className="grid w-full gap-4 xl:max-w-2xl xl:grid-cols-2">
+      <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
         <label
           htmlFor="dashboard-session"
-          className="mb-1 block text-sm font-medium text-slate-700"
+          className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200"
         >
+          <Clock3 size={15} style={{ color: brandColor }} />
           Academic session
         </label>
 
@@ -178,12 +241,17 @@ const {
             setSelectedTermId("");
             setSelectedSessionId(event.target.value);
           }}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-cyan-500"
+          className="w-full rounded-xl border bg-slate-900 px-3 py-3.5 text-sm font-medium text-white outline-none transition focus:ring-2"
+          style={{
+            borderColor: `${brandColor}55`,
+            ["--tw-ring-color" as string]: brandColor,
+          }}
         >
           {sessions.map((session) => (
             <option
               key={session._id}
               value={session._id}
+              className="bg-slate-900 text-white"
             >
               {session.name}
               {session.isCurrent ? " (Current)" : ""}
@@ -192,11 +260,12 @@ const {
         </select>
       </div>
 
-      <div>
+      <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
         <label
           htmlFor="dashboard-term"
-          className="mb-1 block text-sm font-medium text-slate-700"
+          className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200"
         >
+          <CalendarRange size={15} style={{ color: brandColor }} />
           Academic term
         </label>
 
@@ -211,12 +280,17 @@ const {
           onChange={(event) =>
             setSelectedTermId(event.target.value)
           }
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-cyan-500"
+          className="w-full rounded-xl border bg-slate-900 px-3 py-3.5 text-sm font-medium text-white outline-none transition focus:ring-2"
+          style={{
+            borderColor: `${brandColor}55`,
+            ["--tw-ring-color" as string]: brandColor,
+          }}
         >
           {terms.map((term) => (
             <option
               key={term._id}
               value={term._id}
+              className="bg-slate-900 text-white"
             >
               {term.name}
               {term.isCurrent ? " (Current)" : ""}
@@ -227,23 +301,47 @@ const {
     </div>
   </div>
 
+  {/* Selected period indicator */}
   {selectedSession && selectedTerm && (
-    <p className="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-500">
-      Viewing:{" "}
-      <span className="font-medium text-slate-800">
-        {selectedSession.name} · {selectedTerm.name}
+    <div
+      className="relative mt-5 flex flex-col gap-2 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+      style={{
+        borderColor: `${brandColor}55`,
+        backgroundColor: "rgba(2,6,23,0.48)",
+      }}
+    >
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+          Viewing records for
+        </p>
+
+        <p className="mt-1 font-semibold text-white">
+          {selectedSession.name}
+          <span style={{ color: brandColor }}> · </span>
+          {selectedTerm.name}
+        </p>
+      </div>
+
+      <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300">
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: brandColor }}
+        />
+
+        {loading
+          ? "Updating dashboard…"
+          : "Dashboard period selected"}
       </span>
-    </p>
+    </div>
   )}
 
   {!periodsLoading && sessions.length === 0 && (
-    <p className="mt-3 text-sm text-amber-700">
-      No academic sessions were found. Configure a session
-      and term before using the period dashboard.
+    <p className="relative mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200">
+      No academic sessions were found. Configure a session and term before using the period dashboard.
     </p>
   )}
-</div>
-       
+</section>
+      
       <SubscriptionBanner
         daysLeft={subscription?.daysLeft}
       />
