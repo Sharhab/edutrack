@@ -50,6 +50,21 @@ function resolveSchoolLogoUrl(
     logoUrl.startsWith("/") ? "" : "/"
   }${logoUrl}`;
 }
+
+function formatReportDate(value?: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
 export default function ReportCardTemplate({
   data,
   schoolName = "SCHOOL NAME",
@@ -1205,6 +1220,80 @@ export default function ReportCardTemplate({
 
             </div>
 
+{/* TERM DATES */}
+{(term?.endDate || term?.nextTermResumptionDate) && (
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "8px",
+      marginTop: "5px",
+      padding: "6px 8px",
+      borderTop: `2px solid ${brandColor}`,
+      borderBottom: "1px solid #cbd5e1",
+      background: "#f8fafc",
+      boxSizing: "border-box",
+      breakInside: "avoid",
+      pageBreakInside: "avoid",
+    }}
+  >
+    {term?.endDate && (
+      <div>
+        <div
+          style={{
+            fontSize: "6px",
+            fontWeight: 800,
+            color: "#64748b",
+            textTransform: "uppercase",
+            marginBottom: "3px",
+          }}
+        >
+          Term closing date
+        </div>
+
+        <div
+          style={{
+            fontSize: "8px",
+            fontWeight: 700,
+            color: "#172033",
+          }}
+        >
+          {formatReportDate(term.endDate)}
+        </div>
+      </div>
+    )}
+
+    {term?.nextTermResumptionDate && (
+      <div>
+        <div
+          style={{
+            fontSize: "6px",
+            fontWeight: 800,
+            color: "#64748b",
+            textTransform: "uppercase",
+            marginBottom: "3px",
+          }}
+        >
+          Next term resumes
+        </div>
+
+        <div
+          style={{
+            fontSize: "8px",
+            fontWeight: 700,
+            color: "#172033",
+          }}
+        >
+          {formatReportDate(term.nextTermResumptionDate)}
+        </div>
+      </div>
+    )}
+  </div>
+)}
+
+<div className="report-footer">
+  <ReportCardFooter />
+</div>
             {/* =================================================
                 FOOTER
             ================================================= */}
