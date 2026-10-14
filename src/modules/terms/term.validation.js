@@ -24,3 +24,18 @@ export const createTermSchema = z
       path: ["endDate"],
     }
   );
+
+
+export const updateTermDatesSchema = z
+  .object({
+    startDate: optionalDate,
+    endDate: optionalDate,
+  })
+  .refine(
+    (data) =>
+      data.startDate !== undefined ||
+      data.endDate !== undefined,
+    {
+      message: "Provide at least one term date to update",
+    }
+  );
