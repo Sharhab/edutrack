@@ -82,6 +82,9 @@ export type SessionInfo = {
 export type TermInfo = {
   _id: string;
   name: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  nextTermResumptionDate?: string | null;
 };
 
 /* =========================================
