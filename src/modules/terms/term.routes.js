@@ -7,8 +7,8 @@ import {
   getTermHandler,
   listTermsHandler,
   setCurrentTermHandler,
+  updateTermDatesHandler,
 } from "./term.controller.js";
-
 const router = express.Router();
 
 router.use(protect);
@@ -33,6 +33,11 @@ router.post(
   asyncHandler(createTermHandler)
 );
 
+router.patch(
+  "/:id",
+  authorize("school_admin"),
+  asyncHandler(updateTermDatesHandler)
+);
 router.patch(
   "/:id/set-current",
   authorize("school_admin"),
