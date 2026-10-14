@@ -563,12 +563,12 @@ export async function generateStudentReportCard({
      SESSION + TERM
   ------------------------------------------------------- */
 
-  const { session, term } =
-    await getValidatedAcademicPeriod({
-      schoolId,
-      sessionId: sessionObjectId,
-      termId: termObjectId,
-    });
+  const { session, term, nextTerm } =
+  await getValidatedAcademicPeriod({
+    schoolId,
+    sessionId: sessionObjectId,
+    termId: termObjectId,
+  });
 
   /* -------------------------------------------------------
      RESULTS
@@ -735,13 +735,13 @@ export async function generateStudentReportCard({
       },
 
       term: {
-        _id: term._id,
-        name: term.name,
-        startDate:
-          term.startDate || null,
-        endDate:
-          term.endDate || null,
-      },
+  _id: term._id,
+  name: term.name,
+  startDate: term.startDate || null,
+  endDate: term.endDate || null,
+  nextTermResumptionDate:
+    nextTerm?.startDate || null,
+},
 
       results: results.map(
         (result) => ({
