@@ -6,7 +6,12 @@ import Badge from "../../components/ui/Badge";
 import EmptyState from "../../components/ui/EmptyState";
 import { Tenant } from "../../types/tenant";
 import { formatDate } from "../../lib/utils";
-import { Pencil, Trash2, Settings, ExternalLink } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  Settings,
+  ExternalLink,
+} from "lucide-react";
 import PlanBadge from "../../components/tenants/PlanBadge";
 
 type TenantsTableProps = {
@@ -16,22 +21,76 @@ type TenantsTableProps = {
   onControl: (tenant: Tenant) => void;
 };
 
-
 function StatusBadge({ label }: { label: string }) {
   const normalized = label.toLowerCase();
 
   const variant =
-    normalized === "active" || normalized === "paid"
+    ["active", "paid", "connected", "verified"].includes(normalized)
       ? "success"
-      : normalized === "expired" ||
-          normalized === "cancelled" ||
-          normalized === "inactive"
+      : [
+          "expired",
+          "cancelled",
+          "inactive",
+          "not connected",
+          "unverified",
+        ].includes(normalized)
         ? "warning"
         : "neutral";
 
-  return <Badge label={label.replaceAll("_", " ")} variant={variant} />;
+  return (
+    <Badge
+      label={label.replaceAll("_", " ")}
+      variant={variant}
+    />
+  );
 }
 
+function getTenantWarnings(row: Tenant): string[] {
+  const warnings: string[] = [];
+  const now = new Date();
+
+  const subscriptionExpiry = row.subscriptionExpiresAt
+    ? new Date(row.subscriptionExpiresAt)
+    : null;
+
+  const trialExpiry = row.trialEndsAt
+    ? new Date(row.trialEndsAt)
+    : null;
+
+  if (
+    subscriptionExpiry &&
+    !Number.isNaN(subscriptionExpiry.getTime()) &&
+    subscriptionExpiry < now &&
+    row.subscriptionStatus === "active"
+  ) {
+    warnings.push("Subscription expired, but status is active");
+  }
+
+  if (
+    trialExpiry &&
+    !Number.isNaN(trialExpiry.getTime()) &&
+    trialExpiry < now &&
+    row.subscriptionStatus === "trial"
+  ) {
+    warnings.push("Trial has expired");
+  }
+
+  if (
+    row.subscriptionStatus === "active" &&
+    !row.isActive
+  ) {
+    warnings.push("Subscription active, but access is disabled");
+  }
+
+  if (
+    row.billingStatus === "pending_payment" &&
+    row.subscriptionStatus === "active"
+  ) {
+    warnings.push("Active subscription has pending billing");
+  }
+
+  return warnings;
+}
 
 export default function TenantsTable({
   data,
@@ -88,24 +147,31 @@ export default function TenantsTable({
                 <ExternalLink size={12} />
               </a>
             ) : (
-              <span className="text-slate-500">Not configured</span>
+              <span className="text-slate-500">
+                Not configured
+              </span>
             ),
         },
         {
           key: "adminName",
           title: "Principal / Admin",
-          render: (row: Tenant) => row.adminName || "Not provided",
+          render: (row: Tenant) =>
+            row.principalName || row.adminName || "Not provided",
         },
         {
           key: "plan",
           title: "Plan",
-          render: (row: Tenant) => <PlanBadge plan={row.plan} />,
+          render: (row: Tenant) => (
+            <PlanBadge plan={row.plan} />
+          ),
         },
         {
           key: "access",
           title: "Access",
           render: (row: Tenant) => (
-            <StatusBadge label={row.isActive ? "active" : "inactive"} />
+            <StatusBadge
+              label={row.isActive ? "active" : "inactive"}
+            />
           ),
         },
         {
@@ -113,7 +179,9 @@ export default function TenantsTable({
           title: "Subscription",
           render: (row: Tenant) => (
             <div className="space-y-1">
-              <StatusBadge label={row.subscriptionStatus || "unknown"} />
+              <StatusBadge
+                label={row.subscriptionStatus || "unknown"}
+              />
               <p className="text-xs text-slate-500">
                 {row.billingCycle || "monthly"}
               </p>
@@ -124,24 +192,99 @@ export default function TenantsTable({
           key: "billingStatus",
           title: "Billing",
           render: (row: Tenant) => (
-            <StatusBadge label={row.billingStatus || "unknown"} />
+            <StatusBadge
+              label={row.billingStatus || "unknown"}
+            />
           ),
         },
         {
-          key: "expiryDate",
-          title: "Expires / Trial Ends",
+          key: "trialEndsAt",
+          title: "Trial Ends",
           render: (row: Tenant) => (
             <span className="whitespace-nowrap">
-              {formatDate(row.expiryDate)}
+              {row.trialEndsAt
+                ? formatDate(row.trialEndsAt)
+                : "—"}
             </span>
           ),
+        },
+        {
+          key: "subscriptionExpiresAt",
+          title: "Subscription Expires",
+          render: (row: Tenant) => (
+            <span className="whitespace-nowrap">
+              {row.subscriptionExpiresAt
+                ? formatDate(row.subscriptionExpiresAt)
+                : "No expiry set"}
+            </span>
+          ),
+        },
+        {
+          key: "paystack",
+          title: "School Paystack",
+          render: (row: Tenant) => (
+            <div className="min-w-32 space-y-1">
+              <StatusBadge
+                label={
+                  row.paystackConnected
+                    ? "connected"
+                    : "not connected"
+                }
+              />
+              {row.paystackConnected && (
+                <StatusBadge
+                  label={
+                    row.paystackVerified
+                      ? "verified"
+                      : "unverified"
+                  }
+                />
+              )}
+              {row.settlementBank && (
+                <p className="text-xs text-slate-400">
+                  {row.settlementBank}
+                </p>
+              )}
+              {row.accountNumberLast4 && (
+                <p className="text-xs text-slate-500">
+                  Account ending {row.accountNumberLast4}
+                </p>
+              )}
+            </div>
+          ),
+        },
+        {
+          key: "warnings",
+          title: "Alerts",
+          render: (row: Tenant) => {
+            const warnings = getTenantWarnings(row);
+
+            return warnings.length > 0 ? (
+              <div className="max-w-64 space-y-1">
+                {warnings.map((warning) => (
+                  <p
+                    key={warning}
+                    className="text-xs text-amber-300"
+                  >
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-slate-500">
+                No detected issues
+              </span>
+            );
+          },
         },
         {
           key: "createdAt",
           title: "Registered",
           render: (row: Tenant) => (
             <span className="whitespace-nowrap">
-              {formatDate(row.createdAt)}
+              {row.createdAt
+                ? formatDate(row.createdAt)
+                : "—"}
             </span>
           ),
         },
