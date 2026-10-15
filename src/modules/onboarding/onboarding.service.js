@@ -370,7 +370,7 @@ export async function initializeOnboardingPayment(payload) {
      */
     const PLAN_PRICING = {
       monthly: {
-        starter: 500,
+        starter: 10000,
         growth: 20000,
         premium: 40000,
       },
