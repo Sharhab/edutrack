@@ -100,28 +100,113 @@ export async function deleteTenant(id) {
   return { deleted: true };
 }
 
-export async function controlTenant(id, payload) {
-  const doc = await School.findById(id);
 
-  if (!doc) {
+export async function controlTenant(id, payload) {
+  const school = await School.findById(id);
+
+  if (!school) {
     throw new ApiError(404, "Tenant not found");
   }
 
-  if (payload.isActive !== undefined) {
-    doc.isActive = payload.isActive;
-  }
+  const allowedStatuses = [
+    "trial",
+    "inactive",
+    "pending",
+    "active",
+    "past_due",
+    "expired",
+    "cancelled",
+  ];
 
-  if (payload.subscriptionStatus !== undefined) {
-    doc.subscriptionStatus = payload.subscriptionStatus;
+  if (
+    payload.subscriptionStatus !== undefined &&
+    !allowedStatuses.includes(payload.subscriptionStatus)
+  ) {
+    throw new ApiError(400, "Invalid subscription status");
   }
 
   if (payload.expiryDate !== undefined) {
-    doc.subscriptionExpiresAt = payload.expiryDate
-      ? new Date(payload.expiryDate)
-      : null;
+    if (payload.expiryDate === null || payload.expiryDate === "") {
+      school.subscriptionExpiresAt = null;
+    } else {
+      const expiry = new Date(payload.expiryDate);
+
+      if (Number.isNaN(expiry.getTime())) {
+        throw new ApiError(400, "Invalid subscription expiry date");
+      }
+
+      school.subscriptionExpiresAt = expiry;
+    }
   }
 
-  await doc.save();
+  if (payload.subscriptionStatus !== undefined) {
+    school.subscriptionStatus = payload.subscriptionStatus;
 
-  return doc;
+    switch (payload.subscriptionStatus) {
+      case "trial":
+        school.billingStatus = "trial";
+        school.onboardingStatus = "active";
+        school.isActive = true;
+        break;
+
+      case "active":
+        school.billingStatus = "active";
+        school.onboardingStatus = "active";
+        school.isActive = true;
+        break;
+
+      case "pending":
+        school.billingStatus = "pending_payment";
+        school.onboardingStatus = "payment_initiated";
+        school.isActive = false;
+        break;
+
+      case "past_due":
+        school.billingStatus = "pending_payment";
+        break;
+
+      case "expired":
+      case "cancelled":
+      case "inactive":
+        school.billingStatus = "expired";
+        school.onboardingStatus = "suspended";
+        school.isActive = false;
+        break;
+    }
+  }
+
+  // Explicit access control takes precedence, except that an expired
+  // subscription must not be reactivated through the access toggle.
+  if (payload.isActive !== undefined) {
+    if (
+      payload.isActive === true &&
+      ["expired", "cancelled", "inactive"].includes(
+        school.subscriptionStatus
+      )
+    ) {
+      throw new ApiError(
+        400,
+        "Renew or update the subscription before reactivating this school"
+      );
+    }
+
+    school.isActive = payload.isActive;
+  }
+
+  // Do not allow a subscription marked active to remain active
+  // when its recorded expiry date has already passed.
+  if (
+    school.subscriptionStatus === "active" &&
+    school.subscriptionExpiresAt &&
+    school.subscriptionExpiresAt <= new Date()
+  ) {
+    school.subscriptionStatus = "expired";
+    school.billingStatus = "expired";
+    school.onboardingStatus = "suspended";
+    school.isActive = false;
+  }
+
+  await school.save();
+
+  return school;
 }
