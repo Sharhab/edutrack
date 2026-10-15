@@ -3,13 +3,7 @@
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { Check, Crown, Rocket, School } from "lucide-react";
-
-const api = axios.create({
-  baseURL:
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:4000/api",
-  withCredentials: true,
-});
+import api from "../../../../lib/axios";
 
 type PlanType =
   | "starter"
