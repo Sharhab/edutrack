@@ -23,9 +23,12 @@ type ApiSchool = {
   phone?: string;
   address?: string;
   principalName?: string;
+  motto?: string;
+
   domain?: string;
   customDomain?: string;
   fullDomain?: string;
+
   plan?: string;
   subscriptionPlan?: string;
   billingCycle?: string;
@@ -33,19 +36,31 @@ type ApiSchool = {
   subscriptionStatus?: string;
   onboardingStatus?: string;
   isActive?: boolean;
-  subscriptionExpiresAt?: string | null;
+
+  trialStartAt?: string | null;
   trialEndsAt?: string | null;
+  subscriptionStartedAt?: string | null;
+  subscriptionExpiresAt?: string | null;
+
   createdAt?: string;
   updatedAt?: string;
   logo?: string;
+
   currentSession?: string;
   currentTerm?: string;
+
+  allowStudentLogin?: boolean;
+  allowParentLogin?: boolean;
+
   paymentSettings?: {
     enabled?: boolean;
     paystack?: {
       connected?: boolean;
       isVerified?: boolean;
       settlementBank?: string;
+      accountNumberLast4?: string;
+      connectedAt?: string | null;
+      verificationCheckedAt?: string | null;
     };
   };
 };
@@ -58,31 +73,90 @@ type TenantApiResponse = {
   summary?: TenantSummary;
 };
 
+function normalizeTenant(school: ApiSchool): Tenant {
+  const rawPlan = (
+    school.plan ||
+    school.subscriptionPlan ||
+    "starter"
+  ).toLowerCase();
 
-function normalizeTenant(school: any): Tenant {
-  const rawPlan = school.plan || school.subscriptionPlan || "starter";
+  const plan: Tenant["plan"] = [
+    "starter",
+    "growth",
+    "premium",
+  ].includes(rawPlan)
+    ? (rawPlan as Tenant["plan"])
+    : "starter";
+
+  const subscriptionExpiresAt =
+    school.subscriptionExpiresAt || "";
+
+  const trialEndsAt = school.trialEndsAt || "";
 
   return {
     ...school,
+
     _id: school._id,
     schoolName: school.name || "Unnamed school",
+    slug: school.slug || "",
     adminEmail: school.email || "",
     email: school.email || "",
     adminName: school.principalName || "",
-    domain: school.domain || school.customDomain || school.fullDomain || "",
-    plan: ["starter", "growth", "premium"].includes(rawPlan)
-      ? rawPlan
-      : "starter",
+    principalName: school.principalName || "",
+    motto: school.motto || "",
+
+    domain:
+      school.domain ||
+      school.customDomain ||
+      school.fullDomain ||
+      "",
+
+    plan,
     status: school.isActive ? "active" : "inactive",
     isActive: Boolean(school.isActive),
+
     billingStatus: school.billingStatus || "unknown",
-    subscriptionStatus: school.subscriptionStatus || "inactive",
+    subscriptionStatus:
+      school.subscriptionStatus || "inactive",
     onboardingStatus: school.onboardingStatus || "pending",
-    expiryDate: school.subscriptionExpiresAt || school.trialEndsAt || "",
-    paymentEnabled: Boolean(school.paymentSettings?.enabled),
-    paystackConnected: Boolean(school.paymentSettings?.paystack?.connected),
-    paystackVerified: Boolean(school.paymentSettings?.paystack?.isVerified),
-    settlementBank: school.paymentSettings?.paystack?.settlementBank || "",
+    billingCycle: school.billingCycle || "monthly",
+
+    // Keep trial and paid subscription dates separate.
+    expiryDate: subscriptionExpiresAt,
+    trialStartAt: school.trialStartAt || "",
+    trialEndsAt,
+    subscriptionStartedAt:
+      school.subscriptionStartedAt || "",
+    subscriptionExpiresAt,
+
+    createdAt: school.createdAt || "",
+    updatedAt: school.updatedAt || "",
+    logo: school.logo || "",
+
+    currentSession: school.currentSession || "",
+    currentTerm: school.currentTerm || "",
+
+    allowStudentLogin: school.allowStudentLogin,
+    allowParentLogin: school.allowParentLogin,
+
+    paymentEnabled: Boolean(
+      school.paymentSettings?.enabled
+    ),
+    paystackConnected: Boolean(
+      school.paymentSettings?.paystack?.connected
+    ),
+    paystackVerified: Boolean(
+      school.paymentSettings?.paystack?.isVerified
+    ),
+    settlementBank:
+      school.paymentSettings?.paystack?.settlementBank || "",
+    accountNumberLast4:
+      school.paymentSettings?.paystack?.accountNumberLast4 || "",
+    connectedAt:
+      school.paymentSettings?.paystack?.connectedAt || "",
+    verificationCheckedAt:
+      school.paymentSettings?.paystack?.verificationCheckedAt ||
+      "",
   };
 }
 
@@ -90,30 +164,38 @@ export async function getTenants(): Promise<{
   tenants: Tenant[];
   summary: TenantSummary;
 }> {
-  const { data } = await api.get(TENANT_ENDPOINTS.list);
+  const { data } = await api.get<TenantApiResponse>(
+    TENANT_ENDPOINTS.list
+  );
 
-  // Your current backend returns { success, message, data: [...] }.
   const rows = Array.isArray(data?.data)
     ? data.data
     : Array.isArray(data?.tenants)
       ? data.tenants
       : [];
 
-  const tenants: Tenant[] = rows.map(normalizeTenant);
+  const tenants = rows.map(normalizeTenant);
 
   return {
     tenants,
     summary: data?.summary || {
       total: tenants.length,
-      active: tenants.filter((tenant) => tenant.isActive).length,
-      inactive: tenants.filter((tenant) => !tenant.isActive).length,
-      premium: tenants.filter((tenant) => tenant.plan === "premium").length,
+      active: tenants.filter(
+        (tenant) => tenant.isActive
+      ).length,
+      inactive: tenants.filter(
+        (tenant) => !tenant.isActive
+      ).length,
+      premium: tenants.filter(
+        (tenant) => tenant.plan === "premium"
+      ).length,
     },
   };
 }
 
-
-export async function createTenant(payload: TenantFormValues): Promise<Tenant> {
+export async function createTenant(
+  payload: TenantFormValues
+): Promise<Tenant> {
   const requestBody = {
     name: payload.name,
     email: payload.email,
@@ -129,9 +211,12 @@ export async function createTenant(payload: TenantFormValues): Promise<Tenant> {
     slug: payload.slug || undefined,
   };
 
-  const { data } = await api.post(TENANT_ENDPOINTS.create, requestBody);
-  const school = data?.data || data;
+  const { data } = await api.post(
+    TENANT_ENDPOINTS.create,
+    requestBody
+  );
 
+  const school: ApiSchool = data?.data || data;
   return normalizeTenant(school);
 }
 
@@ -150,14 +235,22 @@ export async function updateTenant(
     slug: payload.slug || undefined,
   };
 
-  const { data } = await api.put(TENANT_ENDPOINTS.update(id), requestBody);
-  const school = data?.data || data;
+  const { data } = await api.put(
+    TENANT_ENDPOINTS.update(id),
+    requestBody
+  );
 
+  const school: ApiSchool = data?.data || data;
   return normalizeTenant(school);
 }
 
-export async function deleteTenant(id: string): Promise<{ success: boolean }> {
-  const { data } = await api.delete(TENANT_ENDPOINTS.remove(id));
+export async function deleteTenant(
+  id: string
+): Promise<{ success: boolean }> {
+  const { data } = await api.delete(
+    TENANT_ENDPOINTS.remove(id)
+  );
+
   return data?.data || data || { success: true };
 }
 
@@ -171,9 +264,17 @@ export async function controlTenant(
         ? undefined
         : payload.status === "active",
     subscriptionStatus: payload.subscriptionStatus,
-    expiryDate: payload.expiryDate || null,
+    expiryDate:
+      payload.expiryDate === undefined
+        ? undefined
+        : payload.expiryDate || null,
   };
 
-  const { data } = await api.patch(TENANT_ENDPOINTS.control(id), requestBody);
-  return normalizeTenant(data?.data || data);
+  const { data } = await api.patch(
+    TENANT_ENDPOINTS.control(id),
+    requestBody
+  );
+
+  const school: ApiSchool = data?.data || data;
+  return normalizeTenant(school);
 }
