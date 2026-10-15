@@ -73,6 +73,31 @@ type TenantApiResponse = {
   summary?: TenantSummary;
 };
 
+const SUBSCRIPTION_STATUSES: Tenant["subscriptionStatus"][] = [
+  "trial",
+  "inactive",
+  "active",
+  "pending",
+  "past_due",
+  "expired",
+  "cancelled",
+];
+
+function normalizeSubscriptionStatus(
+  value?: string
+): Tenant["subscriptionStatus"] {
+  if (
+    value &&
+    SUBSCRIPTION_STATUSES.includes(
+      value as NonNullable<Tenant["subscriptionStatus"]>
+    )
+  ) {
+    return value as Tenant["subscriptionStatus"];
+  }
+
+  return "inactive";
+}
+
 function normalizeTenant(school: ApiSchool): Tenant {
   const rawPlan = (
     school.plan ||
@@ -116,8 +141,9 @@ function normalizeTenant(school: ApiSchool): Tenant {
     isActive: Boolean(school.isActive),
 
     billingStatus: school.billingStatus || "unknown",
-    subscriptionStatus:
-      school.subscriptionStatus || "inactive",
+    subscriptionStatus: normalizeSubscriptionStatus(
+      school.subscriptionStatus
+    ),
     onboardingStatus: school.onboardingStatus || "pending",
     billingCycle: school.billingCycle || "monthly",
 
