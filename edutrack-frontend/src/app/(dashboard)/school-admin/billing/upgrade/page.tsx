@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { Check, Crown, Rocket, School } from "lucide-react";
-import api from "../../../../lib/axios";
+import api from "../../../../../lib/axios";
 
 type PlanType =
   | "starter"
