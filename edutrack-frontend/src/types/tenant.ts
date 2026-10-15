@@ -24,8 +24,15 @@ export interface Tenant {
   phone?: string;
   address?: string;
 
-  // Actual school and subscription data.
+  // School profile information.
+  principalName?: string;
+  motto?: string;
   domain?: string;
+  logo?: string;
+  currentSession?: string;
+  currentTerm?: string;
+
+  // Plan and subscription information.
   plan: TenantPlan;
   status: TenantStatus;
   isActive?: boolean;
@@ -34,21 +41,29 @@ export interface Tenant {
   onboardingStatus?: string;
   billingCycle?: string;
 
+  // Trial and paid subscription dates.
   expiryDate?: string;
-  subscriptionExpiresAt?: string;
+  trialStartAt?: string;
   trialEndsAt?: string;
+  subscriptionStartedAt?: string;
+  subscriptionExpiresAt?: string;
 
+  // Record timestamps.
   createdAt?: string;
   updatedAt?: string;
-  logo?: string;
 
-  currentSession?: string;
-  currentTerm?: string;
-
+  // School payment configuration.
   paymentEnabled?: boolean;
   paystackConnected?: boolean;
   paystackVerified?: boolean;
   settlementBank?: string;
+  accountNumberLast4?: string;
+  connectedAt?: string;
+  verificationCheckedAt?: string;
+
+  // School login permissions.
+  allowStudentLogin?: boolean;
+  allowParentLogin?: boolean;
 }
 
 export interface TenantListResponse {
