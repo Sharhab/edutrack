@@ -1,44 +1,42 @@
 
-import { BillingStatus } from "../../types/billing";
 
-type BillingStatusBadgeProps = {
-  status: BillingStatus;
+import type { PaymentStatus } from "../../types/billing";
+
+type PaymentStatusBadgeProps = {
+  status: PaymentStatus;
 };
 
-const statusStyles: Record<BillingStatus, string> = {
-  active:
-    "border-emerald-400/20 bg-emerald-500/10 text-emerald-300",
-
-  trial:
-    "border-cyan-400/20 bg-cyan-500/10 text-cyan-300",
-
+const statusStyles: Record<PaymentStatus, string> = {
   pending:
     "border-amber-400/20 bg-amber-500/10 text-amber-300",
 
-  past_due:
-    "border-orange-400/20 bg-orange-500/10 text-orange-300",
+  processing:
+    "border-blue-400/20 bg-blue-500/10 text-blue-300",
 
-  expired:
+  success:
+    "border-emerald-400/20 bg-emerald-500/10 text-emerald-300",
+
+  failed:
     "border-red-400/20 bg-red-500/10 text-red-300",
 
-  cancelled:
-    "border-white/10 bg-white/5 text-slate-300",
-
-  suspended:
+  abandoned:
     "border-slate-400/20 bg-slate-500/10 text-slate-300",
+
+  refunded:
+    "border-purple-400/20 bg-purple-500/10 text-purple-300",
 };
 
-export default function BillingStatusBadge({
+export default function PaymentStatusBadge({
   status,
-}: BillingStatusBadgeProps) {
-  const label = status.replaceAll("_", " ");
-
+}: PaymentStatusBadgeProps) {
   return (
     <span
       role="status"
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium capitalize ${statusStyles[status]}`}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium capitalize ${
+        statusStyles[status]
+      }`}
     >
-      {label}
+      {status.replaceAll("_", " ")}
     </span>
   );
 }
