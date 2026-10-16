@@ -3,6 +3,7 @@ import { SubPayment } from "./sub-payment.model.js";
 import { SuperInvoice } from "./super-invoice.model.js";
 import { School } from "../schools/school.model.js";
 import { ApiError } from "../../utils/apiError.js";
+import { randomUUID } from "node:crypto";
 import {
   initializePaystackPayment,
 } from "./paystack.service.js";
