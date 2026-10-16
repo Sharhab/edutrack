@@ -526,20 +526,50 @@ export async function updateSubscription(id, payload) {
     if (!anotherActiveSubscription) {
       const school = await School.findById(subscription.schoolId);
 
-      if (school) {
-        school.subscriptionStatus = subscription.status;
-        school.billingStatus = subscription.status;
-        school.isActive = false;
+     
+if (school) {
+  const status = subscription.status;
 
-        if (
-          subscription.status === "expired" ||
-          subscription.status === "cancelled"
-        ) {
-          school.onboardingStatus = "suspended";
-        }
+  if (status === "trial") {
+    school.subscriptionStatus = "trial";
+    school.billingStatus = "trial";
+    school.isActive = Boolean(
+      school.trialEndsAt &&
+      new Date(school.trialEndsAt) > new Date()
+    );
+    school.onboardingStatus = school.isActive
+      ? "active"
+      : "suspended";
+  } else if (status === "pending") {
+    school.subscriptionStatus = "pending";
+    school.billingStatus = "pending_payment";
+  } else if (status === "past_due") {
+    school.subscriptionStatus = "past_due";
+    school.billingStatus = "blocked";
+    school.isActive = false;
+  } else if (
+    status === "expired" ||
+    status === "cancelled" ||
+    status === "suspended"
+  ) {
+    school.subscriptionStatus =
+      status === "cancelled" ? "cancelled" : "expired";
+    school.billingStatus = "expired";
+    school.isActive = false;
+    school.onboardingStatus = "suspended";
+  } else if (status === "active") {
+    // Reconcile using the actual valid subscription.
+    await syncSchoolFromSubscription(subscription.schoolId);
+    return getSubscriptionById(subscription._id);
+  } else {
+    school.subscriptionStatus = "inactive";
+    school.billingStatus = "blocked";
+    school.isActive = false;
+  }
 
-        await school.save();
-      }
+  await school.save();
+}
+
     }
   }
 
