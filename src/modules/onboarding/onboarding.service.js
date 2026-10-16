@@ -432,9 +432,28 @@ return {
  * =========================
  */
 
+
 export async function initializeOnboardingPayment(payload) {
   let paymentRecord = null;
   let school = null;
+
+  const PLAN_PRICING = {
+    monthly: {
+      starter: 10000,
+      growth: 25000,
+      premium: 50000,
+    },
+    quarterly: {
+      starter: 27000,
+      growth: 67500,
+      premium: 135000,
+    },
+    yearly: {
+      starter: 96000,
+      growth: 240000,
+      premium: 480000,
+    },
+  };
 
   try {
     const email = normalizeEmail(payload.adminEmail);
@@ -442,31 +461,6 @@ export async function initializeOnboardingPayment(payload) {
     if (!email) {
       throw new ApiError(400, "Admin email is required");
     }
-
-    log("INIT PAYMENT", {
-      email,
-      plan: payload.plan,
-      billingCycle: payload.billingCycle,
-    });
-
-    // 1. Authoritative pricing in NGN.
-    const PLAN_PRICING = {
-      monthly: {
-        starter: 10000,
-        growth: 25000,
-        premium: 50000,
-      },
-      quarterly: {
-        starter: 27000,
-        growth: 67500,
-        premium: 135000,
-      },
-      yearly: {
-        starter: 96000,
-        growth: 240000,
-        premium: 480000,
-      },
-    };
 
     const plan = String(payload.plan || "").toLowerCase();
     const billingCycle = String(
@@ -476,26 +470,17 @@ export async function initializeOnboardingPayment(payload) {
     const amount = PLAN_PRICING[billingCycle]?.[plan];
 
     if (!amount) {
-      throw new ApiError(
-        400,
-        "Invalid plan or billing cycle"
-      );
+      throw new ApiError(400, "Invalid plan or billing cycle");
     }
 
     if (!payload.adminPassword) {
-      throw new ApiError(
-        400,
-        "Admin password is required"
-      );
+      throw new ApiError(400, "Admin password is required");
     }
 
-    // 2. Find the school or create it through the existing
-    // onboarding flow. Re-fetch a real Mongoose document.
+    // Find the school or create it through the existing onboarding flow.
     school = await School.findOne({ email });
 
     if (!school) {
-      log("School not found; creating onboarding records");
-
       const created = await completeOnboarding({
         ...payload,
         adminEmail: email,
@@ -513,8 +498,7 @@ export async function initializeOnboardingPayment(payload) {
       }
     }
 
-    // 3. Preserve the existing guard against paying again
-    // for an already activated school.
+    // Prevent duplicate checkout for an already active subscription.
     if (
       school.onboardingStatus === "active" &&
       school.subscriptionStatus === "active"
@@ -525,8 +509,6 @@ export async function initializeOnboardingPayment(payload) {
       );
     }
 
-    // Do not overwrite an active subscription accidentally.
-    // Trial schools should use the intended upgrade flow.
     if (
       school.subscriptionStatus === "active" &&
       school.subscriptionExpiresAt &&
@@ -538,7 +520,7 @@ export async function initializeOnboardingPayment(payload) {
       );
     }
 
-    // 4. Find this school's subscription record.
+    // Load the latest subscription for this school.
     let subscription = await Subscription.findOne({
       schoolId: school._id,
     }).sort({ createdAt: -1 });
@@ -557,23 +539,19 @@ export async function initializeOnboardingPayment(payload) {
         enabledModules: [],
       });
     } else {
-      // Update the selected plan without activating it.
       subscription.plan = plan;
       subscription.billingCycle = billingCycle;
       subscription.amount = amount;
 
-      if (
-        !["active", "trial"].includes(subscription.status)
-      ) {
+      // Do not downgrade an existing active or trial subscription.
+      if (!["active", "trial"].includes(subscription.status)) {
         subscription.status = "pending";
       }
 
       await subscription.save();
     }
 
-    // 5. Generate and persist the reference BEFORE calling
-    // Paystack. This allows reconciliation if the network
-    // fails after Paystack receives the initialization request.
+    // Persist the reference before contacting Paystack.
     const reference = `EDUTRACK-${randomUUID()}`;
 
     paymentRecord = await SubPayment.create({
@@ -593,8 +571,7 @@ export async function initializeOnboardingPayment(payload) {
       },
     });
 
-    // Record that checkout was initiated, but do not mark
-    // the subscription paid or active here.
+    // Record checkout initiation without activating a paid subscription.
     school.plan = plan;
     school.billingCycle = billingCycle;
     school.onboardingStatus = "payment_initiated";
@@ -609,17 +586,7 @@ export async function initializeOnboardingPayment(payload) {
 
     await school.save();
 
-    log("PAYSTACK INITIALIZATION STARTED", {
-      schoolId: String(school._id),
-      subscriptionId: String(subscription._id),
-      paymentId: String(paymentRecord._id),
-      reference,
-      amount,
-      currency: "NGN",
-    });
-
-    // 6. Initialize Paystack. The payment service must accept
-    // payload.reference and send it to Paystack as `reference`.
+    // Initialize Paystack using the previously recorded reference.
     const payment = await initializePaystackPayment({
       schoolId: school._id,
       email: school.email,
@@ -638,18 +605,17 @@ export async function initializeOnboardingPayment(payload) {
       },
     });
 
-    // 7. Ensure Paystack returned the reference we recorded.
+    // Require the exact reference and a valid checkout URL.
     if (
       !payment?.authorizationUrl ||
       !payment?.reference ||
       payment.reference !== reference
     ) {
-      // Keep the attempt recorded for investigation.
       paymentRecord.status = "processing";
       paymentRecord.gatewayResponse = {
         stage: "initialization",
-        message:
-          "Paystack response requires reconciliation",
+        status: "requires_reconciliation",
+        message: "Paystack response requires verification",
         returnedReference: payment?.reference || null,
       };
 
@@ -657,7 +623,7 @@ export async function initializeOnboardingPayment(payload) {
 
       throw new ApiError(
         502,
-        "Payment initialization needs verification. Please contact support before retrying."
+        "Payment initialization could not be confirmed. Contact support before retrying."
       );
     }
 
@@ -671,13 +637,7 @@ export async function initializeOnboardingPayment(payload) {
 
     await paymentRecord.save();
 
-    log("PAYSTACK CHECKOUT READY", {
-      schoolId: String(school._id),
-      reference,
-      amount,
-    });
-
-    // Preserve the existing response contract.
+    // Preserve the existing API response contract.
     return {
       authorizationUrl: payment.authorizationUrl,
       reference: payment.reference,
@@ -685,72 +645,53 @@ export async function initializeOnboardingPayment(payload) {
       amount,
     };
   } catch (error) {
-    console.error("ONBOARDING PAYMENT INITIALIZATION ERROR:", {
-      message: error.message,
-      statusCode: error.statusCode,
-      schoolId: school?._id
-        ? String(school._id)
-        : null,
-      reference: paymentRecord?.reference || null,
-    });
+    const statusCode = Number(error?.statusCode || 0);
 
-    // Only classify an attempt as failed when Paystack has
-    // explicitly rejected the request. A network timeout or
-    // unknown error is ambiguous: Paystack may have received it.
-    if (paymentRecord && error instanceof ApiError) {
-      paymentRecord.status = "failed";
-      paymentRecord.failedAt = new Date();
-      paymentRecord.gatewayResponse = {
-        stage: "initialization",
-        status: "failed",
-        message: error.message,
-        statusCode: error.statusCode || null,
-      };
+    // Only treat a clear client-side rejection as definitive.
+    // Gateway errors, timeouts and rate limits remain uncertain.
+    const isDefinitiveFailure =
+      error instanceof ApiError &&
+      statusCode >= 400 &&
+      statusCode < 500 &&
+      statusCode !== 408 &&
+      statusCode !== 429;
 
-      await paymentRecord.save().catch((saveError) => {
-        console.error(
-          "FAILED TO RECORD PAYMENT INITIALIZATION ERROR:",
-          saveError.message
-        );
-      });
-
-      // Keep the school eligible for trial access when payment
-      // initialization is definitively rejected. Never apply
-      // this fallback to an ambiguous network outcome.
-      if (
-        school &&
-        error.statusCode === 400 &&
-        !["active", "trial"].includes(
-          school.subscriptionStatus
-        )
-      ) {
-        try {
-          await moveSchoolToTrial(
-            school._id,
-            `Paystack initialization rejected: ${error.message}`
-          );
-        } catch (trialError) {
-          console.error(
-            "FAILED TO APPLY TRIAL FALLBACK:",
-            trialError.message
-          );
-        }
+    if (paymentRecord) {
+      if (isDefinitiveFailure) {
+        paymentRecord.status = "failed";
+        paymentRecord.failedAt = new Date();
+        paymentRecord.gatewayResponse = {
+          stage: "initialization",
+          status: "failed",
+          message: error.message,
+          statusCode,
+        };
+      } else {
+        paymentRecord.status = "processing";
+        paymentRecord.gatewayResponse = {
+          stage: "initialization",
+          status: "requires_reconciliation",
+          message: error.message,
+          statusCode: statusCode || null,
+        };
       }
-    } else if (paymentRecord) {
-      // Preserve the attempt for later verification instead
-      // of incorrectly declaring an unknown result a failure.
-      paymentRecord.status = "processing";
-      paymentRecord.gatewayResponse = {
-        stage: "initialization",
-        status: "requires_reconciliation",
-        message: error.message,
-      };
 
-      await paymentRecord.save().catch((saveError) => {
-        console.error(
-          "FAILED TO RECORD RECONCILIATION STATE:",
-          saveError.message
-        );
+      await paymentRecord.save().catch(() => {
+        // Keep the original error as the primary failure.
+      });
+    }
+
+    // Do not grant trial access for an uncertain payment outcome.
+    if (
+      isDefinitiveFailure &&
+      school &&
+      !["active", "trial"].includes(school.subscriptionStatus)
+    ) {
+      await moveSchoolToTrial(
+        school._id,
+        `Paystack initialization rejected: ${error.message}`
+      ).catch(() => {
+        // Trial fallback failure should not mask the payment error.
       });
     }
 
@@ -764,7 +705,6 @@ export async function initializeOnboardingPayment(payload) {
     );
   }
 }
-
 
 export async function verifyOnboardingPayment(
   reference
