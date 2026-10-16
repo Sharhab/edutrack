@@ -21,23 +21,20 @@ async function ensureSchool(schoolId) {
   return school;
 }
 
+
 export async function syncSchoolFromSubscription(schoolId) {
   const now = new Date();
-
-  const subscription = await Subscription.findOne({
-    schoolId,
-    status: "active",
-    expiresAt: { $gt: now },
-  }).sort({
-    expiresAt: -1,
-    createdAt: -1,
-  });
-
   const school = await School.findById(schoolId);
 
   if (!school) {
     return null;
   }
+
+  const subscription = await Subscription.findOne({
+    schoolId,
+    status: "active",
+    expiresAt: { $gt: now },
+  }).sort({ expiresAt: -1, createdAt: -1 });
 
   if (subscription) {
     school.plan = subscription.plan;
@@ -46,39 +43,46 @@ export async function syncSchoolFromSubscription(schoolId) {
     school.billingStatus = "active";
     school.subscriptionStartedAt = subscription.startsAt;
     school.subscriptionExpiresAt = subscription.expiresAt;
-    school.isActive = true;
-    school.isTrial = false;
     school.trialStartAt = null;
     school.trialEndsAt = null;
+    school.isActive = true;
     school.onboardingStatus = "active";
 
     await school.save();
     return school;
   }
 
-  // No valid paid subscription: preserve a trial only if it is
-  // explicitly active and has not expired.
+  // Preserve a valid trial.
   if (
     school.subscriptionStatus === "trial" &&
     school.trialEndsAt &&
     new Date(school.trialEndsAt) > now
   ) {
-    school.isActive = true;
-    school.isTrial = true;
     school.billingStatus = "trial";
+    school.subscriptionStartedAt = null;
+    school.subscriptionExpiresAt = null;
+    school.isActive = true;
+    school.onboardingStatus = "active";
+
     await school.save();
     return school;
   }
 
+  // No valid paid subscription or trial remains.
   school.subscriptionStatus = "expired";
   school.billingStatus = "expired";
+  school.subscriptionExpiresAt =
+    school.subscriptionExpiresAt &&
+    new Date(school.subscriptionExpiresAt) > now
+      ? school.subscriptionExpiresAt
+      : null;
   school.isActive = false;
-  school.isTrial = false;
   school.onboardingStatus = "suspended";
 
   await school.save();
   return school;
 }
+
 
 
 export async function ensureNoActiveSubscription(
