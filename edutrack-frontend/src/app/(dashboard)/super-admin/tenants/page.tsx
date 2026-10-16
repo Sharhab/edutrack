@@ -39,9 +39,14 @@ const initialForm: TenantFormValues = {
   slug: "",
 };
 
+
 const initialControlForm: TenantControlPayload = {
   status: "active",
-  subscriptionStatus: "active",
+  subscriptionStatus: "trial",
+  plan: "starter",
+  billingCycle: "monthly",
+  trialStartAt: "",
+  trialEndsAt: "",
   expiryDate: "",
 };
 
@@ -160,18 +165,33 @@ export default function SuperAdminTenantsPage() {
     setDeleteOpen(true);
   }
 
-  function openControlModal(tenant: Tenant) {
-    setSelectedTenant(tenant);
-    setActionError("");
-    setControlForm({
-      status: tenant.status || "active",
-      subscriptionStatus: tenant.subscriptionStatus || "active",
-      expiryDate: tenant.expiryDate
-        ? new Date(tenant.expiryDate).toISOString().slice(0, 10)
-        : "",
-    });
-    setControlOpen(true);
-  }
+ 
+function openControlModal(tenant: Tenant) {
+  setSelectedTenant(tenant);
+  setActionError("");
+
+  setControlForm({
+    status: tenant.status || "inactive",
+    subscriptionStatus: tenant.subscriptionStatus || "inactive",
+    plan: tenant.plan || "starter",
+    billingCycle:
+      tenant.billingCycle === "quarterly" ||
+      tenant.billingCycle === "yearly"
+        ? tenant.billingCycle
+        : "monthly",
+    trialStartAt: tenant.trialStartAt
+      ? new Date(tenant.trialStartAt).toISOString().slice(0, 10)
+      : "",
+    trialEndsAt: tenant.trialEndsAt
+      ? new Date(tenant.trialEndsAt).toISOString().slice(0, 10)
+      : "",
+    expiryDate: tenant.subscriptionExpiresAt
+      ? new Date(tenant.subscriptionExpiresAt).toISOString().slice(0, 10)
+      : "",
+  });
+
+  setControlOpen(true);
+}
 
   function validateForm() {
     if (!form.name.trim()) return "School name is required.";
