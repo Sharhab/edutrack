@@ -96,14 +96,22 @@ async function ensureUniqueSchool({ schoolName, adminEmail }) {
   throw new ApiError(400, "Admin email already exists");
 }
 
-
-
 export async function syncSchoolBilling(schoolId, subscription) {
   const school = await School.findById(schoolId);
 
   if (!school) {
-    throw new ApiError(404, "School not found during billing sync");
+    throw new ApiError(
+      404,
+      "School not found during billing sync"
+    );
   }
+
+  const now = new Date();
+  const isTrial =
+    subscription.status === "trial" &&
+    subscription.isTrial === true &&
+    subscription.trialEndsAt &&
+    new Date(subscription.trialEndsAt) > now;
 
   school.plan = subscription.plan;
   school.billingCycle = subscription.billingCycle;
@@ -114,16 +122,12 @@ export async function syncSchoolBilling(schoolId, subscription) {
   school.subscriptionExpiresAt =
     subscription.expiresAt ?? null;
 
-  const isTrial =
-    subscription.status === "trial" &&
-    subscription.isTrial === true;
-
   school.trialStartAt = isTrial
-    ? subscription.startsAt ?? new Date()
+    ? subscription.startsAt ?? now
     : null;
 
   school.trialEndsAt = isTrial
-    ? subscription.trialEndsAt ?? null
+    ? subscription.trialEndsAt
     : null;
 
   if (subscription.status === "active") {
@@ -132,13 +136,8 @@ export async function syncSchoolBilling(schoolId, subscription) {
     school.onboardingStatus = "active";
   } else if (isTrial) {
     school.billingStatus = "trial";
-    school.isActive = Boolean(
-      school.trialEndsAt &&
-      new Date(school.trialEndsAt) > new Date()
-    );
-    school.onboardingStatus = school.isActive
-      ? "active"
-      : "suspended";
+    school.isActive = true;
+    school.onboardingStatus = "active";
   } else if (subscription.status === "pending") {
     school.billingStatus = "pending_payment";
     school.isActive = false;
