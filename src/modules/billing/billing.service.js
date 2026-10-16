@@ -422,7 +422,6 @@ export async function getSubscriptionById(id) {
   return doc;
 }
 
-
 export async function createSubscription(payload) {
   const school = await ensureSchool(payload.schoolId);
   const now = new Date();
@@ -453,26 +452,18 @@ export async function createSubscription(payload) {
     }
   }
 
-  if (payload.status === "trial" && (!expiresAt || expiresAt <= now)) {
+  if (
+    payload.status === "trial" &&
+    (!expiresAt || expiresAt <= now)
+  ) {
     throw new ApiError(
       400,
       "A trial subscription must have an expiry date in the future."
     );
   }
 
-  // Keep one current paid subscription per school.
-  if (payload.status === "active") {
-    await Subscription.updateMany(
-      {
-        schoolId: school._id,
-        status: "active",
-        expiresAt: { $gt: now },
-      },
-      { $set: { status: "expired" } }
-    );
-  }
-
-  const doc = await Subscription.create({
+  // Create the new subscription before changing existing records.
+  const subscription = await Subscription.create({
     schoolId: school._id,
     plan: payload.plan,
     amount: payload.amount,
@@ -485,10 +476,25 @@ export async function createSubscription(payload) {
     notes: payload.notes || "",
   });
 
+  // Only after creation succeeds, expire other active paid subscriptions.
+  if (payload.status === "active") {
+    await Subscription.updateMany(
+      {
+        schoolId: school._id,
+        _id: { $ne: subscription._id },
+        status: "active",
+      },
+      {
+        $set: { status: "expired" },
+      }
+    );
+  }
+
   await syncSchoolFromSubscription(school._id);
 
-  return getSubscriptionById(doc._id);
+  return getSubscriptionById(subscription._id);
 }
+
 
 export async function updateSubscription(id, payload) {
   const subscription = await Subscription.findById(id);
