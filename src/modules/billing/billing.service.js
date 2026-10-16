@@ -575,6 +575,7 @@ export async function updateSubscription(id, payload) {
 }
 
 
+
 export async function deleteSubscription(id) {
   const doc = await Subscription.findByIdAndDelete(id);
 
@@ -582,8 +583,11 @@ export async function deleteSubscription(id) {
     throw new ApiError(404, "Subscription not found");
   }
 
+  await syncSchoolFromSubscription(doc.schoolId);
+
   return { deleted: true };
 }
+
 
 
 
