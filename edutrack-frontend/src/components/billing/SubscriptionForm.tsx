@@ -1,3 +1,4 @@
+
 "use client";
 
 import FormInput from "../../components/ui/FormInput";
@@ -46,17 +47,17 @@ export default function SubscriptionForm({
           onChange={(value) => onChange("plan", value)}
           options={[
             { label: "Starter", value: "starter" },
-            { label: "groth", value: "groth" },
+            { label: "Growth", value: "growth" },
             { label: "Premium", value: "premium" },
           ]}
         />
 
         <FormInput
-          label="Amount"
+          label="Amount (₦)"
           name="amount"
           type="number"
           value={values.amount}
-          placeholder="20000"
+          placeholder="10000"
           onChange={(value) => onChange("amount", value)}
         />
       </div>
@@ -68,10 +69,13 @@ export default function SubscriptionForm({
           value={values.status}
           onChange={(value) => onChange("status", value)}
           options={[
+            { label: "Trial", value: "trial" },
             { label: "Active", value: "active" },
             { label: "Pending", value: "pending" },
+            { label: "Past Due", value: "past_due" },
             { label: "Expired", value: "expired" },
             { label: "Cancelled", value: "cancelled" },
+            { label: "Suspended", value: "suspended" },
           ]}
         />
 
@@ -82,7 +86,8 @@ export default function SubscriptionForm({
           onChange={(value) => onChange("billingCycle", value)}
           options={[
             { label: "Monthly", value: "monthly" },
-            { label: "Yearly", value: "yearly" },
+            { label: "Quarterly (10% discount)", value: "quarterly" },
+            { label: "Yearly (20% discount)", value: "yearly" },
           ]}
         />
       </div>
@@ -118,7 +123,7 @@ export default function SubscriptionForm({
           type="button"
           onClick={onSubmit}
           disabled={submitting}
-          className="btn-primary"
+          className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting ? "Saving..." : submitLabel}
         </button>
