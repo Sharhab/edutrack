@@ -21,71 +21,65 @@ async function ensureSchool(schoolId) {
   return school;
 }
 
-export async function syncSchoolFromSubscription(
-  schoolId
-) {
-  const subscription =
-    await Subscription.findOne({
-      schoolId,
-      status: "active",
-    }).sort({
-      expiresAt: -1,
-      createdAt: -1,
-    });
+export async function syncSchoolFromSubscription(schoolId) {
+  const now = new Date();
 
-  if (!subscription) {
-    return null;
-  }
+  const subscription = await Subscription.findOne({
+    schoolId,
+    status: "active",
+    expiresAt: { $gt: now },
+  }).sort({
+    expiresAt: -1,
+    createdAt: -1,
+  });
 
-  const school =
-    await School.findById(schoolId);
+  const school = await School.findById(schoolId);
 
   if (!school) {
     return null;
   }
 
-  school.plan =
-    subscription.plan;
+  if (subscription) {
+    school.plan = subscription.plan;
+    school.billingCycle = subscription.billingCycle;
+    school.subscriptionStatus = "active";
+    school.billingStatus = "active";
+    school.subscriptionStartedAt = subscription.startsAt;
+    school.subscriptionExpiresAt = subscription.expiresAt;
+    school.isActive = true;
+    school.isTrial = false;
+    school.trialStartAt = null;
+    school.trialEndsAt = null;
+    school.onboardingStatus = "active";
 
-  school.billingCycle =
-    subscription.billingCycle;
+    await school.save();
+    return school;
+  }
 
-  school.subscriptionStatus =
-    subscription.status;
+  // No valid paid subscription: preserve a trial only if it is
+  // explicitly active and has not expired.
+  if (
+    school.subscriptionStatus === "trial" &&
+    school.trialEndsAt &&
+    new Date(school.trialEndsAt) > now
+  ) {
+    school.isActive = true;
+    school.isTrial = true;
+    school.billingStatus = "trial";
+    await school.save();
+    return school;
+  }
 
-  school.subscriptionStartedAt =
-    subscription.startsAt;
-
-  school.subscriptionExpiresAt =
-    subscription.expiresAt;
-
-  school.isActive =
-    subscription.status === "active";
-
+  school.subscriptionStatus = "expired";
+  school.billingStatus = "expired";
+  school.isActive = false;
   school.isTrial = false;
-
-  school.billingStatus =
-    subscription.status;
-
-  if (
-    subscription.status === "active"
-  ) {
-    school.onboardingStatus =
-      "active";
-  }
-
-  if (
-    subscription.status === "expired" ||
-    subscription.status === "cancelled"
-  ) {
-    school.onboardingStatus =
-      "suspended";
-  }
+  school.onboardingStatus = "suspended";
 
   await school.save();
-
   return school;
 }
+
 
 export async function ensureNoActiveSubscription(
   schoolId
