@@ -22,19 +22,33 @@ async function ensureSchool(schoolId) {
 }
 
 
-
 export async function syncSchoolFromSubscription(schoolId) {
   const now = new Date();
   const school = await School.findById(schoolId);
 
-  if (!school) {
-    return null;
+  if (!school) return null;
+
+  // Preserve an intentional administrative block.
+  if (school.billingStatus === "blocked") {
+    school.isActive = false;
+    await school.save();
+    return school;
   }
 
   const subscription = await Subscription.findOne({
-    schoolId,
+    schoolId: school._id,
     status: "active",
-    expiresAt: { $gt: now },
+    $and: [
+      {
+        $or: [
+          { startsAt: null },
+          { startsAt: { $lte: now } },
+        ],
+      },
+      {
+        expiresAt: { $gt: now },
+      },
+    ],
   }).sort({ expiresAt: -1, createdAt: -1 });
 
   if (subscription) {
@@ -53,7 +67,31 @@ export async function syncSchoolFromSubscription(schoolId) {
     return school;
   }
 
-  // Preserve a trial only while its end date is still in the future.
+  // Look for a valid trial subscription in the subscription collection.
+  const trial = await Subscription.findOne({
+    schoolId: school._id,
+    status: "trial",
+    isTrial: true,
+    trialEndsAt: { $gt: now },
+  }).sort({ trialEndsAt: -1, createdAt: -1 });
+
+  if (trial) {
+    school.plan = trial.plan;
+    school.billingCycle = trial.billingCycle;
+    school.subscriptionStatus = "trial";
+    school.billingStatus = "trial";
+    school.trialStartAt = trial.startsAt || trial.createdAt;
+    school.trialEndsAt = trial.trialEndsAt;
+    school.subscriptionStartedAt = trial.startsAt || trial.createdAt;
+    school.subscriptionExpiresAt = null;
+    school.isActive = true;
+    school.onboardingStatus = "active";
+
+    await school.save();
+    return school;
+  }
+
+  // Compatibility for schools whose trial exists only on the School record.
   if (
     school.subscriptionStatus === "trial" &&
     school.trialEndsAt &&
@@ -67,7 +105,7 @@ export async function syncSchoolFromSubscription(schoolId) {
     return school;
   }
 
-  // No valid paid subscription or trial remains.
+  // No current paid subscription or valid trial remains.
   school.subscriptionStatus = "expired";
   school.billingStatus = "expired";
   school.isActive = false;
@@ -76,6 +114,8 @@ export async function syncSchoolFromSubscription(schoolId) {
   await school.save();
   return school;
 }
+
+
 
 export async function ensureNoActiveSubscription(
   schoolId
@@ -723,48 +763,53 @@ export async function getBillingHistory(user) {
  * CURRENT BILLING
  * =========================================
  */
+
 export async function getCurrentBilling(schoolId) {
   const school = await School.findById(schoolId);
 
   if (!school) {
-    throw new Error("School not found");
+    throw new ApiError(404, "School not found");
   }
 
-  const daysLeft = school.trialEndsAt
+  const syncedSchool = await syncSchoolFromSubscription(schoolId);
+
+  if (!syncedSchool) {
+    throw new ApiError(404, "School not found");
+  }
+
+  const now = Date.now();
+  const isTrial = syncedSchool.subscriptionStatus === "trial";
+
+  const relevantEndDate = isTrial
+    ? syncedSchool.trialEndsAt
+    : syncedSchool.subscriptionExpiresAt;
+
+  const daysLeft = relevantEndDate
     ? Math.max(
         0,
         Math.ceil(
-          (new Date(school.trialEndsAt).getTime() -
-            Date.now()) /
+          (new Date(relevantEndDate).getTime() - now) /
             (1000 * 60 * 60 * 24)
         )
       )
     : null;
 
   return {
-    plan: school.plan,
-    billingCycle: school.billingCycle,
-
-    subscriptionStatus:
-      school.subscriptionStatus,
-
-    onboardingStatus:
-      school.onboardingStatus,
-
-    isActive: school.isActive,
-
-    trialStartAt: school.trialStartAt,
-    trialEndsAt: school.trialEndsAt,
-
-    daysLeft, // ✅ added
-
-    subscriptionStartedAt:
-      school.subscriptionStartedAt,
-
-    subscriptionExpiresAt:
-      school.subscriptionExpiresAt,
+    plan: syncedSchool.plan,
+    billingCycle: syncedSchool.billingCycle,
+    subscriptionStatus: syncedSchool.subscriptionStatus,
+    billingStatus: syncedSchool.billingStatus,
+    onboardingStatus: syncedSchool.onboardingStatus,
+    isActive: syncedSchool.isActive,
+    isTrial,
+    trialStartAt: syncedSchool.trialStartAt,
+    trialEndsAt: syncedSchool.trialEndsAt,
+    daysLeft,
+    subscriptionStartedAt: syncedSchool.subscriptionStartedAt,
+    subscriptionExpiresAt: syncedSchool.subscriptionExpiresAt,
   };
 }
+
 export async function getInvoiceById(id) {
   const doc = await SuperInvoice.findById(id)
     .populate("schoolId", "name slug email")
