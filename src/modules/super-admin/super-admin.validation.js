@@ -1,3 +1,4 @@
+
 import { z } from "zod";
 
 export const controlTenantSchema = z.object({
@@ -15,7 +16,29 @@ export const controlTenantSchema = z.object({
     ])
     .optional(),
 
-  expiryDate: z.string().datetime().optional().nullable(),
+  plan: z
+    .enum(["starter", "growth", "premium"])
+    .optional(),
 
-  trialEndsAt: z.string().datetime().optional().nullable(),
+  billingCycle: z
+    .enum(["monthly", "quarterly", "yearly"])
+    .optional(),
+
+  expiryDate: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional(),
+
+  trialStartAt: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional(),
+
+  trialEndsAt: z
+    .string()
+    .datetime()
+    .nullable()
+    .optional(),
 });
