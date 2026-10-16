@@ -45,6 +45,37 @@ function log(step, data = null) {
  * =========================
  */
 
+async function verifyExistingSchoolAdmin(school, payload) {
+  const email = normalizeEmail(payload.adminEmail);
+
+  const admin = await User.findOne({
+    email,
+    schoolId: school._id,
+    role: "school_admin",
+  });
+
+  if (!admin || !payload.adminPassword) {
+    throw new ApiError(
+      401,
+      "This registration already exists. Enter the correct school administrator credentials to continue."
+    );
+  }
+
+  const passwordMatches = await bcrypt.compare(
+    payload.adminPassword,
+    admin.passwordHash
+  );
+
+  if (!passwordMatches) {
+    throw new ApiError(
+      401,
+      "The administrator email or password is incorrect."
+    );
+  }
+
+  return admin;
+}
+
 async function ensureUniqueSchool({ schoolName, adminEmail }) {
   const slug = slugify(schoolName || "", {
     lower: true,
@@ -202,6 +233,111 @@ async function moveSchoolToTrial(schoolId, reason) {
   });
 
   return school;
+}
+
+export async function activateOnboardingTrial(payload) {
+  const email = normalizeEmail(payload.adminEmail);
+
+  if (!email || !payload.adminPassword) {
+    throw new ApiError(
+      400,
+      "Administrator email and password are required."
+    );
+  }
+
+  let school = await School.findOne({ email });
+
+  // First-time user: create the school directly on the trial.
+  if (!school) {
+    const created = await completeOnboarding({
+      ...payload,
+      adminEmail: email,
+      isTrial: true,
+    });
+
+    return {
+      ...created,
+      message: "Your school account is ready on the 7-day free trial.",
+    };
+  }
+
+  // Returning user: prove ownership before changing billing status.
+  await verifyExistingSchoolAdmin(school, {
+    ...payload,
+    adminEmail: email,
+  });
+
+  if (
+    school.subscriptionStatus === "active" &&
+    school.subscriptionExpiresAt &&
+    new Date(school.subscriptionExpiresAt) > new Date()
+  ) {
+    throw new ApiError(
+      409,
+      "This school already has an active paid subscription. Please log in."
+    );
+  }
+
+  const now = new Date();
+
+  // Do not restart or extend a trial that is already running.
+  const existingTrialIsValid =
+    school.subscriptionStatus === "trial" &&
+    school.trialEndsAt &&
+    new Date(school.trialEndsAt) > now;
+
+  const trialStartAt = existingTrialIsValid
+    ? school.trialStartAt || now
+    : now;
+
+  const trialEndsAt = existingTrialIsValid
+    ? school.trialEndsAt
+    : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  let subscription = await Subscription.findOne({
+    schoolId: school._id,
+  }).sort({ createdAt: -1 });
+
+  if (!subscription) {
+    subscription = new Subscription({
+      schoolId: school._id,
+      plan: school.plan || "starter",
+      billingCycle: school.billingCycle || "monthly",
+      amount: 0,
+    });
+  }
+
+  subscription.status = "trial";
+  subscription.isTrial = true;
+  subscription.startsAt = trialStartAt;
+  subscription.trialEndsAt = trialEndsAt;
+  subscription.expiresAt = null;
+
+  await subscription.save();
+
+  school.subscriptionStatus = "trial";
+  school.billingStatus = "trial";
+  school.onboardingStatus = "active";
+  school.isActive = true;
+  school.trialStartAt = trialStartAt;
+  school.trialEndsAt = trialEndsAt;
+  school.subscriptionStartedAt = trialStartAt;
+  school.subscriptionExpiresAt = null;
+
+  await school.save();
+
+  return {
+    school: {
+      _id: school._id,
+      name: school.name,
+      slug: school.slug,
+      domain: school.domain,
+      onboardingStatus: school.onboardingStatus,
+      billingStatus: school.billingStatus,
+    },
+    message: "Your school account is ready on the 7-day free trial.",
+    loginUrl: `https://${school.slug}.edutrack.cloud/login`,
+  };
 }
 
 export async function completeOnboarding(payload) {
@@ -478,25 +614,44 @@ export async function initializeOnboardingPayment(payload) {
     }
 
     // Find the school or create it through the existing onboarding flow.
-    school = await School.findOne({ email });
+    
+school = await School.findOne({ email });
 
-    if (!school) {
-      const created = await completeOnboarding({
-        ...payload,
-        adminEmail: email,
-        plan,
-        billingCycle,
-      });
+if (!school) {
+  const created = await completeOnboarding({
+    ...payload,
+    adminEmail: email,
+    plan,
+    billingCycle,
+    isTrial: false,
+  });
 
-      school = await School.findById(created.school._id);
+  school = await School.findById(created.school._id);
 
-      if (!school) {
-        throw new ApiError(
-          500,
-          "School was created but could not be loaded"
-        );
-      }
-    }
+  if (!school) {
+    throw new ApiError(
+      500,
+      "School was created but could not be loaded"
+    );
+  }
+} else {
+  // Reuse an existing registration only after verifying ownership.
+  await verifyExistingSchoolAdmin(school, {
+    ...payload,
+    adminEmail: email,
+  });
+
+  if (
+    school.subscriptionStatus === "active" &&
+    school.subscriptionExpiresAt &&
+    new Date(school.subscriptionExpiresAt) > new Date()
+  ) {
+    throw new ApiError(
+      409,
+      "This school already has an active paid subscription. Please log in."
+    );
+  }
+}
 
     // Prevent duplicate checkout for an already active subscription.
     if (
@@ -694,7 +849,6 @@ export async function initializeOnboardingPayment(payload) {
         // Trial fallback failure should not mask the payment error.
       });
     }
-
     if (error instanceof ApiError) {
       throw error;
     }
