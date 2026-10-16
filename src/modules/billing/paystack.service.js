@@ -131,6 +131,15 @@ export async function handlePaystackWebhook(event) {
       "No recorded subscription payment exists for this reference"
     );
   }
+ 
+if (
+  paymentRecord.metadata?.purpose !== "edutrack_subscription"
+) {
+  throw new ApiError(
+    400,
+    "Payment reference is not an EduTrack subscription payment"
+  );
+}
 
   // Idempotency: do not activate or record the same payment twice.
   if (paymentRecord.status === "success") {
