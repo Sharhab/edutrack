@@ -119,13 +119,44 @@ export async function onboardingInitializeHandler(req, res) {
 }
 
 
+
 export async function onboardingVerifyPaymentHandler(req, res) {
-  const { reference } = req.params;
+  const reference = String(req.params.reference || "").trim();
 
-  const result = await verifyPaystackPayment(reference);
+  if (!reference) {
+    return res.status(400).json({
+      success: false,
+      message: "Payment reference is required",
+    });
+  }
 
-  return res.json({
+  const verification = await verifyPaystackPayment(reference);
+  const transaction = verification?.data;
+
+  if (
+    verification?.status !== true ||
+    transaction?.status !== "success" ||
+    String(transaction?.reference) !== reference
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Payment has not been confirmed as successful",
+    });
+  }
+
+  const result = await handlePaystackWebhook({
+    event: "charge.success",
+    data: { reference },
+  });
+
+  return res.status(200).json({
     success: true,
-    data: result.data,
+    message: result.alreadyProcessed
+      ? "Payment was already processed"
+      : "Payment verified successfully",
+    data: {
+      ...transaction,
+      reconciliation: result,
+    },
   });
 }
