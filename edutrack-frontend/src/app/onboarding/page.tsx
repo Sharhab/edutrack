@@ -118,72 +118,73 @@ export default function OnboardingPage() {
     setStep((current) => Math.max(current - 1, 1));
   }
 
-  async function submit() {
-    const validationError = validateStep3();
+async function submit() {
+  const validationError = validateStep3();
 
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    if (!form.schoolName.trim()) {
-      setError("School name is required");
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      setError("");
-
-      const payload = {
-        schoolName: form.schoolName,
-        adminFirstName: form.adminFirstName,
-        adminLastName: form.adminLastName,
-        adminEmail: form.adminEmail,
-        adminPassword: form.adminPassword,
-        phone: form.phone,
-        address: form.address,
-        plan: form.plan,
-        billingCycle: form.billingCycle,
-        amount,
-        isTrial,
-        callbackUrl: `${window.location.origin}/onboarding/success`,
-      };
-
-      if (isTrial) {
-        await api.post("/onboarding", payload);
-        window.location.href = "/login";
-        return;
-      }
-
-      const response = await api.post(
-        "/onboarding/paystack/initialize",
-        payload
-      );
-
-      const checkoutUrl = response.data?.authorizationUrl;
-
-      if (!checkoutUrl) {
-        throw new Error("Paystack URL missing");
-      }
-
-      window.location.href = checkoutUrl;
-    } catch (err: unknown) {
-      const errorObject = err as {
-        response?: { data?: { message?: string } };
-        message?: string;
-      };
-
-      setError(
-        errorObject.response?.data?.message ||
-          errorObject.message ||
-          "Onboarding failed"
-      );
-    } finally {
-      setSubmitting(false);
-    }
+  if (validationError) {
+    setError(validationError);
+    return;
   }
 
+  try {
+    setSubmitting(true);
+    setError("");
+
+    const payload = {
+      schoolName: form.schoolName,
+      adminFirstName: form.adminFirstName,
+      adminLastName: form.adminLastName,
+      adminEmail: form.adminEmail.trim().toLowerCase(),
+      adminPassword: form.adminPassword,
+      phone: form.phone,
+      address: form.address,
+      plan: form.plan,
+      billingCycle: form.billingCycle,
+      amount,
+      isTrial,
+      callbackUrl: `${window.location.origin}/onboarding/success`,
+    };
+
+    if (isTrial) {
+      const response = await api.post("/onboarding/trial", payload);
+
+      setError(
+        response.data?.message ||
+          "Your school account is ready on the free trial. Redirecting to login..."
+      );
+
+      window.location.assign("/login");
+      return;
+    }
+
+    const response = await api.post(
+      "/onboarding/paystack/initialize",
+      payload
+    );
+
+    const checkoutUrl = response.data?.authorizationUrl;
+
+    if (!checkoutUrl) {
+      throw new Error("Paystack checkout URL was not returned.");
+    }
+
+    window.location.assign(checkoutUrl);
+  } catch (err: unknown) {
+    const errorObject = err as {
+      response?: { data?: { message?: string } };
+      message?: string;
+    };
+
+    setError(
+      errorObject.response?.data?.message ||
+        errorObject.message ||
+        "We could not continue registration. Please retry or choose the free trial."
+    );
+  } finally {
+    setSubmitting(false);
+  }
+}
+  
   return (
     <main className="min-h-screen bg-black px-4 py-10 text-white">
       <div className="mx-auto max-w-5xl">
@@ -199,6 +200,23 @@ export default function OnboardingPage() {
             {error}
           </div>
         )}
+       
+{error && !isTrial && (
+  <div className="mb-4">
+    <button
+      type="button"
+      onClick={() => {
+        setIsTrial(true);
+        setError(
+          "You can continue with the 7-day free trial using the same administrator credentials."
+        );
+      }}
+      className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20"
+    >
+      Continue with the 7-day free trial instead
+    </button>
+  </div>
+)}
 
         <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-white/10 p-4">
           <div>
