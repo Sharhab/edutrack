@@ -1,6 +1,22 @@
+
 export type BillingPlan = "starter" | "growth" | "premium";
-export type BillingStatus = "active" | "expired" | "pending" | "cancelled";
-export type PaymentStatus = "paid" | "pending" | "failed";
+export type BillingCycle = "monthly" | "quarterly" | "yearly";
+export type BillingStatus =
+  | "trial"
+  | "active"
+  | "expired"
+  | "pending"
+  | "cancelled"
+  | "past_due"
+  | "suspended";
+
+export type PaymentStatus =
+  | "pending"
+  | "processing"
+  | "success"
+  | "failed"
+  | "abandoned"
+  | "refunded";
 
 export interface Subscription {
   _id: string;
@@ -9,7 +25,7 @@ export interface Subscription {
   plan: BillingPlan;
   amount: number;
   status: BillingStatus;
-  billingCycle: "monthly" | "yearly";
+  billingCycle: BillingCycle;
   startDate?: string;
   nextRenewalDate?: string;
   expiryDate?: string;
@@ -29,7 +45,7 @@ export interface PaymentRecord {
 }
 
 export interface SubscriptionListResponse {
-  subscriptions: Subscription[];
+  subscriptions?: Subscription[];
   summary?: {
     totalRevenue: number;
     activeSubscriptions: number;
@@ -39,7 +55,7 @@ export interface SubscriptionListResponse {
 }
 
 export interface PaymentListResponse {
-  payments: PaymentRecord[];
+  payments?: PaymentRecord[];
 }
 
 export interface SubscriptionFormValues {
@@ -47,7 +63,7 @@ export interface SubscriptionFormValues {
   plan: BillingPlan;
   amount: string;
   status: BillingStatus;
-  billingCycle: "monthly" | "yearly";
+  billingCycle: BillingCycle;
   startDate: string;
   nextRenewalDate: string;
   expiryDate: string;
