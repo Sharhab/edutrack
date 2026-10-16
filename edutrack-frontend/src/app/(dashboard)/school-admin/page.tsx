@@ -31,7 +31,8 @@ import { useBilling } from "../../../hooks/useBillingStatus";
 
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import api from "../../../lib/axios";
 
 type SubscriptionData = {
   plan: string;
@@ -63,6 +64,31 @@ const brandColor = tenant?.themeColor || "#06b6d4";
   const router = useRouter();
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
 
+  useEffect(() => {
+  let cancelled = false;
+
+  async function loadSubscription() {
+    try {
+      const response = await api.get("/billing/current");
+
+      if (!cancelled) {
+        setSubscription(response.data?.data ?? null);
+      }
+    } catch (error) {
+      console.error(
+        "Failed to load dashboard subscription status:",
+        error
+      );
+    }
+  }
+
+  void loadSubscription();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+  
 const {
   stats = {} as any,
   loading,
@@ -338,9 +364,12 @@ const {
   )}
 </section>
       
-      <SubscriptionBanner
-        daysLeft={subscription?.daysLeft}
-      />
+    <SubscriptionBanner
+  daysLeft={subscription?.daysLeft}
+  subscriptionStatus={subscription?.subscriptionStatus}
+  trialEndsAt={subscription?.trialEndsAt}
+  subscriptionExpiresAt={subscription?.subscriptionExpiresAt}
+/>
 
       {/* =========================================
           CORE STATS
