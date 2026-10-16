@@ -338,15 +338,32 @@ export async function handlePaystackWebhook(event) {
   }
 
   // Validate the action against the school's current state.
-  if (
-    action === "upgrade" &&
-    intendedPlan === subscription.plan
-  ) {
+ 
+let previousSubscription = null;
+
+if (action === "upgrade") {
+  previousSubscription = await Subscription.findOne({
+    schoolId: school._id,
+    _id: { $ne: subscription._id },
+    status: "active",
+    expiresAt: { $gt: new Date() },
+  }).sort({ expiresAt: -1, createdAt: -1 });
+
+  if (!previousSubscription) {
     throw new ApiError(
       409,
-      "Upgrade payment does not specify a different plan"
+      "No active subscription was found to upgrade"
     );
   }
+
+  if (intendedPlan === previousSubscription.plan) {
+    throw new ApiError(
+      409,
+      "Choose a different plan to upgrade"
+    );
+  }
+}
+
 
   if (
     action === "renewal" &&
@@ -418,9 +435,16 @@ export async function handlePaystackWebhook(event) {
   // NOTE: These writes are not atomic. For production,
   // use a MongoDB transaction or an atomic idempotency
   // strategy to prevent concurrent webhook double-processing.
-  await paymentRecord.save();
-  await subscription.save();
-  await school.save();
+ 
+await paymentRecord.save();
+await subscription.save();
+
+if (action === "upgrade" && previousSubscription) {
+  previousSubscription.status = "expired";
+  await previousSubscription.save();
+}
+
+await school.save();
 
   return {
     processed: true,
