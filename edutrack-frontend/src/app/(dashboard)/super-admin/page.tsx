@@ -66,6 +66,72 @@ export default function SuperAdminBillingPage() {
   const [selectedSubscription, setSelectedSubscription] =
     useState<Subscription | null>(null);
 
+  
+const tenantHealth = useMemo(() => {
+  const now = new Date();
+  const nextSevenDays = new Date(
+    now.getTime() + 7 * 24 * 60 * 60 * 1000
+  );
+
+  const trialsEndingSoon = tenants.filter((tenant) => {
+    if (
+      tenant.subscriptionStatus !== "trial" ||
+      !tenant.trialEndsAt
+    ) {
+      return false;
+    }
+
+    const end = new Date(tenant.trialEndsAt);
+
+    return (
+      !Number.isNaN(end.getTime()) &&
+      end >= now &&
+      end <= nextSevenDays
+    );
+  }).length;
+
+  const billingIssues = tenants.filter((tenant) => {
+    const paidExpiry = tenant.subscriptionExpiresAt
+      ? new Date(tenant.subscriptionExpiresAt)
+      : null;
+
+    const trialExpiry = tenant.trialEndsAt
+      ? new Date(tenant.trialEndsAt)
+      : null;
+
+    const paidExpired =
+      paidExpiry !== null &&
+      !Number.isNaN(paidExpiry.getTime()) &&
+      paidExpiry <= now;
+
+    const trialExpired =
+      trialExpiry !== null &&
+      !Number.isNaN(trialExpiry.getTime()) &&
+      trialExpiry <= now;
+
+    return (
+      (tenant.subscriptionStatus === "active" &&
+        (!paidExpiry || paidExpired)) ||
+      (tenant.subscriptionStatus === "trial" &&
+        (!trialExpiry || trialExpired)) ||
+      (tenant.billingStatus === "pending_payment" &&
+        tenant.subscriptionStatus === "active") ||
+      (tenant.subscriptionStatus === "active" &&
+        !tenant.isActive)
+    );
+  }).length;
+
+  return {
+    totalSchools: tenants.length,
+    accessibleSchools: tenants.filter(
+      (tenant) => tenant.isActive
+    ).length,
+    trialsEndingSoon,
+    billingIssues,
+  };
+}, [tenants]);
+
+
   async function loadData() {
     try {
       setLoading(true);
@@ -327,7 +393,32 @@ export default function SuperAdminBillingPage() {
             title="Pending Payments"
             value={summary.pendingPayments}
           />
-        </div>
+
+  <StatCard
+    title="Total Schools"
+    value={tenantHealth.totalSchools}
+    subtitle="Registered school tenants"
+  />
+
+  <StatCard
+    title="Schools With Access"
+    value={tenantHealth.accessibleSchools}
+    subtitle="School access currently enabled"
+  />
+
+  <StatCard
+    title="Trials Ending Soon"
+    value={tenantHealth.trialsEndingSoon}
+    subtitle="Trials ending within 7 days"
+  />
+
+  <StatCard
+    title="Billing Issues"
+    value={tenantHealth.billingIssues}
+    subtitle="Date or status inconsistencies detected"
+  />
+
+ </div>
 
         <SectionCard
           title="Subscriptions"
