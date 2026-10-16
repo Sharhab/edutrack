@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { env } from "../../config/env.js";
 import {
   completeOnboarding,
   initializeOnboardingPayment,
@@ -7,8 +9,52 @@ import { verifyPaystackPayment } from "../billing/paystack.service.js";
 
 import { handlePaystackWebhook } from "../billing/paystack.service.js";
 
+
 export async function onboardingWebhookHandler(req, res) {
   try {
+    const signature = req.headers["x-paystack-signature"];
+    const secretKey = env.PAYSTACK_SECRET_KEY;
+    const rawBody = req.rawBody;
+
+    if (!secretKey || !Buffer.isBuffer(rawBody)) {
+      console.error(
+        "Paystack webhook rejected: secret or raw body unavailable"
+      );
+
+      return res.status(400).json({
+        success: false,
+        message: "Webhook could not be validated",
+      });
+    }
+
+    if (
+      typeof signature !== "string" ||
+      !/^[a-f0-9]{128}$/i.test(signature)
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid webhook signature",
+      });
+    }
+
+    const expectedSignature = createHmac("sha512", secretKey)
+      .update(rawBody)
+      .digest();
+
+    const receivedSignature = Buffer.from(signature, "hex");
+
+    if (
+      receivedSignature.length !== expectedSignature.length ||
+      !timingSafeEqual(receivedSignature, expectedSignature)
+    ) {
+      console.warn("Paystack webhook rejected: signature mismatch");
+
+      return res.status(401).json({
+        success: false,
+        message: "Invalid webhook signature",
+      });
+    }
+
     await handlePaystackWebhook(req.body);
 
     return res.status(200).json({
@@ -16,14 +62,17 @@ export async function onboardingWebhookHandler(req, res) {
       message: "Webhook processed",
     });
   } catch (error) {
-    console.error("❌ WEBHOOK ERROR:", error);
+    console.error("ONBOARDING WEBHOOK ERROR:", {
+      message: error.message,
+    });
 
     return res.status(500).json({
       success: false,
-      message: "Webhook failed",
+      message: "Webhook processing failed",
     });
   }
 }
+
 /**
  * CREATE SCHOOL + ADMIN
  */
