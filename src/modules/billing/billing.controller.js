@@ -2,8 +2,9 @@ import { initializePaystackSchema } from "./paystack.validation.js";
 
 import {
   initializePaystackPayment,
-  verifyPaystackPayment,
+  handlePaystackWebhook,
 } from "./paystack.service.js";
+
 
 import {
   createInvoiceSchema,
@@ -58,13 +59,30 @@ export async function initializePaystackHandler(req, res) {
 }
 
 // Preserve the existing verification handler.
-export async function verifyPaystackHandler(req, res) {
-  const data = await verifyPaystackPayment(req.params.reference);
 
-  return res.json({
+export async function verifyPaystackHandler(req, res) {
+  const reference = String(req.params.reference || "").trim();
+
+  if (!reference) {
+    return res.status(400).json({
+      success: false,
+      message: "Payment reference is required",
+    });
+  }
+
+  // The service verifies the transaction directly with Paystack,
+  // validates the recorded payment, and reconciles the subscription.
+  const result = await handlePaystackWebhook({
+    event: "charge.success",
+    data: { reference },
+  });
+
+  return res.status(200).json({
     success: true,
-    message: "Payment verified successfully",
-    data,
+    message: result.alreadyProcessed
+      ? "Payment was already verified and processed"
+      : "Payment verified and subscription reconciled successfully",
+    data: result,
   });
 }
 
