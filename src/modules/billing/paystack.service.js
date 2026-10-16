@@ -65,22 +65,23 @@ export async function initializePaystackPayment(payload) {
   /**
    * 🔥 DEBUG (temporary but important)
    */
-  console.log("PAYSTACK AMOUNT DEBUG:", {
-    naira: amountInNaira,
-    kobo: amountInKobo,
-    email: payload.email,
-  });
+ 
 
   const response = await paystackRequest(
     "https://api.paystack.co/transaction/initialize",
     {
       method: "POST",
-      body: JSON.stringify({
-        email: payload.email,
-        amount: amountInKobo,
-        callback_url: payload.callbackUrl,
-        metadata,
-      }),
+     
+body: JSON.stringify({
+  email: payload.email,
+  amount: amountInKobo,
+  ...(payload.reference
+    ? { reference: payload.reference }
+    : {}),
+  callback_url: payload.callbackUrl,
+  metadata,
+}),
+
     }
   );
 
