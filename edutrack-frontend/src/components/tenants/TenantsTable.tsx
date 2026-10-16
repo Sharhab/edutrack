@@ -45,11 +45,12 @@ function StatusBadge({ label }: { label: string }) {
   );
 }
 
+
 function getTenantWarnings(row: Tenant): string[] {
   const warnings: string[] = [];
   const now = new Date();
 
-  const subscriptionExpiry = row.subscriptionExpiresAt
+  const paidExpiry = row.subscriptionExpiresAt
     ? new Date(row.subscriptionExpiresAt)
     : null;
 
@@ -57,40 +58,62 @@ function getTenantWarnings(row: Tenant): string[] {
     ? new Date(row.trialEndsAt)
     : null;
 
+  const validDate = (date: Date | null) =>
+    date !== null && !Number.isNaN(date.getTime());
+
   if (
-    subscriptionExpiry &&
-    !Number.isNaN(subscriptionExpiry.getTime()) &&
-    subscriptionExpiry < now &&
-    row.subscriptionStatus === "active"
+    row.subscriptionStatus === "active" &&
+    (!validDate(paidExpiry) || paidExpiry! <= now)
   ) {
-    warnings.push("Subscription expired, but status is active");
+    warnings.push(
+      validDate(paidExpiry)
+        ? "Paid subscription has expired but is still active"
+        : "Active subscription has no expiry date"
+    );
   }
 
   if (
-    trialExpiry &&
-    !Number.isNaN(trialExpiry.getTime()) &&
-    trialExpiry < now &&
-    row.subscriptionStatus === "trial"
+    row.subscriptionStatus === "trial" &&
+    (!validDate(trialExpiry) || trialExpiry! <= now)
   ) {
-    warnings.push("Trial has expired");
+    warnings.push(
+      validDate(trialExpiry)
+        ? "Trial has expired but is still marked as trial"
+        : "Trial has no end date"
+    );
   }
 
   if (
     row.subscriptionStatus === "active" &&
     !row.isActive
   ) {
-    warnings.push("Subscription active, but access is disabled");
+    warnings.push("Paid subscription active but school access is disabled");
   }
 
   if (
     row.billingStatus === "pending_payment" &&
     row.subscriptionStatus === "active"
   ) {
-    warnings.push("Active subscription has pending billing");
+    warnings.push("Paid subscription active but billing is pending");
+  }
+
+  if (
+    row.billingStatus === "blocked" &&
+    row.isActive
+  ) {
+    warnings.push("Billing is blocked but school access is enabled");
+  }
+
+  if (
+    row.subscriptionStatus === "past_due" &&
+    row.isActive
+  ) {
+    warnings.push("Payment is overdue but school access is enabled");
   }
 
   return warnings;
 }
+
 
 export default function TenantsTable({
   data,
