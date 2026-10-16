@@ -1,174 +1,200 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import axios from "axios";
 import Link from "next/link";
+
+type PaymentState = "loading" | "success" | "failed";
 
 export default function OnboardingSuccessClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const reference =
-    searchParams?.get("reference") ||
-    searchParams?.get("trxref");
+    searchParams.get("reference") ||
+    searchParams.get("trxref");
 
-  const [loading, setLoading] = useState(true);
-  const [success, setSuccess] = useState(false);
-  const [message, setMessage] = useState("Verifying payment...");
-  const [schoolData, setSchoolData] = useState<any>(null);
+  const [state, setState] = useState<PaymentState>("loading");
+  const [message, setMessage] = useState("Verifying your payment securely...");
+  const [paymentInfo, setPaymentInfo] = useState<{
+    reference?: string;
+    amount?: number;
+    customer?: { email?: string };
+  } | null>(null);
 
   useEffect(() => {
-    if (!reference) {
-      setLoading(false);
-      setSuccess(false);
-      setMessage("Payment reference missing");
-      return;
-    }
+    let cancelled = false;
 
-    verifyPayment(reference);
-  }, [reference]);
-
-  async function verifyPayment(ref: string) {
-    try {
-      setLoading(true);
-
-      const baseURL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://edutrack-dpui.onrender.com/api";
-
-const response = await axios.get(
-  `${baseURL}/onboarding/paystack/verify/${ref}`
-);
-  
-
-      const data = response.data?.data;
-
-      const isSuccess =
-        data?.status === "success" || data?.status === true;
-
-      if (isSuccess) {
-        setSuccess(true);
+    async function verifyPayment() {
+      if (!reference) {
+        setState("failed");
         setMessage(
-          "Payment successful. Your school has been activated successfully."
+          "No payment reference was returned. Your registration may already exist. You can return to continue with payment or choose the free trial."
         );
-        setSchoolData(data);
+        return;
+      }
 
-        setTimeout(() => {
-          router.push("/login");
-        }, 5000);
-      } else {
-        setSuccess(false);
+      try {
+        setState("loading");
+        setMessage("Verifying your payment securely...");
+
+        const baseURL =
+          process.env.NEXT_PUBLIC_API_URL ||
+          "https://edutrack-dpui.onrender.com/api";
+
+        const response = await fetch(
+          `${baseURL}/onboarding/paystack/verify/${encodeURIComponent(reference)}`,
+          { credentials: "include", cache: "no-store" }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.message || "Payment has not been confirmed."
+          );
+        }
+
+        const data = result.data;
+        const successful =
+          data?.status === "success" ||
+          data?.status === true;
+
+        if (!successful) {
+          throw new Error(
+            "Payment has not been confirmed as successful."
+          );
+        }
+
+        if (cancelled) return;
+
+        setPaymentInfo({
+          reference: data.reference || reference,
+          amount: Number(data.amount) / 100,
+          customer: data.customer,
+        });
+
+        setState("success");
         setMessage(
-          data?.gateway_response ||
-            data?.message ||
-            "Payment verification failed"
+          "Your payment has been verified and your school subscription has been activated."
+        );
+      } catch (error: unknown) {
+        if (cancelled) return;
+
+        const err = error as { message?: string };
+
+        setState("failed");
+        setMessage(
+          err.message ||
+            "We could not confirm the payment yet. You can return to registration to retry or choose the free trial."
         );
       }
-    } catch (error: any) {
-      console.error("VERIFY ERROR:", error);
-
-      setSuccess(false);
-      setMessage(
-        error?.response?.data?.message ||
-          "Unable to verify payment"
-      );
-    } finally {
-      setLoading(false);
     }
-  }
+
+    verifyPayment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reference]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="bg-white shadow-xl rounded-2xl p-10 w-full max-w-lg">
-        <div className="text-center">
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-5 text-white">
+      <section className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-6 text-center shadow-xl sm:p-10">
+        {state === "loading" && (
+          <>
+            <div className="mx-auto mb-6 h-14 w-14 animate-spin rounded-full border-4 border-cyan-400 border-t-transparent" />
+            <h1 className="text-2xl font-bold">Verifying Payment</h1>
+            <p className="mt-4 text-slate-300">{message}</p>
+            <p className="mt-3 text-sm text-slate-500">
+              Please keep this page open while we verify the transaction.
+            </p>
+          </>
+        )}
 
-          {/* LOADING */}
-          {loading && (
-            <>
-              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-              <h1 className="text-2xl font-bold text-gray-800">
-                Verifying Payment
-              </h1>
-              <p className="text-gray-500 mt-3">Please wait...</p>
-            </>
-          )}
+        {state === "success" && (
+          <>
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15 text-3xl">
+              ✓
+            </div>
 
-          {/* SUCCESS */}
-          {!loading && success && (
-            <>
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-4xl">✅</span>
-              </div>
+            <h1 className="text-3xl font-bold text-emerald-400">
+              Payment Successful
+            </h1>
 
-              <h1 className="text-3xl font-bold text-green-600">
-                Payment Successful
-              </h1>
+            <p className="mt-4 text-slate-300">{message}</p>
 
-              <p className="text-gray-600 mt-4">{message}</p>
+            {paymentInfo && (
+              <div className="mt-6 space-y-2 rounded-xl border border-white/10 bg-black/20 p-4 text-left text-sm">
+                <p>
+                  <span className="text-slate-400">Reference: </span>
+                  {paymentInfo.reference}
+                </p>
 
-              {schoolData && (
-                <div className="mt-6 bg-gray-50 rounded-xl p-5 text-left">
-                  <p><b>Reference:</b> {schoolData.reference}</p>
-                  <p><b>Amount:</b> ₦{Number(schoolData.amount) / 100}</p>
-                  <p><b>Email:</b> {schoolData.customer?.email}</p>
+                {paymentInfo.amount !== undefined &&
+                  Number.isFinite(paymentInfo.amount) && (
+                    <p>
+                      <span className="text-slate-400">Amount: </span>
+                      ₦{paymentInfo.amount.toLocaleString("en-NG")}
+                    </p>
+                  )}
+
+                {paymentInfo.customer?.email && (
                   <p>
-                    <b>Status:</b>{" "}
-                    <span className="text-green-600 font-semibold">
-                      {schoolData.status}
-                    </span>
+                    <span className="text-slate-400">Email: </span>
+                    {paymentInfo.customer.email}
                   </p>
-                </div>
-              )}
-
-              <div className="mt-8">
-                <Link
-                  href="/login"
-                  className="inline-flex bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition"
-                >
-                  Continue to Login
-                </Link>
+                )}
               </div>
+            )}
 
-              <p className="text-sm text-gray-400 mt-4">
-                Redirecting to login automatically...
-              </p>
-            </>
-          )}
+            <Link
+              href="/login"
+              className="mt-7 inline-flex w-full justify-center rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-slate-950 hover:bg-cyan-300"
+            >
+              Continue to Login
+            </Link>
+          </>
+        )}
 
-          {/* FAILED */}
-          {!loading && !success && (
-            <>
-              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-4xl">❌</span>
-              </div>
+        {state === "failed" && (
+          <>
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/15 text-3xl">
+              !
+            </div>
 
-              <h1 className="text-3xl font-bold text-red-600">
-                Payment Failed
-              </h1>
+            <h1 className="text-2xl font-bold">
+              Payment Not Completed
+            </h1>
 
-              <p className="text-gray-600 mt-4">{message}</p>
+            <p className="mt-4 text-slate-300">{message}</p>
 
-              <div className="mt-8 flex gap-4 justify-center">
-                <button
-                  onClick={() => router.push("/onboarding")}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition"
-                >
-                  Try Again
-                </button>
+            <div className="mt-7 space-y-3">
+              <button
+                type="button"
+                onClick={() => router.push("/onboarding")}
+                className="w-full rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-slate-950 hover:bg-cyan-300"
+              >
+                Return to Registration
+              </button>
 
-                <Link
-                  href="/"
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-3 rounded-xl font-semibold transition"
-                >
-                  Home
-                </Link>
-              </div>
-            </>
-          )}
+              <Link
+                href="/login"
+                className="inline-flex w-full justify-center rounded-xl border border-white/15 px-5 py-3 font-semibold hover:bg-white/5"
+              >
+                Go to Login
+              </Link>
+            </div>
 
-        </div>
-      </div>
-    </div>
+            <p className="mt-5 text-sm text-slate-500">
+              If your payment may have succeeded, check its status before
+              making another payment. Use your existing administrator
+              credentials when returning to registration.
+            </p>
+          </>
+        )}
+      </section>
+    </main>
   );
 }
