@@ -113,36 +113,57 @@ export async function ensureNoActiveSubscription(
  * INITIALIZE RENEWAL PAYMENT
  * =========================================
  */
-export async function initializeRenewalPayment(user, payload) {
-  const school = await School.findById(user.schoolId);
+
+const SUBSCRIPTION_PRICING = {
+  starter: {
+    monthly: 10000,
+    quarterly: 27000,
+    yearly: 96000,
+  },
+  growth: {
+    monthly: 25000,
+    quarterly: 67500,
+    yearly: 240000,
+  },
+  premium: {
+    monthly: 50000,
+    quarterly: 135000,
+    yearly: 480000,
+  },
+};
+
+async function initializeSubscriptionCheckout(user, payload, action) {
+  const school = await School.findById(user?.schoolId);
 
   if (!school) {
     throw new ApiError(404, "School not found");
   }
 
-  const plan = payload.plan || school.plan;
-  const billingCycle = payload.billingCycle || school.billingCycle;
+  // Prefer a real current subscription over an older pending one.
+  let subscription = await Subscription.findOne({
+    schoolId: school._id,
+    status: { $in: ["active", "trial"] },
+  }).sort({ expiresAt: -1, createdAt: -1 });
 
-  // ✅ INLINE PRICING (no constants needed yet)
-  const pricing = {
-    starter: {
-      monthly: 10000,
-      quarterly: 25000,
-      yearly: 70000,
-    },
-    growth: {
-      monthly: 20000,
-       quarterly: 55000,
-      yearly: 140000,
-    },
-    premium: {
-      monthly: 30000,
-      quarterly: 850000,
-      yearly: 220000,
-    },
-  };
+  if (!subscription) {
+    subscription = await Subscription.findOne({
+      schoolId: school._id,
+      status: "pending",
+    }).sort({ createdAt: -1 });
+  }
 
-  const amount = pricing?.[plan]?.[billingCycle];
+  const plan = String(
+    payload.plan || subscription?.plan || school.plan || ""
+  ).toLowerCase();
+
+  const billingCycle = String(
+    payload.billingCycle ||
+      subscription?.billingCycle ||
+      school.billingCycle ||
+      "monthly"
+  ).toLowerCase();
+
+  const amount = SUBSCRIPTION_PRICING[plan]?.[billingCycle];
 
   if (!amount) {
     throw new ApiError(
@@ -151,52 +172,137 @@ export async function initializeRenewalPayment(user, payload) {
     );
   }
 
-  // 1. Ensure no active subscription
-  await ensureNoActiveSubscription(school._id);
+  if (action === "upgrade") {
+    if (!subscription) {
+      throw new ApiError(
+        400,
+        "No existing subscription found. Use the subscription checkout instead."
+      );
+    }
 
-  // 2. Create or update pending subscription
-  let subscription = await Subscription.findOne({
-    schoolId: school._id,
-    status: "pending",
-  });
+    if (subscription.plan === plan) {
+      throw new ApiError(
+        400,
+        "Choose a different plan to upgrade."
+      );
+    }
+  }
 
-  if (!subscription) {
+  if (action === "renewal" && subscription) {
+    if (subscription.plan !== plan) {
+      throw new ApiError(
+        400,
+        "Renewal must use the current plan. Use upgrade to change plans."
+      );
+    }
+  }
+
+  // Never deactivate an existing paid subscription before payment.
+  // For upgrades, create a separate pending subscription.
+  if (action === "upgrade" || !subscription) {
     subscription = await Subscription.create({
       schoolId: school._id,
       plan,
       billingCycle,
       amount,
       status: "pending",
+      isTrial: false,
       startsAt: null,
       expiresAt: null,
     });
-  } else {
+  } else if (subscription.status === "pending") {
     subscription.plan = plan;
     subscription.billingCycle = billingCycle;
     subscription.amount = amount;
     await subscription.save();
   }
 
-  // 3. Initialize Paystack payment
-  const payment = await initializePaystackPayment({
+  const reference = `EDUTRACK-${randomUUID()}`;
+
+  const paymentRecord = await SubPayment.create({
     schoolId: school._id,
-    email: school.email,
-    amount, // ✅ FIXED: required field now included
-    plan,
-    billingCycle,
-    callbackUrl: payload.callbackUrl,
+    subscriptionId: subscription._id,
+    amount,
+    currency: "NGN",
+    method: "paystack",
+    reference,
+    status: "pending",
+    initiatedAt: new Date(),
     metadata: {
-      subscriptionId: subscription._id,
-      type: "renewal",
+      purpose: "edutrack_subscription",
+      action,
+      plan,
+      billingCycle,
     },
   });
 
-  return {
-    authorizationUrl: payment.authorizationUrl,
-    reference: payment.reference,
-    subscriptionId: subscription._id,
-    amount,
-  };
+  try {
+    const payment = await initializePaystackPayment({
+      schoolId: school._id,
+      email: school.email,
+      amount,
+      plan,
+      billingCycle,
+      reference,
+      callbackUrl: payload.callbackUrl,
+      metadata: {
+        purpose: "edutrack_subscription",
+        action,
+        schoolId: String(school._id),
+        subscriptionId: String(subscription._id),
+        paymentId: String(paymentRecord._id),
+        plan,
+        billingCycle,
+      },
+    });
+
+    paymentRecord.gatewayResponse = {
+      authorizationUrl: payment.authorizationUrl,
+      reference: payment.reference,
+      accessCode: payment.accessCode,
+    };
+
+    await paymentRecord.save();
+
+    return {
+      authorizationUrl: payment.authorizationUrl,
+      reference: payment.reference,
+      subscriptionId: subscription._id,
+      amount,
+      plan,
+      billingCycle,
+      action,
+    };
+  } catch (error) {
+    // An uncertain gateway/network failure may occur after Paystack
+    // has received the request. Keep the record for reconciliation.
+    const statusCode = Number(error?.statusCode || error?.status || 0);
+
+    paymentRecord.status =
+      statusCode >= 400 && statusCode < 500
+        ? "failed"
+        : "processing";
+
+    if (paymentRecord.status === "failed") {
+      paymentRecord.failedAt = new Date();
+    }
+
+    paymentRecord.gatewayResponse = {
+      message: String(error?.message || "Paystack initialization failed"),
+      statusCode: statusCode || null,
+    };
+
+    await paymentRecord.save();
+    throw error;
+  }
+}
+
+export async function initializeRenewalPayment(user, payload) {
+  return initializeSubscriptionCheckout(user, payload, "renewal");
+}
+
+export async function upgradeSubscription(user, payload) {
+  return initializeSubscriptionCheckout(user, payload, "upgrade");
 }
 
 export async function paystackWebhookHandler(req, res) {
@@ -374,107 +480,7 @@ school.subscriptionStatus =
     doc._id
   );
 }
-export async function updateSubscription(
-  id,
-  payload
-) {
-  const doc =
-    await Subscription.findById(id);
-  if (!doc) {
-    throw new ApiError(
-      404,
-      "Subscription not found"
-    );
-  }
 
-  if (payload.plan !== undefined)
-    doc.plan = payload.plan;
-
-  if (payload.amount !== undefined)
-    doc.amount = payload.amount;
-
-  if (
-    payload.billingCycle !==
-    undefined
-  )
-    doc.billingCycle =
-      payload.billingCycle;
-
-  if (payload.status !== undefined)
-    doc.status = payload.status;
-
-  if (
-    payload.startsAt !== undefined
-  )
-    doc.startsAt =
-      payload.startsAt || null;
-
-  if (
-    payload.expiresAt !== undefined
-  )
-    doc.expiresAt =
-      payload.expiresAt || null;
-
-  if (payload.notes !== undefined)
-    doc.notes = payload.notes;
-
-  await doc.save();
-
-  const school =
-    await School.findById(
-      doc.schoolId
-    );
-
-  if (school) {
-    school.plan = doc.plan;
-
-    school.billingCycle =
-      doc.billingCycle;
-
-    school.subscriptionStatus =
-      doc.status;
-
-    school.subscriptionStartedAt =
-      doc.startsAt || null;
-
-    school.subscriptionExpiresAt =
-      doc.expiresAt || null;
-
-    school.isActive =
-      doc.status === "active";
-
-    school.isTrial = false;
-    /**
-     * ONBOARDING STATUS SYNC
-     */
-    if (
-      doc.status === "active"
-    ) {
-      school.onboardingStatus =
-        "active";
-    }
-
-    if (
-      doc.status === "expired"
-    ) {
-      school.onboardingStatus =
-        "suspended";
-    }
-
-    if (
-      doc.status === "cancelled"
-    ) {
-      school.onboardingStatus =
-        "suspended";
-    }
-
-    await school.save();
-  }
-
-  return getSubscriptionById(
-    doc._id
-  );
-}
 export async function deleteSubscription(id) {
   const doc = await Subscription.findByIdAndDelete(id);
 
