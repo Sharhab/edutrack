@@ -1,38 +1,49 @@
+
 "use client";
 
 export default function SubscriptionBanner({
   daysLeft,
+  subscriptionStatus,
 }: {
   daysLeft?: number | null;
+  subscriptionStatus?: string;
 }) {
-  if (daysLeft === null || daysLeft === undefined) {
+  if (
+    daysLeft === null ||
+    daysLeft === undefined ||
+    daysLeft > 7
+  ) {
     return null;
   }
 
-  if (daysLeft > 7) {
-    return null;
-  }
+  const isTrial = subscriptionStatus === "trial";
+  const isExpired = daysLeft <= 0;
+
+  const heading = isExpired
+    ? isTrial
+      ? "Trial has ended"
+      : "Subscription expiry reached"
+    : isTrial
+      ? "Trial ending soon"
+      : "Subscription renewal due soon";
+
+  const message = isExpired
+    ? "Review your billing status and choose a plan to restore or continue service."
+    : isTrial
+      ? `Your free trial ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}.`
+      : `Your subscription expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}.`;
 
   return (
-    <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className="text-2xl">⚠️</div>
-
-        <div>
-          <h3 className="font-semibold text-amber-800">
-            Trial Ending Soon
-          </h3>
-
-          <p className="text-sm text-amber-700">
-            Your free trial expires in{" "}
-            <strong>
-              {daysLeft} day
-              {daysLeft !== 1 ? "s" : ""}
-            </strong>
-            .
-          </p>
-        </div>
-      </div>
+    <div
+      role="status"
+      className={`rounded-2xl border p-5 shadow-sm ${
+        isExpired
+          ? "border-red-300 bg-red-50 text-red-800"
+          : "border-amber-300 bg-amber-50 text-amber-800"
+      }`}
+    >
+      <h3 className="font-semibold">{heading}</h3>
+      <p className="mt-1 text-sm">{message}</p>
     </div>
   );
 }
