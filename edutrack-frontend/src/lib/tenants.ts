@@ -280,24 +280,40 @@ export async function deleteTenant(
   return data?.data || data || { success: true };
 }
 
+
 export async function controlTenant(
   id: string,
   payload: TenantControlPayload
 ): Promise<Tenant> {
+  const toIsoDate = (value?: string | null) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === "") return null;
+
+    const date = new Date(`${value}T00:00:00.000Z`);
+
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Please enter a valid date.");
+    }
+
+    return date.toISOString();
+  };
+
   const requestBody = {
     isActive:
       payload.status === undefined
         ? undefined
         : payload.status === "active",
+
     subscriptionStatus: payload.subscriptionStatus,
-    expiryDate:
-      payload.expiryDate === undefined
-        ? undefined
-        : payload.expiryDate || null,
+    plan: payload.plan,
+    billingCycle: payload.billingCycle,
+    trialStartAt: toIsoDate(payload.trialStartAt),
+    trialEndsAt: toIsoDate(payload.trialEndsAt),
+    expiryDate: toIsoDate(payload.expiryDate),
   };
 
   const { data } = await api.patch(
-    TENANT_ENDPOINTS.control(id),
+    `/super-admin/tenants/${id}/control`,
     requestBody
   );
 
