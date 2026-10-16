@@ -422,56 +422,73 @@ export async function getSubscriptionById(id) {
   return doc;
 }
 
-export async function createSubscription(
-  payload
-) {
-  const school = await ensureSchool(
-    payload.schoolId
-  );
+
+export async function createSubscription(payload) {
+  const school = await ensureSchool(payload.schoolId);
+  const now = new Date();
+
+  const startsAt = payload.startsAt
+    ? new Date(payload.startsAt)
+    : payload.status === "active"
+      ? now
+      : null;
+
+  const expiresAt = payload.expiresAt
+    ? new Date(payload.expiresAt)
+    : null;
+
+  if (payload.status === "active") {
+    if (!expiresAt || expiresAt <= now) {
+      throw new ApiError(
+        400,
+        "An active subscription must have an expiry date in the future."
+      );
+    }
+
+    if (startsAt && startsAt > now) {
+      throw new ApiError(
+        400,
+        "A subscription cannot be active before its start date."
+      );
+    }
+  }
+
+  if (payload.status === "trial" && (!expiresAt || expiresAt <= now)) {
+    throw new ApiError(
+      400,
+      "A trial subscription must have an expiry date in the future."
+    );
+  }
+
+  // Keep one current paid subscription per school.
+  if (payload.status === "active") {
+    await Subscription.updateMany(
+      {
+        schoolId: school._id,
+        status: "active",
+        expiresAt: { $gt: now },
+      },
+      { $set: { status: "expired" } }
+    );
+  }
 
   const doc = await Subscription.create({
-    schoolId: payload.schoolId,
+    schoolId: school._id,
     plan: payload.plan,
     amount: payload.amount,
-    billingCycle:
-    payload.billingCycle,
+    billingCycle: payload.billingCycle,
     status: payload.status,
-    startsAt:
-    payload.startsAt || null,
-    expiresAt:
-    payload.expiresAt || null,
+    isTrial: payload.status === "trial",
+    trialEndsAt: payload.status === "trial" ? expiresAt : null,
+    startsAt,
+    expiresAt,
     notes: payload.notes || "",
   });
 
-  /**
-   * SYNC SCHOOL
-   */
-  school.plan = payload.plan;
-  school.billingCycle =
-    payload.billingCycle;
-school.subscriptionStatus =
-    payload.status;
-  school.subscriptionStartedAt =
-    payload.startsAt || null;
-  school.subscriptionExpiresAt =
-    payload.expiresAt || null;
-  school.isActive =
-    payload.status === "active";
-  school.isTrial = false;
-  if (
-    payload.status === "active"
-  ) {
-    school.onboardingStatus =
-      "active";
-  }
+  await syncSchoolFromSubscription(school._id);
 
-  await school.save();
-
-  return getSubscriptionById(
-    doc._id
-  );
+  return getSubscriptionById(doc._id);
 }
-
 
 export async function updateSubscription(id, payload) {
   const subscription = await Subscription.findById(id);
@@ -480,98 +497,79 @@ export async function updateSubscription(id, payload) {
     throw new ApiError(404, "Subscription not found");
   }
 
-  const allowedFields = [
-    "plan",
-    "amount",
-    "billingCycle",
-    "status",
-    "startsAt",
-    "expiresAt",
-    "notes",
-  ];
+  const now = new Date();
 
-  for (const field of allowedFields) {
-    if (Object.prototype.hasOwnProperty.call(payload, field)) {
-      if (field === "startsAt" || field === "expiresAt") {
-        subscription[field] = payload[field]
-          ? new Date(payload[field])
-          : null;
-      } else {
-        subscription[field] = payload[field];
-      }
+  const nextStatus = payload.status ?? subscription.status;
+  const nextStartsAt = Object.prototype.hasOwnProperty.call(
+    payload,
+    "startsAt"
+  )
+    ? payload.startsAt
+      ? new Date(payload.startsAt)
+      : null
+    : subscription.startsAt;
+
+  const nextExpiresAt = Object.prototype.hasOwnProperty.call(
+    payload,
+    "expiresAt"
+  )
+    ? payload.expiresAt
+      ? new Date(payload.expiresAt)
+      : null
+    : subscription.expiresAt;
+
+  if (nextStatus === "active") {
+    if (!nextExpiresAt || nextExpiresAt <= now) {
+      throw new ApiError(
+        400,
+        "An active subscription must have an expiry date in the future."
+      );
     }
+
+    if (nextStartsAt && nextStartsAt > now) {
+      throw new ApiError(
+        400,
+        "A subscription cannot be active before its start date."
+      );
+    }
+  }
+
+  if (nextStatus === "trial" && (!nextExpiresAt || nextExpiresAt <= now)) {
+    throw new ApiError(
+      400,
+      "A trial subscription must have an expiry date in the future."
+    );
+  }
+
+  const fields = ["plan", "amount", "billingCycle", "status", "notes"];
+
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      subscription[field] = payload[field];
+    }
+  }
+
+  subscription.startsAt = nextStartsAt;
+  subscription.expiresAt = nextExpiresAt;
+  subscription.isTrial = nextStatus === "trial";
+  subscription.trialEndsAt =
+    nextStatus === "trial" ? nextExpiresAt : null;
+
+  if (nextStatus === "active") {
+    // Do not leave two paid subscriptions active for the same school.
+    await Subscription.updateMany(
+      {
+        schoolId: subscription.schoolId,
+        _id: { $ne: subscription._id },
+        status: "active",
+        expiresAt: { $gt: now },
+      },
+      { $set: { status: "expired" } }
+    );
   }
 
   await subscription.save();
-
-  const now = new Date();
-
-  // Reconcile the school against its actual subscriptions.
-  if (
-    subscription.status === "active" &&
-    subscription.expiresAt &&
-    new Date(subscription.expiresAt) > now
-  ) {
-    await syncSchoolFromSubscription(subscription.schoolId);
-  } else {
-    const anotherActiveSubscription = await Subscription.findOne({
-      schoolId: subscription.schoolId,
-      _id: { $ne: subscription._id },
-      status: "active",
-      expiresAt: { $gt: now },
-    });
-
-    if (!anotherActiveSubscription) {
-      const school = await School.findById(subscription.schoolId);
-
-      if (school) {
-        if (
-          subscription.status === "trial" &&
-          school.trialEndsAt &&
-          new Date(school.trialEndsAt) > now
-        ) {
-          school.subscriptionStatus = "trial";
-          school.billingStatus = "trial";
-          school.isActive = true;
-          school.onboardingStatus = "active";
-        } else if (subscription.status === "pending") {
-          school.subscriptionStatus = "pending";
-          school.billingStatus = "pending_payment";
-          // Preserve access if a trial is still valid.
-          const validTrial =
-            school.trialEndsAt &&
-            new Date(school.trialEndsAt) > now;
-
-          if (!validTrial) {
-            school.isActive = false;
-          }
-        } else if (subscription.status === "past_due") {
-          school.subscriptionStatus = "past_due";
-          school.billingStatus = "blocked";
-          school.isActive = false;
-        } else if (
-          ["expired", "cancelled", "suspended"].includes(
-            subscription.status
-          )
-        ) {
-          school.subscriptionStatus =
-            subscription.status === "cancelled"
-              ? "cancelled"
-              : "expired";
-
-          school.billingStatus = "expired";
-          school.isActive = false;
-          school.onboardingStatus = "suspended";
-        } else {
-          school.subscriptionStatus = "inactive";
-          school.billingStatus = "blocked";
-          school.isActive = false;
-        }
-
-        await school.save();
-      }
-    }
-  }
+  await syncSchoolFromSubscription(subscription.schoolId);
 
   return getSubscriptionById(subscription._id);
 }
