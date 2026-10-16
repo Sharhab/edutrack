@@ -1,3 +1,4 @@
+
 import { env } from "../../config/env.js";
 import { ApiError } from "../../utils/apiError.js";
 import { School } from "../schools/school.model.js";
@@ -5,9 +6,9 @@ import { Subscription } from "./subscription.model.js";
 import { SubPayment } from "./sub-payment.model.js";
 
 /**
- * =========================
+ * =========================================
  * SAFE PAYSTACK REQUEST
- * =========================
+ * =========================================
  */
 async function paystackRequest(url, options = {}) {
   const response = await fetch(url, {
@@ -19,74 +20,111 @@ async function paystackRequest(url, options = {}) {
     },
   });
 
-  const data = await response.json();
+  let data;
+
+  try {
+    data = await response.json();
+  } catch {
+    throw new ApiError(
+      502,
+      "Invalid response received from Paystack"
+    );
+  }
 
   if (!response.ok || data.status === false) {
-    throw new ApiError(400, data.message || "Paystack error");
+    throw new ApiError(
+      response.status || 400,
+      data.message || "Paystack request failed"
+    );
   }
 
   return data;
 }
 
 /**
- * =========================
- * INIT PAYMENT (FIXED)
- * =========================
+ * =========================================
+ * INITIALIZE PAYSTACK PAYMENT
+ * Amount is accepted in Naira and converted
+ * to kobo exactly once.
+ * =========================================
  */
 export async function initializePaystackPayment(payload) {
+  const email = String(payload.email || "").trim().toLowerCase();
+
+  if (!email) {
+    throw new ApiError(400, "Payment email is required");
+  }
+
+  const amountInNaira = Number(payload.amount);
+
+  if (
+    !Number.isFinite(amountInNaira) ||
+    amountInNaira <= 0
+  ) {
+    throw new ApiError(
+      400,
+      "Amount must be a valid positive number"
+    );
+  }
+
+  if (
+    payload.reference !== undefined &&
+    (
+      typeof payload.reference !== "string" ||
+      !payload.reference.trim()
+    )
+  ) {
+    throw new ApiError(400, "Invalid payment reference");
+  }
+
+  const amountInKobo = Math.round(amountInNaira * 100);
+
+  if (!Number.isSafeInteger(amountInKobo) || amountInKobo <= 0) {
+    throw new ApiError(400, "Invalid payment amount");
+  }
+
   const metadata = {
     ...(payload.metadata || {}),
   };
 
-  /**
-   * 🔥 FIX 1: STRICT NUMBER NORMALIZATION
-   */
-  let amountInNaira = payload.amount;
+  const requestBody = {
+    email,
+    amount: amountInKobo,
+    callback_url: payload.callbackUrl,
+    metadata,
+  };
 
-  if (amountInNaira === undefined || amountInNaira === null) {
-    throw new ApiError(400, "Amount is required");
+  // Preserve compatibility with existing payment callers.
+  if (payload.reference) {
+    requestBody.reference = payload.reference.trim();
   }
-
-  amountInNaira = Number(amountInNaira);
-
-  if (Number.isNaN(amountInNaira)) {
-    throw new ApiError(400, "Amount must be a valid number");
-  }
-
-  if (amountInNaira <= 0) {
-    throw new ApiError(400, "Amount must be greater than 0");
-  }
-
-  /**
-   * 🔥 FIX 2: Convert to kobo safely (Paystack requirement)
-   */
-  const amountInKobo = Math.round(amountInNaira * 100);
-
-  /**
-   * 🔥 DEBUG (temporary but important)
-   */
- 
 
   const response = await paystackRequest(
     "https://api.paystack.co/transaction/initialize",
     {
       method: "POST",
-     
-body: JSON.stringify({
-  email: payload.email,
-  amount: amountInKobo,
-  ...(payload.reference
-    ? { reference: payload.reference }
-    : {}),
-  callback_url: payload.callbackUrl,
-  metadata,
-}),
-
+      body: JSON.stringify(requestBody),
     }
   );
 
-  if (!response?.data?.authorization_url) {
-    throw new ApiError(500, "Paystack failed to initialize payment");
+  if (
+    !response?.data?.authorization_url ||
+    !response?.data?.reference
+  ) {
+    throw new ApiError(
+      502,
+      "Paystack did not return a valid checkout response"
+    );
+  }
+
+  if (
+    payload.reference &&
+    response.data.reference !== payload.reference.trim()
+  ) {
+    throw new ApiError(
+      502,
+      "Paystack returned a different payment reference"
+    );
   }
 
   return {
@@ -95,35 +133,80 @@ body: JSON.stringify({
     accessCode: response.data.access_code,
   };
 }
+
 /**
- * =========================
- * VERIFY PAYMENT
- * =========================
+ * =========================================
+ * VERIFY PAYSTACK PAYMENT
+ * =========================================
  */
 export async function verifyPaystackPayment(reference) {
-  return await paystackRequest(
-    `https://api.paystack.co/transaction/verify/${reference}`
+  const safeReference = String(reference || "").trim();
+
+  if (!safeReference) {
+    throw new ApiError(400, "Payment reference is required");
+  }
+
+  return paystackRequest(
+    `https://api.paystack.co/transaction/verify/${encodeURIComponent(
+      safeReference
+    )}`
   );
 }
 
 /**
- * =========================
- * WEBHOOK (UNCHANGED BUT SAFE)
- * =========================
+ * =========================================
+ * CALCULATE SUBSCRIPTION EXPIRY
+ * Calendar-based billing periods.
+ * =========================================
+ */
+function calculateSubscriptionExpiry(startDate, billingCycle) {
+  const expiry = new Date(startDate);
+
+  if (billingCycle === "monthly") {
+    expiry.setMonth(expiry.getMonth() + 1);
+  } else if (billingCycle === "quarterly") {
+    expiry.setMonth(expiry.getMonth() + 3);
+  } else if (billingCycle === "yearly") {
+    expiry.setFullYear(expiry.getFullYear() + 1);
+  } else {
+    throw new ApiError(400, "Invalid subscription billing cycle");
+  }
+
+  return expiry;
+}
+
+/**
+ * =========================================
+ * HANDLE PAYSTACK SUBSCRIPTION WEBHOOK
+ *
+ * Supports:
+ * - new_subscription
+ * - upgrade
+ * - renewal
+ *
+ * The controller must verify the Paystack
+ * webhook signature before calling this.
+ * =========================================
  */
 export async function handlePaystackWebhook(event) {
   if (event?.event !== "charge.success") {
     return { ignored: true };
   }
 
-  const reference = String(event?.data?.reference || "").trim();
+  const reference = String(
+    event?.data?.reference || ""
+  ).trim();
 
   if (!reference) {
-    throw new ApiError(400, "Missing Paystack payment reference");
+    throw new ApiError(
+      400,
+      "Missing Paystack payment reference"
+    );
   }
 
-  // Find the payment created during initialization.
-  const paymentRecord = await SubPayment.findOne({ reference });
+  const paymentRecord = await SubPayment.findOne({
+    reference,
+  });
 
   if (!paymentRecord) {
     throw new ApiError(
@@ -131,17 +214,17 @@ export async function handlePaystackWebhook(event) {
       "No recorded subscription payment exists for this reference"
     );
   }
- 
-if (
-  paymentRecord.metadata?.purpose !== "edutrack_subscription"
-) {
-  throw new ApiError(
-    400,
-    "Payment reference is not an EduTrack subscription payment"
-  );
-}
 
-  // Idempotency: do not activate or record the same payment twice.
+  if (
+    paymentRecord.metadata?.purpose !== "edutrack_subscription"
+  ) {
+    throw new ApiError(
+      400,
+      "Payment reference is not an EduTrack subscription payment"
+    );
+  }
+
+  // Basic duplicate-delivery protection.
   if (paymentRecord.status === "success") {
     return {
       alreadyProcessed: true,
@@ -149,7 +232,7 @@ if (
     };
   }
 
-  // Verify directly with Paystack; never trust webhook amount/status alone.
+  // Confirm the transaction directly with Paystack.
   const verification = await verifyPaystackPayment(reference);
   const transaction = verification?.data;
 
@@ -159,7 +242,10 @@ if (
     String(transaction?.reference) !== reference ||
     String(transaction?.currency).toUpperCase() !== "NGN"
   ) {
-    throw new ApiError(409, "Paystack transaction verification failed");
+    throw new ApiError(
+      409,
+      "Paystack transaction verification failed"
+    );
   }
 
   const verifiedAmount = Number(transaction.amount) / 100;
@@ -167,7 +253,9 @@ if (
   if (
     !Number.isFinite(verifiedAmount) ||
     verifiedAmount <= 0 ||
-    Math.abs(verifiedAmount - Number(paymentRecord.amount)) > 0.01
+    Math.abs(
+      verifiedAmount - Number(paymentRecord.amount)
+    ) > 0.01
   ) {
     throw new ApiError(
       409,
@@ -178,17 +266,23 @@ if (
   const school = await School.findById(paymentRecord.schoolId);
 
   if (!school) {
-    throw new ApiError(404, "School linked to payment was not found");
+    throw new ApiError(
+      404,
+      "School linked to payment was not found"
+    );
   }
 
-  const subscription = paymentRecord.subscriptionId
-    ? await Subscription.findOne({
-        _id: paymentRecord.subscriptionId,
-        schoolId: school._id,
-      })
-    : await Subscription.findOne({
-        schoolId: school._id,
-      }).sort({ createdAt: -1 });
+  if (!paymentRecord.subscriptionId) {
+    throw new ApiError(
+      400,
+      "Payment is missing its subscription reference"
+    );
+  }
+
+  const subscription = await Subscription.findOne({
+    _id: paymentRecord.subscriptionId,
+    schoolId: school._id,
+  });
 
   if (!subscription) {
     throw new ApiError(
@@ -197,39 +291,99 @@ if (
     );
   }
 
-  const now = new Date();
+  // Use the intended plan and cycle saved when checkout
+  // was initialized, rather than mutable subscription fields.
+  const intendedPlan = paymentRecord.metadata?.plan;
+  const intendedCycle = paymentRecord.metadata?.billingCycle;
+  const action =
+    paymentRecord.metadata?.action || "new_subscription";
 
-  const cycleDays = {
-    monthly: 30,
-    quarterly: 90,
-    yearly: 365,
-  };
+  const allowedPlans = [
+    "starter",
+    "growth",
+    "premium",
+  ];
 
-  const days = cycleDays[subscription.billingCycle];
+  const allowedCycles = [
+    "monthly",
+    "quarterly",
+    "yearly",
+  ];
 
-  if (!days) {
-    throw new ApiError(400, "Invalid subscription billing cycle");
+  const allowedActions = [
+    "new_subscription",
+    "upgrade",
+    "renewal",
+  ];
+
+  if (!allowedPlans.includes(intendedPlan)) {
+    throw new ApiError(
+      400,
+      "Invalid plan stored in payment record"
+    );
   }
 
-  // Extend from the later of today or the current valid expiry.
+  if (!allowedCycles.includes(intendedCycle)) {
+    throw new ApiError(
+      400,
+      "Invalid billing cycle stored in payment record"
+    );
+  }
+
+  if (!allowedActions.includes(action)) {
+    throw new ApiError(
+      400,
+      "Invalid subscription payment action"
+    );
+  }
+
+  // Validate the action against the school's current state.
+  if (
+    action === "upgrade" &&
+    intendedPlan === subscription.plan
+  ) {
+    throw new ApiError(
+      409,
+      "Upgrade payment does not specify a different plan"
+    );
+  }
+
+  if (
+    action === "renewal" &&
+    intendedPlan !== subscription.plan
+  ) {
+    throw new ApiError(
+      409,
+      "Renewal plan does not match the current subscription plan"
+    );
+  }
+
+  const now = new Date();
+
   const currentExpiry = subscription.expiresAt
     ? new Date(subscription.expiresAt)
     : null;
 
+  // Renewals extend from the current expiry if still valid.
+  // New subscriptions and upgrades start the new term now.
   const startsAt =
-    currentExpiry && currentExpiry > now
+    action === "renewal" &&
+    currentExpiry &&
+    currentExpiry > now
       ? currentExpiry
       : now;
 
-  const expiresAt = new Date(
-    startsAt.getTime() + days * 24 * 60 * 60 * 1000
+  const expiresAt = calculateSubscriptionExpiry(
+    startsAt,
+    intendedCycle
   );
 
-  // Record payment success.
+  // Record the verified payment.
   paymentRecord.status = "success";
   paymentRecord.paidAt = transaction.paid_at
     ? new Date(transaction.paid_at)
     : now;
+
   paymentRecord.gatewayResponse = {
     status: transaction.status,
     reference: transaction.reference,
@@ -238,16 +392,20 @@ if (
     paid_at: transaction.paid_at,
   };
 
-  // Activate the associated paid subscription.
+  // Apply the paid plan and billing period.
+  subscription.plan = intendedPlan;
+  subscription.billingCycle = intendedCycle;
   subscription.status = "active";
   subscription.isTrial = false;
   subscription.startsAt = startsAt;
   subscription.expiresAt = expiresAt;
   subscription.trialEndsAt = null;
   subscription.amount = verifiedAmount;
+  subscription.failedPaymentAttempts = 0;
 
-  school.plan = subscription.plan;
-  school.billingCycle = subscription.billingCycle;
+  // Keep school billing fields synchronized.
+  school.plan = intendedPlan;
+  school.billingCycle = intendedCycle;
   school.subscriptionStatus = "active";
   school.billingStatus = "active";
   school.subscriptionStartedAt = startsAt;
@@ -257,16 +415,20 @@ if (
   school.onboardingStatus = "active";
   school.isActive = true;
 
-  await Promise.all([
-    paymentRecord.save(),
-    subscription.save(),
-    school.save(),
-  ]);
+  // NOTE: These writes are not atomic. For production,
+  // use a MongoDB transaction or an atomic idempotency
+  // strategy to prevent concurrent webhook double-processing.
+  await paymentRecord.save();
+  await subscription.save();
+  await school.save();
 
   return {
     processed: true,
+    action,
     reference,
     schoolId: String(school._id),
+    plan: subscription.plan,
+    billingCycle: subscription.billingCycle,
     subscriptionStatus: subscription.status,
     expiresAt,
   };
