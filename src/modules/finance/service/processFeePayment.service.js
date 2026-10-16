@@ -277,6 +277,23 @@ async function processFeePaymentAttempt({
       };
     }
 
+    // Reject new postings for failed or expired intents.
+    // Keep the idempotency check above first so duplicate successful
+    // callbacks can still return their original payment and receipt.
+    if (
+      validatedIntent &&
+      ["failed", "expired"].includes(validatedIntent.status)
+    ) {
+      reconciliationReason = "payment_intent_not_payable";
+      reconciliationDetails =
+        `Paystack reported a successful transaction, but the saved payment intent is marked ${validatedIntent.status}. Review the transaction before applying it to the student's fee.`;
+
+      throw new ApiError(
+        409,
+        "Payment intent is no longer payable; reconciliation is required"
+      );
+    }
+
     const studentFee = await StudentFee.findOne({
       _id: studentFeeId,
       schoolId,
