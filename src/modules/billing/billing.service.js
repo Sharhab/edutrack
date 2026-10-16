@@ -482,6 +482,72 @@ school.subscriptionStatus =
   );
 }
 
+export async function updateSubscription(id, payload) {
+  const subscription = await Subscription.findById(id);
+
+  if (!subscription) {
+    throw new ApiError(404, "Subscription not found");
+  }
+
+  const allowedFields = [
+    "plan",
+    "amount",
+    "billingCycle",
+    "status",
+    "startsAt",
+    "expiresAt",
+    "notes",
+  ];
+
+  for (const field of allowedFields) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      if (field === "startsAt" || field === "expiresAt") {
+        subscription[field] = payload[field]
+          ? new Date(payload[field])
+          : null;
+      } else {
+        subscription[field] = payload[field];
+      }
+    }
+  }
+
+  await subscription.save();
+
+  // Synchronize the school when this subscription is active.
+  if (subscription.status === "active") {
+    await syncSchoolFromSubscription(subscription.schoolId);
+  } else {
+    // Don't deactivate a school if it has another valid subscription.
+    const anotherActiveSubscription = await Subscription.findOne({
+      schoolId: subscription.schoolId,
+      _id: { $ne: subscription._id },
+      status: "active",
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!anotherActiveSubscription) {
+      const school = await School.findById(subscription.schoolId);
+
+      if (school) {
+        school.subscriptionStatus = subscription.status;
+        school.billingStatus = subscription.status;
+        school.isActive = false;
+
+        if (
+          subscription.status === "expired" ||
+          subscription.status === "cancelled"
+        ) {
+          school.onboardingStatus = "suspended";
+        }
+
+        await school.save();
+      }
+    }
+  }
+
+  return getSubscriptionById(subscription._id);
+}
+
 export async function deleteSubscription(id) {
   const doc = await Subscription.findByIdAndDelete(id);
 
