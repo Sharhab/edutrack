@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import {
   completeOnboarding,
   initializeOnboardingPayment,
+  activateOnboardingTrial,
 } from "./onboarding.service.js";
 import { verifyPaystackPayment } from "../billing/paystack.service.js";
 
@@ -69,6 +70,25 @@ export async function onboardingWebhookHandler(req, res) {
     return res.status(500).json({
       success: false,
       message: "Webhook processing failed",
+    });
+  }
+}
+
+export async function onboardingTrialHandler(req, res) {
+  try {
+    const data = await activateOnboardingTrial(req.body);
+
+    return res.status(200).json({
+      success: true,
+      message: data.message,
+      data,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || "Unable to activate the free trial.",
     });
   }
 }
