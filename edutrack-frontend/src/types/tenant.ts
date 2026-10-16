@@ -96,8 +96,13 @@ export interface TenantSummary {
   premium: number;
 }
 
+
 export interface TenantControlPayload {
   status?: TenantStatus;
   subscriptionStatus?: TenantSubscriptionStatus;
-  expiryDate?: string;
+  plan?: TenantPlan;
+  billingCycle?: "monthly" | "quarterly" | "yearly";
+  trialStartAt?: string | null;
+  trialEndsAt?: string | null;
+  expiryDate?: string | null;
 }
