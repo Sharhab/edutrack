@@ -1,42 +1,54 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
 import OnboardingForm from "../../components/onboarding/OnboardinForm";
-import { OnboardingFormValues } from "../../types/onboarding";
+import type { OnboardingFormValues } from "../../types/onboarding";
 import { useTenant } from "../../components/tenant/TenantProvider";
 
-/**
- * API
- */
 const api = axios.create({
- baseURL:
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://edutrack-dpui.onrender.com/api",
+  baseURL:
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://edutrack-dpui.onrender.com/api",
   withCredentials: true,
 });
+
+type Plan = "starter" | "growth" | "premium";
+type BillingCycle = "monthly" | "quarterly" | "yearly";
+
+const pricing: Record<BillingCycle, Record<Plan, number>> = {
+  monthly: {
+    starter: 10000,
+    growth: 25000,
+    premium: 50000,
+  },
+  quarterly: {
+    starter: 27000,
+    growth: 67500,
+    premium: 135000,
+  },
+  yearly: {
+    starter: 96000,
+    growth: 240000,
+    premium: 480000,
+  },
+};
 
 export default function OnboardingPage() {
   const { clearTenant } = useTenant();
 
-  /**
-   * FORM STATE
-   */
   const [form, setForm] = useState<OnboardingFormValues>({
     schoolName: "",
     slug: "",
-
     adminFirstName: "",
     adminLastName: "",
     adminEmail: "",
-
     phone: "",
     address: "",
-
     plan: "starter",
     billingCycle: "monthly",
-
     adminPassword: "",
     confirmPassword: "",
   });
@@ -44,53 +56,29 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  /**
-   * FREE TRIAL STATE
-   */
   const [isTrial, setIsTrial] = useState(false);
 
-  /**
-   * CLEAR TENANT
-   */
   useEffect(() => {
     clearTenant();
   }, [clearTenant]);
 
-  /**
-   * UPDATE FORM
-   */
   function updateForm(
     field: keyof OnboardingFormValues,
     value: string
   ) {
-    setForm((prev) => ({
-      ...prev,
+    setForm((previous) => ({
+      ...previous,
       [field]: value,
     }));
   }
 
-  /**
-   * PRICING
-   */
-  const pricing = {
-    monthly: { starter: 10000, growth: 20000, premium: 40000 },
-    quarterly: { starter: 25000, growth: 60000, premium: 120000 },
-    yearly: { starter: 100000, growth: 200000, premium: 450000 },
-  } as const;
-
   const amount = useMemo(() => {
-    const plan = form.plan as keyof typeof pricing.monthly;
+    const plan = form.plan as Plan;
+    const cycle = form.billingCycle as BillingCycle;
 
-    if (form.billingCycle === "yearly") return pricing.yearly[plan];
-    if (form.billingCycle === "quarterly") return pricing.quarterly[plan];
-
-    return pricing.monthly[plan];
+    return pricing[cycle][plan];
   }, [form.plan, form.billingCycle]);
 
-  /**
-   * VALIDATION
-   */
   function validateStep1() {
     if (!form.schoolName.trim()) return "School name is required";
     if (!form.adminEmail.trim()) return "Admin email is required";
@@ -102,36 +90,41 @@ export default function OnboardingPage() {
   function validateStep3() {
     if (!form.adminPassword) return "Password is required";
     if (form.adminPassword.length < 6) return "Password too short";
-    if (form.adminPassword !== form.confirmPassword)
+
+    if (form.adminPassword !== form.confirmPassword) {
       return "Passwords do not match";
+    }
+
     return "";
   }
 
-  /**
-   * STEP CONTROL
-   */
   function next() {
     setError("");
 
     if (step === 1) {
-      const err = validateStep1();
-      if (err) return setError(err);
+      const validationError = validateStep1();
+
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
 
-    setStep((s) => Math.min(s + 1, 3));
+    setStep((current) => Math.min(current + 1, 3));
   }
 
   function back() {
     setError("");
-    setStep((s) => Math.max(s - 1, 1));
+    setStep((current) => Math.max(current - 1, 1));
   }
 
-  /**
-   * 🚀 SUBMIT (TRIAL + PAYSTACK FLOW)
-   */
   async function submit() {
-    const err = validateStep3();
-    if (err) return setError(err);
+    const validationError = validateStep3();
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
     if (!form.schoolName.trim()) {
       setError("School name is required");
@@ -142,57 +135,48 @@ export default function OnboardingPage() {
       setSubmitting(true);
       setError("");
 
-    const payload = {
-  schoolName: form.schoolName,
-  adminFirstName: form.adminFirstName,
-  adminLastName: form.adminLastName,
-  adminEmail: form.adminEmail,
-  adminPassword: form.adminPassword,
-  phone: form.phone,
-  address: form.address,
-  plan: form.plan, // starter|growth|premium
-  billingCycle: form.billingCycle,
-  amount,
-  isTrial,
-  callbackUrl: `${window.location.origin}/onboarding/success`,
-};
-      console.log("🚀 PAYLOAD:", payload);
+      const payload = {
+        schoolName: form.schoolName,
+        adminFirstName: form.adminFirstName,
+        adminLastName: form.adminLastName,
+        adminEmail: form.adminEmail,
+        adminPassword: form.adminPassword,
+        phone: form.phone,
+        address: form.address,
+        plan: form.plan,
+        billingCycle: form.billingCycle,
+        amount,
+        isTrial,
+        callbackUrl: `${window.location.origin}/onboarding/success`,
+      };
 
-      /**
-       * =========================
-       * FREE TRIAL FLOW
-       * =========================
-       */
       if (isTrial) {
-        const res = await api.post("/onboarding", payload);
-
-        console.log("✅ TRIAL RESPONSE:", res.data);
-
+        await api.post("/onboarding", payload);
         window.location.href = "/login";
         return;
       }
 
-      /**
-       * =========================
-       * PAYSTACK FLOW
-       * =========================
-       */
-      const res = await api.post(
+      const response = await api.post(
         "/onboarding/paystack/initialize",
         payload
       );
 
-      const url = res.data?.authorizationUrl;
+      const checkoutUrl = response.data?.authorizationUrl;
 
-      if (!url) throw new Error("Paystack URL missing");
+      if (!checkoutUrl) {
+        throw new Error("Paystack URL missing");
+      }
 
-      window.location.href = url;
-    } catch (e: any) {
-      console.error("❌ ONBOARDING ERROR:", e);
+      window.location.href = checkoutUrl;
+    } catch (err: unknown) {
+      const errorObject = err as {
+        response?: { data?: { message?: string } };
+        message?: string;
+      };
 
       setError(
-        e?.response?.data?.message ||
-          e.message ||
+        errorObject.response?.data?.message ||
+          errorObject.message ||
           "Onboarding failed"
       );
     } finally {
@@ -201,24 +185,24 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black px-4 py-10 text-white">
+    <main className="min-h-screen bg-black px-4 py-10 text-white">
       <div className="mx-auto max-w-5xl">
-        <h1 className="mb-6 text-3xl font-bold">
+        <h1 className="mb-6 text-3xl font-bold sm:text-4xl">
           Create Your School
         </h1>
 
         {error && (
-          <div className="mb-4 rounded-lg bg-red-500/20 p-3 text-red-200">
+          <div
+            role="alert"
+            className="mb-4 rounded-lg bg-red-500/20 p-3 text-red-200"
+          >
             {error}
           </div>
         )}
 
-        {/* 🔥 FREE TRIAL TOGGLE */}
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-white/10 p-4">
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-white/10 p-4">
           <div>
-            <h3 className="font-semibold">
-              Start Free Trial
-            </h3>
+            <h3 className="font-semibold">Start Free Trial</h3>
             <p className="text-sm text-slate-400">
               7 days free access, no payment required
             </p>
@@ -226,14 +210,15 @@ export default function OnboardingPage() {
 
           <button
             type="button"
-            onClick={() => setIsTrial(!isTrial)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold ${
+            aria-pressed={isTrial}
+            onClick={() => setIsTrial((current) => !current)}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold ${
               isTrial
                 ? "bg-green-500 text-black"
                 : "bg-white/10 text-white"
             }`}
           >
-            {isTrial ? "Active" : "Enable"}
+            {isTrial ? "Enabled" : "Enable"}
           </button>
         </div>
 
@@ -247,6 +232,6 @@ export default function OnboardingPage() {
           onBack={back}
         />
       </div>
-    </div>
+    </main>
   );
 }
