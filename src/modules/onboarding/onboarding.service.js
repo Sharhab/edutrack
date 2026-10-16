@@ -369,23 +369,22 @@ export async function initializeOnboardingPayment(payload) {
      * =========================
      */
     const PLAN_PRICING = {
-      monthly: {
-        starter: 10000,
-        growth: 20000,
-        premium: 40000,
-      },
-      quarterly: {
-        starter: 1500,
-        growth: 60000,
-        premium: 120000,
-      },
-      yearly: {
-        starter: 5000,
-        growth: 200000,
-        premium: 450000,
-      },
-    };
-
+  monthly: {
+    starter: 10000,
+    growth: 25000, // Standard plan
+    premium: 50000,
+  },
+  quarterly: {
+    starter: 27000,
+    growth: 67500,
+    premium: 135000,
+  },
+  yearly: {
+    starter: 96000,
+    growth: 240000,
+    premium: 480000,
+  },
+};
     const amount =
       PLAN_PRICING?.[payload.billingCycle]?.[payload.plan];
 
@@ -398,14 +397,25 @@ export async function initializeOnboardingPayment(payload) {
     /**
      * FIND OR CREATE SCHOOL
      */
-    let school = await School.findOne({ email });
+   let school = await School.findOne({
+  email: normalizeEmail(payload.adminEmail),
+});
 
-    if (!school) {
-      log("School not found → creating");
+if (!school) {
+  log("School not found → creating");
 
-      const created = await completeOnboarding(payload);
-      school = created.school;
-    }
+  const created = await completeOnboarding(payload);
+
+  // Re-fetch the real Mongoose document.
+  school = await School.findById(created.school._id);
+
+  if (!school) {
+    throw new ApiError(
+      500,
+      "School was created but could not be loaded"
+    );
+  }
+}
 
     /**
      * PREVENT DOUBLE PAYMENT FLOW
