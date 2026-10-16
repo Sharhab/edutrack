@@ -90,20 +90,24 @@ app.options(/.*/, cors(corsOptions));
 /* =========================================
    BODY PARSERS
 ========================================= */
+
 app.use(
   express.json({
     verify: (req, res, buf) => {
       const requestPath = req.originalUrl?.split("?")[0];
 
-      if (
+      const isPaystackWebhook =
         requestPath === "/api/finance/paystack/webhook" ||
-        requestPath === "/api/finance/fees/payments/paystack/webhook"
-      ) {
+        requestPath === "/api/finance/fees/payments/paystack/webhook" ||
+        requestPath?.endsWith("/onboarding/paystack/webhook");
+
+      if (isPaystackWebhook) {
         req.rawBody = Buffer.from(buf);
       }
     },
   })
 );
+
 
 app.use(
   express.urlencoded({
