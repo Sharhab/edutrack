@@ -563,68 +563,7 @@ export async function createInvoice(payload) {
   return getInvoiceById(doc._id);
 }
 
-export async function upgradeSubscription(user, payload) {
-  const school = await School.findById(user.schoolId);
 
-  if (!school) {
-    throw new ApiError(404, "School not found");
-  }
-
-  const plan = payload.plan || "starter";
-  const billingCycle = payload.billingCycle || "monthly";
-
-  // 1. compute amount (same pricing logic)
-  const pricing = {
-    starter: { monthly: 10000, quarterly: 25000, yearly: 70000 },
-    growth: { monthly: 20000, quarterly: 55000, yearly: 140000 },
-    premium: { monthly: 30000, quarterly: 850000, yearly: 220000 },
-  };
-
-  const amount = pricing?.[plan]?.[billingCycle];
-
-  if (!amount) {
-    throw new ApiError(400, "Invalid plan pricing");
-  }
-
-  // 2. deactivate old active subscriptions (IMPORTANT)
-  await Subscription.updateMany(
-    { schoolId: school._id, status: "active" },
-    { status: "expired" }
-  );
-
-  // 3. create NEW subscription (pending)
-  const subscription = await Subscription.create({
-    schoolId: school._id,
-    plan,
-    billingCycle,
-    amount,
-    status: "pending",
-    isTrial: false,
-    startsAt: null,
-    expiresAt: null,
-  });
-
-  // 4. initialize payment
-  const payment = await initializePaystackPayment({
-    schoolId: school._id,
-    email: school.email,
-    amount,
-    plan,
-    billingCycle,
-    callbackUrl: payload.callbackUrl,
-    metadata: {
-      subscriptionId: subscription._id,
-      schoolId: school._id,
-      type: "upgrade",
-    },
-  });
-
-  return {
-    authorizationUrl: payment.authorizationUrl,
-    reference: payment.reference,
-    subscriptionId: subscription._id,
-  };
-}
 /**
  * =========================================
  * SCHOOL BILLING HISTORY
