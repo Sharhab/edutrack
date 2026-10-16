@@ -125,6 +125,52 @@ export async function syncSchoolBilling(schoolId, subscription) {
  * CREATE SCHOOL + ADMIN
  * =========================
  */
+async function moveSchoolToTrial(schoolId, reason) {
+  const school = await School.findById(schoolId);
+
+  if (!school) {
+    throw new ApiError(404, "School not found");
+  }
+
+  const now = new Date();
+
+  // Preserve an existing valid trial end date.
+  const trialEndsAt =
+    school.trialEndsAt &&
+    new Date(school.trialEndsAt) > now
+      ? school.trialEndsAt
+      : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  school.trialStartAt = school.trialStartAt || now;
+  school.trialEndsAt = trialEndsAt;
+  school.subscriptionStatus = "trial";
+  school.billingStatus = "trial";
+  school.onboardingStatus = "active";
+  school.isActive = true;
+
+  await school.save();
+
+  await Subscription.findOneAndUpdate(
+    { schoolId: school._id },
+    {
+      $set: {
+        status: "trial",
+        isTrial: true,
+        startsAt: school.trialStartAt,
+        trialEndsAt,
+      },
+    },
+    { new: true }
+  );
+
+  console.warn("ONBOARDING PAYMENT REQUIRES ATTENTION", {
+    schoolId: String(school._id),
+    reason,
+    trialEndsAt,
+  });
+
+  return school;
+}
 
 export async function completeOnboarding(payload) {
   try {
