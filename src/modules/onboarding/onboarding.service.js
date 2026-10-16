@@ -1,6 +1,8 @@
 import slugify from "slugify";
 import bcrypt from "bcryptjs";
 import axios from "axios";
+import { randomUUID } from "node:crypto";
+import { SubPayment } from "../billing/sub-payment.model.js";
 import { Subscription } from "../billing/subscription.model.js";
 import { School } from "../schools/school.model.js";
 import { User } from "../users/user.model.js";
@@ -399,9 +401,17 @@ return {
  * PAYSTACK INIT
  * =========================
  */
+
 export async function initializeOnboardingPayment(payload) {
+  let paymentRecord = null;
+  let school = null;
+
   try {
     const email = normalizeEmail(payload.adminEmail);
+
+    if (!email) {
+      throw new ApiError(400, "Admin email is required");
+    }
 
     log("INIT PAYMENT", {
       email,
@@ -409,105 +419,318 @@ export async function initializeOnboardingPayment(payload) {
       billingCycle: payload.billingCycle,
     });
 
-    /**
-     * =========================
-     * SAFE PRICING (NAIRA ONLY)
-     * =========================
-     */
+    // 1. Authoritative pricing in NGN.
     const PLAN_PRICING = {
-  monthly: {
-    starter: 10000,
-    growth: 25000, // Standard plan
-    premium: 50000,
-  },
-  quarterly: {
-    starter: 27000,
-    growth: 67500,
-    premium: 135000,
-  },
-  yearly: {
-    starter: 96000,
-    growth: 240000,
-    premium: 480000,
-  },
-};
-    const amount =
-      PLAN_PRICING?.[payload.billingCycle]?.[payload.plan];
+      monthly: {
+        starter: 10000,
+        growth: 25000,
+        premium: 50000,
+      },
+      quarterly: {
+        starter: 27000,
+        growth: 67500,
+        premium: 135000,
+      },
+      yearly: {
+        starter: 96000,
+        growth: 240000,
+        premium: 480000,
+      },
+    };
+
+    const plan = String(payload.plan || "").toLowerCase();
+    const billingCycle = String(
+      payload.billingCycle || "monthly"
+    ).toLowerCase();
+
+    const amount = PLAN_PRICING[billingCycle]?.[plan];
 
     if (!amount) {
-      throw new ApiError(400, "Invalid plan or billing cycle");
+      throw new ApiError(
+        400,
+        "Invalid plan or billing cycle"
+      );
     }
 
-    log("Calculated amount (NGN)", { amount });
-
-    /**
-     * FIND OR CREATE SCHOOL
-     */
-   let school = await School.findOne({
-  email: normalizeEmail(payload.adminEmail),
-});
-
-if (!school) {
-  log("School not found → creating");
-
-  const created = await completeOnboarding(payload);
-
-  // Re-fetch the real Mongoose document.
-  school = await School.findById(created.school._id);
-
-  if (!school) {
-    throw new ApiError(
-      500,
-      "School was created but could not be loaded"
-    );
-  }
-}
-
-    /**
-     * PREVENT DOUBLE PAYMENT FLOW
-     */
-    if (school.onboardingStatus === "active") {
-      throw new ApiError(400, "School already activated");
+    if (!payload.adminPassword) {
+      throw new ApiError(
+        400,
+        "Admin password is required"
+      );
     }
 
+    // 2. Find the school or create it through the existing
+    // onboarding flow. Re-fetch a real Mongoose document.
+    school = await School.findOne({ email });
+
+    if (!school) {
+      log("School not found; creating onboarding records");
+
+      const created = await completeOnboarding({
+        ...payload,
+        adminEmail: email,
+        plan,
+        billingCycle,
+      });
+
+      school = await School.findById(created.school._id);
+
+      if (!school) {
+        throw new ApiError(
+          500,
+          "School was created but could not be loaded"
+        );
+      }
+    }
+
+    // 3. Preserve the existing guard against paying again
+    // for an already activated school.
+    if (
+      school.onboardingStatus === "active" &&
+      school.subscriptionStatus === "active"
+    ) {
+      throw new ApiError(
+        400,
+        "School already has an active subscription"
+      );
+    }
+
+    // Do not overwrite an active subscription accidentally.
+    // Trial schools should use the intended upgrade flow.
+    if (
+      school.subscriptionStatus === "active" &&
+      school.subscriptionExpiresAt &&
+      new Date(school.subscriptionExpiresAt) > new Date()
+    ) {
+      throw new ApiError(
+        400,
+        "School already has a valid paid subscription"
+      );
+    }
+
+    // 4. Find this school's subscription record.
+    let subscription = await Subscription.findOne({
+      schoolId: school._id,
+    }).sort({ createdAt: -1 });
+
+    if (!subscription) {
+      subscription = await Subscription.create({
+        schoolId: school._id,
+        plan,
+        amount,
+        billingCycle,
+        status: "pending",
+        isTrial: false,
+        trialEndsAt: null,
+        startsAt: null,
+        expiresAt: null,
+        enabledModules: [],
+      });
+    } else {
+      // Update the selected plan without activating it.
+      subscription.plan = plan;
+      subscription.billingCycle = billingCycle;
+      subscription.amount = amount;
+
+      if (
+        !["active", "trial"].includes(subscription.status)
+      ) {
+        subscription.status = "pending";
+      }
+
+      await subscription.save();
+    }
+
+    // 5. Generate and persist the reference BEFORE calling
+    // Paystack. This allows reconciliation if the network
+    // fails after Paystack receives the initialization request.
+    const reference = `EDUTRACK-${randomUUID()}`;
+
+    paymentRecord = await SubPayment.create({
+      schoolId: school._id,
+      subscriptionId: subscription._id,
+      amount,
+      currency: "NGN",
+      method: "paystack",
+      reference,
+      status: "pending",
+      initiatedAt: new Date(),
+      metadata: {
+        purpose: "edutrack_subscription",
+        plan,
+        billingCycle,
+        adminEmail: email,
+      },
+    });
+
+    // Record that checkout was initiated, but do not mark
+    // the subscription paid or active here.
+    school.plan = plan;
+    school.billingCycle = billingCycle;
     school.onboardingStatus = "payment_initiated";
+
+    if (school.subscriptionStatus !== "trial") {
+      school.subscriptionStatus = "pending";
+    }
+
+    if (school.billingStatus !== "trial") {
+      school.billingStatus = "pending_payment";
+    }
+
     await school.save();
 
-    log("Status updated → payment_initiated");
+    log("PAYSTACK INITIALIZATION STARTED", {
+      schoolId: String(school._id),
+      subscriptionId: String(subscription._id),
+      paymentId: String(paymentRecord._id),
+      reference,
+      amount,
+      currency: "NGN",
+    });
 
-    /**
-     * PAYSTACK (IMPORTANT: KOBO ONLY HERE)
-     */
+    // 6. Initialize Paystack. The payment service must accept
+    // payload.reference and send it to Paystack as `reference`.
     const payment = await initializePaystackPayment({
       schoolId: school._id,
       email: school.email,
-
-      // FIX: convert ONLY here
-      amount: amount,
-
-      plan: payload.plan,
-      billingCycle: payload.billingCycle,
+      amount,
+      plan,
+      billingCycle,
+      reference,
       callbackUrl: payload.callbackUrl,
+      metadata: {
+        purpose: "edutrack_subscription",
+        schoolId: String(school._id),
+        subscriptionId: String(subscription._id),
+        paymentId: String(paymentRecord._id),
+        plan,
+        billingCycle,
+      },
     });
 
-    log("PAYSTACK RESPONSE", payment);
+    // 7. Ensure Paystack returned the reference we recorded.
+    if (
+      !payment?.authorizationUrl ||
+      !payment?.reference ||
+      payment.reference !== reference
+    ) {
+      // Keep the attempt recorded for investigation.
+      paymentRecord.status = "processing";
+      paymentRecord.gatewayResponse = {
+        stage: "initialization",
+        message:
+          "Paystack response requires reconciliation",
+        returnedReference: payment?.reference || null,
+      };
 
+      await paymentRecord.save();
+
+      throw new ApiError(
+        502,
+        "Payment initialization needs verification. Please contact support before retrying."
+      );
+    }
+
+    paymentRecord.status = "pending";
+    paymentRecord.gatewayResponse = {
+      stage: "initialization",
+      status: "initialized",
+      reference: payment.reference,
+      accessCode: payment.accessCode || null,
+    };
+
+    await paymentRecord.save();
+
+    log("PAYSTACK CHECKOUT READY", {
+      schoolId: String(school._id),
+      reference,
+      amount,
+    });
+
+    // Preserve the existing response contract.
     return {
       authorizationUrl: payment.authorizationUrl,
       reference: payment.reference,
       schoolId: school._id,
-
-      // RETURN CLEAN NGN (NOT KOBO)
       amount,
     };
   } catch (error) {
-    console.error("❌ INIT PAYMENT ERROR:", error);
+    console.error("ONBOARDING PAYMENT INITIALIZATION ERROR:", {
+      message: error.message,
+      statusCode: error.statusCode,
+      schoolId: school?._id
+        ? String(school._id)
+        : null,
+      reference: paymentRecord?.reference || null,
+    });
 
-    if (error instanceof ApiError) throw error;
+    // Only classify an attempt as failed when Paystack has
+    // explicitly rejected the request. A network timeout or
+    // unknown error is ambiguous: Paystack may have received it.
+    if (paymentRecord && error instanceof ApiError) {
+      paymentRecord.status = "failed";
+      paymentRecord.failedAt = new Date();
+      paymentRecord.gatewayResponse = {
+        stage: "initialization",
+        status: "failed",
+        message: error.message,
+        statusCode: error.statusCode || null,
+      };
+
+      await paymentRecord.save().catch((saveError) => {
+        console.error(
+          "FAILED TO RECORD PAYMENT INITIALIZATION ERROR:",
+          saveError.message
+        );
+      });
+
+      // Keep the school eligible for trial access when payment
+      // initialization is definitively rejected. Never apply
+      // this fallback to an ambiguous network outcome.
+      if (
+        school &&
+        error.statusCode === 400 &&
+        !["active", "trial"].includes(
+          school.subscriptionStatus
+        )
+      ) {
+        try {
+          await moveSchoolToTrial(
+            school._id,
+            `Paystack initialization rejected: ${error.message}`
+          );
+        } catch (trialError) {
+          console.error(
+            "FAILED TO APPLY TRIAL FALLBACK:",
+            trialError.message
+          );
+        }
+      }
+    } else if (paymentRecord) {
+      // Preserve the attempt for later verification instead
+      // of incorrectly declaring an unknown result a failure.
+      paymentRecord.status = "processing";
+      paymentRecord.gatewayResponse = {
+        stage: "initialization",
+        status: "requires_reconciliation",
+        message: error.message,
+      };
+
+      await paymentRecord.save().catch((saveError) => {
+        console.error(
+          "FAILED TO RECORD RECONCILIATION STATE:",
+          saveError.message
+        );
+      });
+    }
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
 
     throw new ApiError(
       500,
-      error.message || "Payment initialization failed"
+      "Payment initialization could not be confirmed. Check the payment status before trying again."
     );
   }
 }
