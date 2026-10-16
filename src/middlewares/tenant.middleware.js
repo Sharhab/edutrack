@@ -45,6 +45,32 @@ export async function tenantMiddleware(
       });
     }
 
+    
+    // Enforce subscription and trial access for school users.
+    // Super Admins must retain access to manage school billing.
+    if (user.role !== "super_admin") {
+      const now = new Date();
+
+      const trialValid =
+        school.subscriptionStatus === "trial" &&
+        school.trialEndsAt &&
+        new Date(school.trialEndsAt) > now;
+
+      const paidSubscriptionValid =
+        school.subscriptionStatus === "active" &&
+        school.subscriptionExpiresAt &&
+        new Date(school.subscriptionExpiresAt) > now;
+
+      if (!trialValid && !paidSubscriptionValid) {
+        return res.status(403).json({
+          success: false,
+          code: "SUBSCRIPTION_REQUIRED",
+          message:
+            "Your school's trial or subscription has expired. Please renew to continue.",
+        });
+      }
+    }
+
     /**
      * ATTACH TENANT
      */
