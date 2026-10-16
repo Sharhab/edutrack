@@ -472,6 +472,7 @@ school.subscriptionStatus =
   );
 }
 
+
 export async function updateSubscription(id, payload) {
   const subscription = await Subscription.findById(id);
 
@@ -503,70 +504,78 @@ export async function updateSubscription(id, payload) {
 
   await subscription.save();
 
-  // Synchronize the school when this subscription is active.
-  if (subscription.status === "active") {
+  const now = new Date();
+
+  // Reconcile the school against its actual subscriptions.
+  if (
+    subscription.status === "active" &&
+    subscription.expiresAt &&
+    new Date(subscription.expiresAt) > now
+  ) {
     await syncSchoolFromSubscription(subscription.schoolId);
   } else {
-    // Don't deactivate a school if it has another valid subscription.
     const anotherActiveSubscription = await Subscription.findOne({
       schoolId: subscription.schoolId,
       _id: { $ne: subscription._id },
       status: "active",
-      expiresAt: { $gt: new Date() },
+      expiresAt: { $gt: now },
     });
 
     if (!anotherActiveSubscription) {
       const school = await School.findById(subscription.schoolId);
 
-     
-if (school) {
-  const status = subscription.status;
+      if (school) {
+        if (
+          subscription.status === "trial" &&
+          school.trialEndsAt &&
+          new Date(school.trialEndsAt) > now
+        ) {
+          school.subscriptionStatus = "trial";
+          school.billingStatus = "trial";
+          school.isActive = true;
+          school.onboardingStatus = "active";
+        } else if (subscription.status === "pending") {
+          school.subscriptionStatus = "pending";
+          school.billingStatus = "pending_payment";
+          // Preserve access if a trial is still valid.
+          const validTrial =
+            school.trialEndsAt &&
+            new Date(school.trialEndsAt) > now;
 
-  if (status === "trial") {
-    school.subscriptionStatus = "trial";
-    school.billingStatus = "trial";
-    school.isActive = Boolean(
-      school.trialEndsAt &&
-      new Date(school.trialEndsAt) > new Date()
-    );
-    school.onboardingStatus = school.isActive
-      ? "active"
-      : "suspended";
-  } else if (status === "pending") {
-    school.subscriptionStatus = "pending";
-    school.billingStatus = "pending_payment";
-  } else if (status === "past_due") {
-    school.subscriptionStatus = "past_due";
-    school.billingStatus = "blocked";
-    school.isActive = false;
-  } else if (
-    status === "expired" ||
-    status === "cancelled" ||
-    status === "suspended"
-  ) {
-    school.subscriptionStatus =
-      status === "cancelled" ? "cancelled" : "expired";
-    school.billingStatus = "expired";
-    school.isActive = false;
-    school.onboardingStatus = "suspended";
-  } else if (status === "active") {
-    // Reconcile using the actual valid subscription.
-    await syncSchoolFromSubscription(subscription.schoolId);
-    return getSubscriptionById(subscription._id);
-  } else {
-    school.subscriptionStatus = "inactive";
-    school.billingStatus = "blocked";
-    school.isActive = false;
-  }
+          if (!validTrial) {
+            school.isActive = false;
+          }
+        } else if (subscription.status === "past_due") {
+          school.subscriptionStatus = "past_due";
+          school.billingStatus = "blocked";
+          school.isActive = false;
+        } else if (
+          ["expired", "cancelled", "suspended"].includes(
+            subscription.status
+          )
+        ) {
+          school.subscriptionStatus =
+            subscription.status === "cancelled"
+              ? "cancelled"
+              : "expired";
 
-  await school.save();
-}
+          school.billingStatus = "expired";
+          school.isActive = false;
+          school.onboardingStatus = "suspended";
+        } else {
+          school.subscriptionStatus = "inactive";
+          school.billingStatus = "blocked";
+          school.isActive = false;
+        }
 
+        await school.save();
+      }
     }
   }
 
   return getSubscriptionById(subscription._id);
 }
+
 
 export async function deleteSubscription(id) {
   const doc = await Subscription.findByIdAndDelete(id);
