@@ -97,6 +97,7 @@ async function ensureUniqueSchool({ schoolName, adminEmail }) {
 }
 
 
+
 export async function syncSchoolBilling(schoolId, subscription) {
   const school = await School.findById(schoolId);
 
@@ -108,19 +109,49 @@ export async function syncSchoolBilling(schoolId, subscription) {
   school.billingCycle = subscription.billingCycle;
   school.subscriptionStatus = subscription.status;
 
-  school.subscriptionStartedAt = subscription.startsAt ?? null;
-  school.subscriptionExpiresAt = subscription.expiresAt ?? null;
-  school.trialStartAt = subscription.isTrial
+  school.subscriptionStartedAt =
+    subscription.startsAt ?? null;
+  school.subscriptionExpiresAt =
+    subscription.expiresAt ?? null;
+
+  const isTrial =
+    subscription.status === "trial" &&
+    subscription.isTrial === true;
+
+  school.trialStartAt = isTrial
     ? subscription.startsAt ?? new Date()
     : null;
-  school.trialEndsAt = subscription.trialEndsAt ?? null;
 
-  school.isActive = ["active", "trial"].includes(subscription.status);
+  school.trialEndsAt = isTrial
+    ? subscription.trialEndsAt ?? null
+    : null;
+
+  if (subscription.status === "active") {
+    school.billingStatus = "active";
+    school.isActive = true;
+    school.onboardingStatus = "active";
+  } else if (isTrial) {
+    school.billingStatus = "trial";
+    school.isActive = Boolean(
+      school.trialEndsAt &&
+      new Date(school.trialEndsAt) > new Date()
+    );
+    school.onboardingStatus = school.isActive
+      ? "active"
+      : "suspended";
+  } else if (subscription.status === "pending") {
+    school.billingStatus = "pending_payment";
+    school.isActive = false;
+  } else {
+    school.billingStatus = "expired";
+    school.isActive = false;
+    school.onboardingStatus = "suspended";
+  }
 
   await school.save();
-
   return school;
 }
+
 
 /**
  * =========================
