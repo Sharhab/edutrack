@@ -1,12 +1,7 @@
-// middlewares/billingGuard.middleware.js
 
 import { School } from "../modules/schools/school.model.js";
 
-export async function billingGuard(
-  req,
-  res,
-  next
-) {
+export async function billingGuard(req, res, next) {
   try {
     const schoolId =
       req.user?.schoolId ||
@@ -19,8 +14,7 @@ export async function billingGuard(
       });
     }
 
-    const school =
-      await School.findById(schoolId);
+    const school = await School.findById(schoolId);
 
     if (!school) {
       return res.status(404).json({
@@ -31,78 +25,77 @@ export async function billingGuard(
 
     const now = new Date();
 
-    /**
-     * TRIAL CHECK
-     */
     const trialExpired =
-      school.billingStatus === "trial" &&
-      school.trialEndsAt &&
-      now > school.trialEndsAt &&
-      school.subscriptionStatus !== "active";
+      school.subscriptionStatus === "trial" &&
+      (
+        !school.trialEndsAt ||
+        new Date(school.trialEndsAt) <= now
+      );
 
-    if (trialExpired) {
+    const paidSubscriptionExpired =
+      ["active", "past_due"].includes(
+        school.subscriptionStatus
+      ) &&
+      (
+        !school.subscriptionExpiresAt ||
+        new Date(school.subscriptionExpiresAt) <= now
+      );
+
+    const subscriptionBlocked = [
+      "expired",
+      "cancelled",
+      "suspended",
+    ].includes(school.subscriptionStatus);
+
+    if (
+      trialExpired ||
+      paidSubscriptionExpired ||
+      subscriptionBlocked
+    ) {
       school.billingStatus = "expired";
-      school.subscriptionStatus =
-        "expired";
-      school.onboardingStatus =
-        "suspended";
+      school.subscriptionStatus = "expired";
+      school.onboardingStatus = "suspended";
       school.isActive = false;
+      school.isTrial = false;
 
       await school.save();
 
       return res.status(403).json({
         success: false,
-        code: "TRIAL_EXPIRED",
-        message:
-          "Your free trial has expired. Please upgrade.",
+        code: trialExpired
+          ? "TRIAL_EXPIRED"
+          : "SUBSCRIPTION_REQUIRED",
+        message: trialExpired
+          ? "Your free trial has expired. Please upgrade to continue."
+          : "Your school's subscription has expired. Please renew to continue.",
       });
     }
 
-    /**
-     * SUBSCRIPTION CHECK
-     */
-    const blocked =
-      school.subscriptionStatus ===
-        "expired" ||
-      school.subscriptionStatus ===
-        "cancelled";
-
-    if (blocked) {
-      return res.status(403).json({
-        success: false,
-        code: "SUBSCRIPTION_REQUIRED",
-        message:
-          "Subscription required to continue.",
-      });
-    }
-
+    // Preserve school context for downstream handlers.
     req.school = school;
 
     req.billing = {
-      status:
-        school.subscriptionStatus ||
-        school.billingStatus,
-
-      isTrial:
-        school.billingStatus === "trial",
-
-      daysLeft: school.trialEndsAt
-        ? Math.max(
-            0,
-            Math.ceil(
-              (school.trialEndsAt - now) /
-                (1000 * 60 * 60 * 24)
+      status: school.subscriptionStatus || school.billingStatus,
+      isTrial: school.subscriptionStatus === "trial",
+      daysLeft:
+        school.subscriptionStatus === "trial" &&
+        school.trialEndsAt
+          ? Math.max(
+              0,
+              Math.ceil(
+                (
+                  new Date(school.trialEndsAt).getTime() -
+                  now.getTime()
+                ) /
+                  (1000 * 60 * 60 * 24)
+              )
             )
-          )
-        : null,
+          : null,
     };
 
-    next();
+    return next();
   } catch (error) {
-    console.error(
-      "❌ BILLING GUARD ERROR:",
-      error
-    );
+    console.error("❌ BILLING GUARD ERROR:", error);
 
     return res.status(500).json({
       success: false,
