@@ -22,6 +22,7 @@ async function ensureSchool(schoolId) {
 }
 
 
+
 export async function syncSchoolFromSubscription(schoolId) {
   const now = new Date();
   const school = await School.findById(schoolId);
@@ -52,15 +53,13 @@ export async function syncSchoolFromSubscription(schoolId) {
     return school;
   }
 
-  // Preserve a valid trial.
+  // Preserve a trial only while its end date is still in the future.
   if (
     school.subscriptionStatus === "trial" &&
     school.trialEndsAt &&
     new Date(school.trialEndsAt) > now
   ) {
     school.billingStatus = "trial";
-    school.subscriptionStartedAt = null;
-    school.subscriptionExpiresAt = null;
     school.isActive = true;
     school.onboardingStatus = "active";
 
@@ -71,19 +70,12 @@ export async function syncSchoolFromSubscription(schoolId) {
   // No valid paid subscription or trial remains.
   school.subscriptionStatus = "expired";
   school.billingStatus = "expired";
-  school.subscriptionExpiresAt =
-    school.subscriptionExpiresAt &&
-    new Date(school.subscriptionExpiresAt) > now
-      ? school.subscriptionExpiresAt
-      : null;
   school.isActive = false;
   school.onboardingStatus = "suspended";
 
   await school.save();
   return school;
 }
-
-
 
 export async function ensureNoActiveSubscription(
   schoolId
