@@ -1,9 +1,13 @@
+
 "use client";
 
 import FormInput from "../../components/ui/FormInput";
 import SelectField from "../../components/ui/SelectField";
-import { OnboardingFormValues } from "../../types/onboarding";
+import type { OnboardingFormValues } from "../../types/onboarding";
 import PlanSelectCard from "../../components/onboarding/PlanSelectCard";
+
+type Plan = "starter" | "growth" | "premium";
+type BillingCycle = "monthly" | "quarterly" | "yearly";
 
 type OnboardingFormProps = {
   values: OnboardingFormValues;
@@ -18,6 +22,50 @@ type OnboardingFormProps = {
   onBack: () => void;
 };
 
+const pricing: Record<BillingCycle, Record<Plan, number>> = {
+  monthly: {
+    starter: 10000,
+    growth: 25000,
+    premium: 50000,
+  },
+  quarterly: {
+    starter: 27000,
+    growth: 67500,
+    premium: 135000,
+  },
+  yearly: {
+    starter: 96000,
+    growth: 240000,
+    premium: 480000,
+  },
+};
+
+const plans: {
+  key: Plan;
+  title: string;
+  description: string;
+  features: string[];
+}[] = [
+  {
+    key: "starter",
+    title: "Starter",
+    description: "Best for small schools",
+    features: ["Basic dashboard", "Students", "Results"],
+  },
+  {
+    key: "growth",
+    title: "Growth",
+    description: "Best for growing schools",
+    features: ["Parent portal", "Attendance", "Announcements"],
+  },
+  {
+    key: "premium",
+    title: "Premium",
+    description: "Best for advanced schools",
+    features: ["Analytics", "Priority support", "Full features"],
+  },
+];
+
 export default function OnboardingForm({
   values,
   onChange,
@@ -27,29 +75,27 @@ export default function OnboardingForm({
   onNext,
   onBack,
 }: OnboardingFormProps) {
+  const cycle = (values.billingCycle || "monthly") as BillingCycle;
+
   return (
     <div className="space-y-6">
-      {step === 1 ? (
+      {step === 1 && (
         <>
           <div className="grid gap-4 md:grid-cols-2">
             <FormInput
               label="School Name"
               name="schoolName"
               value={values.schoolName || ""}
-              placeholder="Globstand International School"
-              onChange={(value) =>
-                onChange("schoolName", value)
-              }
+              placeholder="Your school name"
+              onChange={(value) => onChange("schoolName", value)}
             />
 
             <FormInput
               label="School Slug"
               name="slug"
               value={values.slug || ""}
-              placeholder="globstand-school"
-              onChange={(value) =>
-                onChange("slug", value)
-              }
+              placeholder="your-school"
+              onChange={(value) => onChange("slug", value)}
             />
           </div>
 
@@ -58,20 +104,16 @@ export default function OnboardingForm({
               label="Admin First Name"
               name="adminFirstName"
               value={values.adminFirstName || ""}
-              placeholder="Sharhabilu"
-              onChange={(value) =>
-                onChange("adminFirstName", value)
-              }
+              placeholder="First name"
+              onChange={(value) => onChange("adminFirstName", value)}
             />
 
             <FormInput
               label="Admin Last Name"
               name="adminLastName"
               value={values.adminLastName || ""}
-              placeholder="Musa"
-              onChange={(value) =>
-                onChange("adminLastName", value)
-              }
+              placeholder="Last name"
+              onChange={(value) => onChange("adminLastName", value)}
             />
           </div>
 
@@ -82,9 +124,7 @@ export default function OnboardingForm({
               type="email"
               value={values.adminEmail || ""}
               placeholder="admin@school.com"
-              onChange={(value) =>
-                onChange("adminEmail", value)
-              }
+              onChange={(value) => onChange("adminEmail", value)}
             />
 
             <FormInput
@@ -92,137 +132,72 @@ export default function OnboardingForm({
               name="phone"
               value={values.phone || ""}
               placeholder="080..."
-              onChange={(value) =>
-                onChange("phone", value)
-              }
+              onChange={(value) => onChange("phone", value)}
             />
           </div>
 
-          <div>
-            <FormInput
-              label="Address"
-              name="address"
-              value={values.address || ""}
-              placeholder="School address"
-              onChange={(value) =>
-                onChange("address", value)
-              }
-            />
-          </div>
+          <FormInput
+            label="Address"
+            name="address"
+            value={values.address || ""}
+            placeholder="School address"
+            onChange={(value) => onChange("address", value)}
+          />
 
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onNext}
-              className="btn-primary"
-            >
-              Continue
-            </button>
-          </div>
+          <button type="button" onClick={onNext} className="btn-primary">
+            Continue
+          </button>
         </>
-      ) : null}
+      )}
 
-      {step === 2 ? (
+      {step === 2 && (
         <>
           <div className="grid gap-6 md:grid-cols-3">
-            <PlanSelectCard
-              title="Starter"
-              price="₦500"
-              description="Best for small schools"
-              features={[
-                "Basic dashboard",
-                "Students",
-                "Results",
-              ]}
-              active={values.plan === "starter"}
-              onClick={() =>
-                onChange("plan", "starter")
-              }
-            />
-
-            <PlanSelectCard
-              title="Growth"
-              price="₦25,000"
-              description="Best for growing schools"
-              features={[
-                "Parent portal",
-                "Attendance",
-                "Announcements",
-              ]}
-              active={values.plan === "growth"}
-              onClick={() =>
-                onChange("plan", "growth")
-              }
-            />
-
-            <PlanSelectCard
-              title="Premium"
-              price="₦50,000"
-              description="Best for advanced schools"
-              features={[
-                "Analytics",
-                "Priority support",
-                "Full features",
-              ]}
-              active={values.plan === "premium"}
-              onClick={() =>
-                onChange("plan", "premium")
-              }
-            />
+            {plans.map((plan) => (
+              <PlanSelectCard
+                key={plan.key}
+                title={plan.title}
+                price={`₦${pricing[cycle][plan.key].toLocaleString("en-NG")}`}
+                description={plan.description}
+                features={plan.features}
+                active={values.plan === plan.key}
+                onClick={() => onChange("plan", plan.key)}
+              />
+            ))}
           </div>
 
           <div className="max-w-sm">
             <SelectField
               label="Billing Cycle"
               name="billingCycle"
-              value={values.billingCycle || "monthly"}
+              value={cycle}
               onChange={(value) =>
-                onChange(
-                  "billingCycle",
-                  value as
-                    | "monthly"
-                    | "quarterly"
-                    | "yearly"
-                )
+                onChange("billingCycle", value)
               }
               options={[
-                {
-                  label: "Monthly",
-                  value: "monthly",
-                },
-                {
-                  label: "Quarterly",
-                  value: "quarterly",
-                },
-                {
-                  label: "Yearly",
-                  value: "yearly",
-                },
+                { label: "Monthly", value: "monthly" },
+                { label: "Quarterly", value: "quarterly" },
+                { label: "Yearly", value: "yearly" },
               ]}
             />
           </div>
 
+          <p className="text-sm text-slate-400">
+            Prices are shown in Nigerian naira for the selected billing period.
+          </p>
+
           <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="btn-secondary"
-            >
+            <button type="button" onClick={onBack} className="btn-secondary">
               Back
             </button>
-
-            <button
-              type="button"
-              onClick={onNext}
-              className="btn-primary"
-            >
+            <button type="button" onClick={onNext} className="btn-primary">
               Continue
             </button>
           </div>
         </>
-      ) : null}
+      )}
 
-      {step === 3 ? (
+      {step === 3 && (
         <>
           <div className="grid gap-4 md:grid-cols-2">
             <FormInput
@@ -231,9 +206,7 @@ export default function OnboardingForm({
               type="password"
               value={values.adminPassword || ""}
               placeholder="Enter password"
-              onChange={(value) =>
-                onChange("adminPassword", value)
-              }
+              onChange={(value) => onChange("adminPassword", value)}
             />
 
             <FormInput
@@ -242,70 +215,53 @@ export default function OnboardingForm({
               type="password"
               value={values.confirmPassword || ""}
               placeholder="Confirm password"
-              onChange={(value) =>
-                onChange("confirmPassword", value)
-              }
+              onChange={(value) => onChange("confirmPassword", value)}
             />
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-            <h3 className="text-lg font-semibold text-white">
-              Summary
-            </h3>
+            <h3 className="text-lg font-semibold">Summary</h3>
 
             <div className="mt-4 space-y-2 text-sm text-slate-300">
-              <p>
-                School:{" "}
-                <span className="font-semibold">
-                  {values.schoolName || "-"}
-                </span>
-              </p>
-
+              <p>School: <strong>{values.schoolName || "-"}</strong></p>
               <p>
                 Admin:{" "}
-                <span className="font-semibold">
-                  {values.adminFirstName || "-"}
-                </span>
+                <strong>
+                  {values.adminFirstName || "-"} {values.adminLastName || ""}
+                </strong>
               </p>
-
               <p>
                 Plan:{" "}
-                <span className="font-semibold capitalize">
-                  {values.plan || "-"}
-                </span>
+                <strong className="capitalize">{values.plan}</strong>
               </p>
-
               <p>
-                Cycle:{" "}
-                <span className="font-semibold capitalize">
-                  {values.billingCycle || "-"}
-                </span>
+                Billing cycle:{" "}
+                <strong className="capitalize">{cycle}</strong>
+              </p>
+              <p>
+                Amount:{" "}
+                <strong>
+                  {`₦${pricing[cycle][values.plan as Plan].toLocaleString("en-NG")}`}
+                </strong>
               </p>
             </div>
           </div>
 
           <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="btn-secondary"
-            >
+            <button type="button" onClick={onBack} className="btn-secondary">
               Back
             </button>
-
             <button
               type="button"
               onClick={onSubmit}
               className="btn-primary"
               disabled={submitting}
             >
-              {submitting
-                ? "Creating..."
-                : "Create School & Continue"}
+              {submitting ? "Creating..." : "Create School & Continue"}
             </button>
           </div>
         </>
-      ) : null}
+      )}
     </div>
   );
 }
