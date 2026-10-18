@@ -1,4 +1,5 @@
 
+
 import mongoose from "mongoose";
 
 import { LessonNote } from "./lesson-note.model.js";
@@ -10,9 +11,6 @@ import { SubjectModel } from "../subjects/subject.model.js";
 import { ApiError } from "../../utils/apiError.js";
 import { generateLessonNoteWithAI } from "./lesson-note.ai.service.js";
 
-/**
- * Find the active teacher associated with the signed-in user.
- */
 async function getActiveTeacher(userId) {
   const teacher = await Teacher.findOne({
     userId,
@@ -21,120 +19,99 @@ async function getActiveTeacher(userId) {
   }).lean();
 
   if (!teacher) {
-    throw new ApiError(
-      404,
-      "Active teacher profile not found"
-    );
+    throw new ApiError(404, "Active teacher profile not found");
   }
 
   return teacher;
 }
 
-/**
- * Check whether a teacher is assigned to a class
- * and subject combination.
- */
-function hasTeachingAssignment(
-  teacher,
-  classId,
-  subjectId
-) {
-  const assignments = teacher.assignments || [];
+function includesId(ids = [], id) {
+  return ids.some((item) => String(item?._id || item) === String(id));
+}
 
-  return assignments.some(
+/**
+ * Check both the teacher's assignment records and
+ * the subject's class/teacher restrictions.
+ */
+function hasTeachingAssignment(teacher, subject, classId, subjectId) {
+  const explicitAssignment = (teacher.assignments || []).some(
     (assignment) =>
       String(assignment.classId) === String(classId) &&
       String(assignment.subjectId) === String(subjectId)
   );
+
+  const legacyAssignment =
+    includesId(teacher.classIds, classId) &&
+    includesId(teacher.subjectIds, subjectId);
+
+  const subjectAllowsClass =
+    !subject.classIds?.length ||
+    includesId(subject.classIds, classId);
+
+  const subjectAllowsTeacher =
+    !subject.teacherIds?.length ||
+    includesId(subject.teacherIds, teacher.userId);
+
+  return (
+    (explicitAssignment || legacyAssignment) &&
+    subjectAllowsClass &&
+    subjectAllowsTeacher
+  );
 }
 
-/**
- * Validate the requested academic records and
- * confirm that the teacher is authorized to use them.
- */
-async function validateLessonNoteContext(
-  teacher,
-  payload
-) {
-  const {
+async function validateLessonNoteContext(teacher, payload) {
+  const { sessionId, termId, classId, subjectId } = payload;
+
+  for (const [field, value] of Object.entries({
     sessionId,
     termId,
     classId,
     subjectId,
-  } = payload;
-
-  const isValidId = (id) =>
-    mongoose.isValidObjectId(id);
-
-  if (
-    !isValidId(sessionId) ||
-    !isValidId(termId) ||
-    !isValidId(classId) ||
-    !isValidId(subjectId)
-  ) {
-    throw new ApiError(
-      400,
-      "Invalid session, term, class, or subject ID"
-    );
+  })) {
+    if (!mongoose.isValidObjectId(value)) {
+      throw new ApiError(400, `Invalid ${field}`);
+    }
   }
 
   const schoolId = teacher.schoolId;
 
-  const [session, term, schoolClass, subject] =
-    await Promise.all([
-      Session.findOne({
-        _id: sessionId,
-        schoolId,
-      }).lean(),
-
-      Term.findOne({
-        _id: termId,
-        sessionId,
-        schoolId,
-      }).lean(),
-
-      ClassModel.findOne({
-        _id: classId,
-        schoolId,
-      }).lean(),
-
-      SubjectModel.findOne({
-        _id: subjectId,
-        schoolId,
-      }).lean(),
-    ]);
+  const [session, term, schoolClass, subject] = await Promise.all([
+    Session.findOne({ _id: sessionId, schoolId }).lean(),
+    Term.findOne({ _id: termId, sessionId, schoolId }).lean(),
+    ClassModel.findOne({ _id: classId, schoolId }).lean(),
+    SubjectModel.findOne({ _id: subjectId, schoolId }).lean(),
+  ]);
 
   if (!session) {
-    throw new ApiError(
-      400,
-      "The selected academic session is invalid"
-    );
+    throw new ApiError(400, "Invalid academic session");
   }
 
   if (!term) {
     throw new ApiError(
       400,
-      "The selected term does not belong to this session"
+      "The selected term does not belong to this academic session"
     );
   }
 
   if (!schoolClass) {
-    throw new ApiError(
-      400,
-      "The selected class was not found in your school"
-    );
+    throw new ApiError(400, "Class not found in your school");
   }
 
   if (!subject) {
-    throw new ApiError(
-      400,
-      "The selected subject was not found in your school"
-    );
+    throw new ApiError(400, "Subject not found in your school");
+  }
+
+  if (
+    schoolClass.isActive === false ||
+    subject.isActive === false
+  ) {
+    throw new ApiError(400, "The selected class or subject is inactive");
   }
 
   if (
     !hasTeachingAssignment(
       teacher,
+      subject,
       classId,
       subjectId
     )
@@ -145,91 +122,61 @@ async function validateLessonNoteContext(
     );
   }
 
-  return {
-    session,
-    term,
-    schoolClass,
-    subject,
-  };
+  return { session, term, schoolClass, subject };
 }
 
-/**
- * Generate an AI lesson note.
- * Generation does not save the note automatically.
- * The teacher must review it and save it separately.
- */
-export async function generateTeacherLessonNote(
-  userId,
-  payload
-) {
+function normalizeWeek(week) {
+  return week == null || week === "" ? null : week;
+}
+
+function normalizeDuration(durationMinutes) {
+  return durationMinutes ?? 40;
+}
+
+export async function generateTeacherLessonNote(userId, payload) {
   const teacher = await getActiveTeacher(userId);
 
-  const {
-    session,
-    term,
-    schoolClass,
-    subject,
-  } = await validateLessonNoteContext(
-    teacher,
-    payload
-  );
+  const { session, term, schoolClass, subject } =
+    await validateLessonNoteContext(teacher, payload);
 
-  const generatedContent =
-    await generateLessonNoteWithAI({
-      subject: subject.name,
-      className: schoolClass.name,
-      session: session.name,
-      term: term.name,
-      topic: payload.topic,
-      week: payload.week || "",
-      durationMinutes: payload.durationMinutes || 40,
-      learningObjectives:
-        payload.learningObjectives || [],
-      curriculumRequirements:
-        payload.curriculumRequirements || "",
-    });
+  const durationMinutes = normalizeDuration(payload.durationMinutes);
+  const week = normalizeWeek(payload.week);
+
+  const content = await generateLessonNoteWithAI({
+    subject: subject.name,
+    className: schoolClass.name,
+    classLevel: schoolClass.level || "",
+    session: session.name,
+    term: term.name,
+    topic: payload.topic,
+    week: week ?? "",
+    durationMinutes,
+    learningObjectives: payload.learningObjectives || [],
+    curriculumRequirements: payload.curriculumRequirements || "",
+  });
 
   return {
     success: true,
-    message:
-      "Lesson note generated. Review it before saving.",
+    message: "Lesson note generated. Review it before saving.",
     lessonNote: {
       sessionId: session._id,
       termId: term._id,
       classId: schoolClass._id,
       subjectId: subject._id,
       topic: payload.topic,
-      week: payload.week || "",
-      durationMinutes:
-        payload.durationMinutes || 40,
-      curriculumRequirements:
-        payload.curriculumRequirements || "",
-      content: generatedContent,
+      week,
+      durationMinutes,
+      curriculumRequirements: payload.curriculumRequirements || "",
+      content,
       status: "draft",
     },
   };
 }
 
-/**
- * Save a reviewed lesson note.
- */
-export async function saveTeacherLessonNote(
-  userId,
-  payload
-) {
+export async function saveTeacherLessonNote(userId, payload) {
   const teacher = await getActiveTeacher(userId);
 
-  await validateLessonNoteContext(
-    teacher,
-    payload
-  );
-
-  if (!payload.content) {
-    throw new ApiError(
-      400,
-      "Lesson note content is required"
-    );
-  }
+  await validateLessonNoteContext(teacher, payload);
 
   const lessonNote = await LessonNote.create({
     schoolId: teacher.schoolId,
@@ -240,11 +187,9 @@ export async function saveTeacherLessonNote(
     classId: payload.classId,
     subjectId: payload.subjectId,
     topic: payload.topic,
-    week: payload.week || "",
-    durationMinutes:
-      payload.durationMinutes || 40,
-    curriculumRequirements:
-      payload.curriculumRequirements || "",
+    week: normalizeWeek(payload.week),
+    durationMinutes: normalizeDuration(payload.durationMinutes),
+    curriculumRequirements: payload.curriculumRequirements || "",
     content: payload.content,
     status: "saved",
   });
@@ -256,14 +201,7 @@ export async function saveTeacherLessonNote(
   };
 }
 
-/**
- * List only the signed-in teacher's saved notes
- * belonging to the teacher's school.
- */
-export async function getTeacherLessonNotes(
-  userId,
-  filters = {}
-) {
+export async function getTeacherLessonNotes(userId, filters = {}) {
   const teacher = await getActiveTeacher(userId);
 
   const query = {
@@ -272,21 +210,15 @@ export async function getTeacherLessonNotes(
     status: "saved",
   };
 
-  for (const field of [
-    "sessionId",
-    "termId",
-    "classId",
-    "subjectId",
-  ]) {
-    if (filters[field]) {
-      if (!mongoose.isValidObjectId(filters[field])) {
-        throw new ApiError(
-          400,
-          `Invalid ${field}`
-        );
+  for (const field of ["sessionId", "termId", "classId", "subjectId"]) {
+    const value = filters[field];
+
+    if (value) {
+      if (!mongoose.isValidObjectId(value)) {
+        throw new ApiError(400, `Invalid ${field}`);
       }
 
-      query[field] = filters[field];
+      query[field] = value;
     }
   }
 
@@ -306,20 +238,11 @@ export async function getTeacherLessonNotes(
   };
 }
 
-/**
- * Retrieve one saved lesson note.
- */
-export async function getTeacherLessonNoteById(
-  userId,
-  lessonNoteId
-) {
+export async function getTeacherLessonNoteById(userId, lessonNoteId) {
   const teacher = await getActiveTeacher(userId);
 
   if (!mongoose.isValidObjectId(lessonNoteId)) {
-    throw new ApiError(
-      400,
-      "Invalid lesson note ID"
-    );
+    throw new ApiError(400, "Invalid lesson note ID");
   }
 
   const lessonNote = await LessonNote.findOne({
@@ -334,14 +257,8 @@ export async function getTeacherLessonNoteById(
     .lean();
 
   if (!lessonNote) {
-    throw new ApiError(
-      404,
-      "Lesson note not found"
-    );
+    throw new ApiError(404, "Lesson note not found");
   }
 
-  return {
-    success: true,
-    lessonNote,
-  };
+  return { success: true, lessonNote };
 }
