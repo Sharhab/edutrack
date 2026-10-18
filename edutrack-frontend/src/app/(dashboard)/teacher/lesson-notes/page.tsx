@@ -47,9 +47,14 @@ type LessonNote = {
 };
 
 type ApiResponse<T> = {
-  success: boolean;
+  success?: boolean;
   message?: string;
   data?: T;
+};
+
+type DashboardData = {
+  myClasses?: Option[];
+  mySubjects?: Option[];
 };
 
 const emptyContent: LessonContent = {
@@ -79,7 +84,7 @@ function getErrorMessage(error: unknown, fallback: string) {
     return error.response?.data?.message || fallback;
   }
 
-  return fallback;
+  return error instanceof Error ? error.message : fallback;
 }
 
 function splitLines(value: string) {
@@ -97,6 +102,14 @@ function formatDate(value?: string) {
   return Number.isNaN(date.getTime())
     ? ""
     : date.toLocaleDateString();
+}
+
+function getListFromResponse<T>(
+  payload: ApiResponse<T[]> & { lessonNotes?: T[] }
+): T[] {
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.lessonNotes)) return payload.lessonNotes;
+  return [];
 }
 
 export default function TeacherLessonNotesPage() {
@@ -127,38 +140,51 @@ export default function TeacherLessonNotesPage() {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const selectedSession = sessions.find((item) => item._id === sessionId);
+  const selectedSession = sessions.find(
+    (item) => item._id === sessionId
+  );
   const selectedTerm = terms.find((item) => item._id === termId);
   const selectedClass = classes.find((item) => item._id === classId);
-  const selectedSubject = subjects.find((item) => item._id === subjectId);
+  const selectedSubject = subjects.find(
+    (item) => item._id === subjectId
+  );
 
-  const loadSavedNotes = useCallback(async () => {
+  /**
+   * Load saved notes.
+   *
+   * reportError=false is used after a successful save so a list
+   * refresh problem does not incorrectly report that saving failed.
+   */
+  const loadSavedNotes = useCallback(async (reportError = true) => {
     setLoadingNotes(true);
 
     try {
-      const response = await api.get<ApiResponse<LessonNote[]>>(
-        "/lesson-notes"
-      );
+      const response = await api.get<
+        ApiResponse<LessonNote[]> & { lessonNotes?: LessonNote[] }
+      >("/lesson-notes");
 
-      const payload = response.data;
-
-      setNotes(
-        Array.isArray(payload.data)
-          ? payload.data
-          : Array.isArray((payload as unknown as { lessonNotes?: LessonNote[] }).lessonNotes)
-            ? (payload as unknown as { lessonNotes: LessonNote[] }).lessonNotes
-            : []
-      );
+      setNotes(getListFromResponse(response.data));
+      return true;
     } catch (err: unknown) {
-      setError(getErrorMessage(err, "Unable to load saved lesson notes."));
+      if (reportError) {
+        setError(
+          getErrorMessage(err, "Unable to load saved lesson notes.")
+        );
+      }
+      return false;
     } finally {
       setLoadingNotes(false);
     }
   }, []);
 
+  /**
+   * Load the teacher's dashboard data, sessions, and saved notes
+   * when the page opens.
+   */
   useEffect(() => {
     let mounted = true;
 
@@ -167,36 +193,38 @@ export default function TeacherLessonNotesPage() {
       setError("");
 
       try {
-        const [dashboard, sessionResponse] = await Promise.all([
+        const [dashboardResult, sessionResponse] = await Promise.all([
           getTeacherDashboard(),
           api.get<ApiResponse<Option[]>>("/sessions"),
         ]);
 
         if (!mounted) return;
 
-        setClasses(dashboard?.myClasses ?? []);
-        setSubjects(dashboard?.mySubjects ?? []);
-
-        const sessionPayload = sessionResponse.data;
-        const sessionList = Array.isArray(sessionPayload.data)
-          ? sessionPayload.data
+        const dashboard = dashboardResult as DashboardData;
+        const teacherClasses = dashboard?.myClasses ?? [];
+        const teacherSubjects = dashboard?.mySubjects ?? [];
+        const sessionList = Array.isArray(sessionResponse.data?.data)
+          ? sessionResponse.data.data
           : [];
 
+        setClasses(teacherClasses);
+        setSubjects(teacherSubjects);
         setSessions(sessionList);
 
         const currentSession = sessionList.find(
-          (item: Option & { isCurrent?: boolean }) => item.isCurrent
+          (item) =>
+            (item as Option & { isCurrent?: boolean }).isCurrent
         );
 
         if (currentSession) {
           setSessionId(currentSession._id);
         }
 
-        const currentClass = (dashboard?.myClasses ?? []).find(
-          (item: Option & { isCurrent?: boolean }) => item.isCurrent
-        );
-
-        if (currentClass) setClassId(currentClass._id);
+        // Do not assume classes have an isCurrent property.
+        // Leave class selection to the teacher unless there is only one.
+        if (teacherClasses.length === 1) {
+          setClassId(teacherClasses[0]._id);
+        }
       } catch (err: unknown) {
         if (mounted) {
           setError(
@@ -211,24 +239,36 @@ export default function TeacherLessonNotesPage() {
       }
     }
 
-    loadInitialData();
+    void loadInitialData();
+    void loadSavedNotes();
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [loadSavedNotes]);
 
+  /**
+   * Reload terms whenever the selected session changes.
+   * Clear the previous term immediately to prevent submitting
+   * a term from a different session.
+   */
   useEffect(() => {
+    let mounted = true;
+
     if (!sessionId) {
       setTerms([]);
       setTermId("");
-      return;
-    }
+      setLoadingTerms(false);
 
-    let mounted = true;
+      return () => {
+        mounted = false;
+      };
+    }
 
     async function loadTerms() {
       setLoadingTerms(true);
+      setTerms([]);
+      setTermId("");
 
       try {
         const response = await api.get<ApiResponse<Option[]>>("/terms", {
@@ -237,38 +277,57 @@ export default function TeacherLessonNotesPage() {
 
         if (!mounted) return;
 
-        const payload = response.data;
-        const termList = Array.isArray(payload.data) ? payload.data : [];
+        const termList = Array.isArray(response.data?.data)
+          ? response.data.data
+          : [];
 
         setTerms(termList);
 
         const currentTerm = termList.find(
-          (item: Option & { isCurrent?: boolean }) => item.isCurrent
+          (item) =>
+            (item as Option & { isCurrent?: boolean }).isCurrent
         );
 
-        setTermId(currentTerm?._id ?? "");
+        if (currentTerm) {
+          setTermId(currentTerm._id);
+        } else if (termList.length === 1) {
+          setTermId(termList[0]._id);
+        }
       } catch (err: unknown) {
         if (mounted) {
           setTerms([]);
           setTermId("");
-          setError(getErrorMessage(err, "Unable to load academic terms."));
+          setError(
+            getErrorMessage(err, "Unable to load academic terms.")
+          );
         }
       } finally {
         if (mounted) setLoadingTerms(false);
       }
     }
 
-    loadTerms();
+    void loadTerms();
 
     return () => {
       mounted = false;
     };
   }, [sessionId]);
 
+  function resetEditor() {
+    setSelectedNoteId("");
+    setTopic("");
+    setWeek("");
+    setDurationMinutes("40");
+    setLearningObjectivesInput("");
+    setCurriculumRequirements("");
+    setContent(emptyContent);
+    setSuccess("");
+    setError("");
+  }
+
   async function generateNote() {
     setError("");
     setSuccess("");
-    setSelectedNoteId("");
 
     if (!sessionId || !termId || !classId || !subjectId || !topic.trim()) {
       setError(
@@ -277,7 +336,24 @@ export default function TeacherLessonNotesPage() {
       return;
     }
 
+    const duration = Number(durationMinutes);
+    const weekNumber = week ? Number(week) : null;
+
+    if (!Number.isInteger(duration) || duration < 10 || duration > 240) {
+      setError("Lesson duration must be between 10 and 240 minutes.");
+      return;
+    }
+
+    if (
+      weekNumber !== null &&
+      (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 20)
+    ) {
+      setError("Week must be a whole number between 1 and 20.");
+      return;
+    }
+
     setGenerating(true);
+    setSelectedNoteId("");
 
     try {
       const response = await api.post("/lesson-notes/generate", {
@@ -286,8 +362,8 @@ export default function TeacherLessonNotesPage() {
         classId,
         subjectId,
         topic: topic.trim(),
-        week: week ? Number(week) : null,
-        durationMinutes: Number(durationMinutes),
+        week: weekNumber,
+        durationMinutes: duration,
         learningObjectives: splitLines(learningObjectivesInput),
         curriculumRequirements: curriculumRequirements.trim(),
       });
@@ -299,15 +375,12 @@ export default function TeacherLessonNotesPage() {
       }
 
       setContent(generated.content);
-      setSuccess("Lesson note generated. Review and edit it before saving.");
+      setSuccess(
+        "Lesson note generated. Review and edit it before saving."
+      );
     } catch (err: unknown) {
       setError(
-        getErrorMessage(
-          err,
-          err instanceof Error
-            ? err.message
-            : "Unable to generate the lesson note."
-        )
+        getErrorMessage(err, "Unable to generate the lesson note.")
       );
     } finally {
       setGenerating(false);
@@ -318,13 +391,56 @@ export default function TeacherLessonNotesPage() {
     setError("");
     setSuccess("");
 
+    if (selectedNoteId) {
+      setError(
+        "This is an existing saved note. Saving it here would create a duplicate. Start a new note to save a separate copy."
+      );
+      return;
+    }
+
+    if (!sessionId || !termId || !classId || !subjectId || !topic.trim()) {
+      setError(
+        "Select the session, term, class, and subject, and enter a topic before saving."
+      );
+      return;
+    }
+
+    if (!content.previousKnowledge.trim()) {
+      setError("Complete the previous knowledge section before saving.");
+      return;
+    }
+
     if (!content.learningObjectives.length) {
       setError("Add at least one learning objective before saving.");
       return;
     }
 
+    if (!content.introduction.trim()) {
+      setError("Complete the introduction before saving.");
+      return;
+    }
+
     if (!content.lessonDevelopment.length) {
       setError("Add at least one lesson development stage.");
+      return;
+    }
+
+    if (
+      content.lessonDevelopment.some(
+        (stage) =>
+          !stage.stage.trim() ||
+          !stage.teacherActivities.trim() ||
+          !stage.learnerActivities.trim()
+      )
+    ) {
+      setError(
+        "Each lesson development stage needs a title, teacher activities, and learner activities."
+      );
+      return;
+    }
+
+    if (!content.conclusion.trim()) {
+      setError("Complete the conclusion before saving.");
       return;
     }
 
@@ -343,11 +459,17 @@ export default function TeacherLessonNotesPage() {
         content,
       });
 
-      const saved = response.data?.lessonNote;
+      const saved: LessonNote | undefined = response.data?.lessonNote;
 
       setSelectedNoteId(saved?._id ?? "");
-      setSuccess("Lesson note saved successfully.");
-      await loadSavedNotes();
+
+      const refreshed = await loadSavedNotes(false);
+
+      setSuccess(
+        refreshed
+          ? "Lesson note saved successfully."
+          : "Lesson note saved, but the saved-note list could not refresh. Use Refresh to reload it."
+      );
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Unable to save the lesson note."));
     } finally {
@@ -355,7 +477,7 @@ export default function TeacherLessonNotesPage() {
     }
   }
 
-  async function openSavedNote(note: LessonNote) {
+  function openSavedNote(note: LessonNote) {
     setError("");
     setSuccess("");
     setSelectedNoteId(note._id ?? "");
@@ -370,8 +492,11 @@ export default function TeacherLessonNotesPage() {
     setDurationMinutes(String(note.durationMinutes));
     setCurriculumRequirements(note.curriculumRequirements ?? "");
     setContent(note.content);
+    setLearningObjectivesInput(note.content.learningObjectives.join("\n"));
 
-    setSuccess("Saved lesson note loaded.");
+    setSuccess(
+      "Saved lesson note loaded. Editing and updating existing notes is not available yet."
+    );
   }
 
   function updateContent<K extends keyof LessonContent>(
@@ -482,20 +607,34 @@ export default function TeacherLessonNotesPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <section className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 shadow-xl sm:p-6 print:hidden">
-            <div className="mb-5">
-              <h2 className="text-lg font-semibold text-white">
-                Lesson details
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Choose your academic period and enter the lesson requirements.
-              </p>
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-white">
+                  Lesson details
+                </h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Choose your academic period and enter the lesson requirements.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={resetEditor}
+                className="shrink-0 rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-300 hover:bg-white/5"
+              >
+                New note
+              </button>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Academic session">
                 <select
                   value={sessionId}
-                  onChange={(event) => setSessionId(event.target.value)}
+                  onChange={(event) => {
+                    setSessionId(event.target.value);
+                    setTermId("");
+                    setSelectedNoteId("");
+                  }}
                   className={inputClass}
                 >
                   <option value="">Select session</option>
@@ -510,7 +649,10 @@ export default function TeacherLessonNotesPage() {
               <Field label="Term">
                 <select
                   value={termId}
-                  onChange={(event) => setTermId(event.target.value)}
+                  onChange={(event) => {
+                    setTermId(event.target.value);
+                    setSelectedNoteId("");
+                  }}
                   disabled={!sessionId || loadingTerms}
                   className={inputClass}
                 >
@@ -528,7 +670,10 @@ export default function TeacherLessonNotesPage() {
               <Field label="Class">
                 <select
                   value={classId}
-                  onChange={(event) => setClassId(event.target.value)}
+                  onChange={(event) => {
+                    setClassId(event.target.value);
+                    setSelectedNoteId("");
+                  }}
                   className={inputClass}
                 >
                   <option value="">Select class</option>
@@ -543,7 +688,10 @@ export default function TeacherLessonNotesPage() {
               <Field label="Subject">
                 <select
                   value={subjectId}
-                  onChange={(event) => setSubjectId(event.target.value)}
+                  onChange={(event) => {
+                    setSubjectId(event.target.value);
+                    setSelectedNoteId("");
+                  }}
                   className={inputClass}
                 >
                   <option value="">Select subject</option>
@@ -559,7 +707,10 @@ export default function TeacherLessonNotesPage() {
               <Field label="Lesson topic">
                 <input
                   value={topic}
-                  onChange={(event) => setTopic(event.target.value)}
+                  onChange={(event) => {
+                    setTopic(event.target.value);
+                    setSelectedNoteId("");
+                  }}
                   maxLength={200}
                   placeholder="e.g. Fractions"
                   className={inputClass}
@@ -623,7 +774,9 @@ export default function TeacherLessonNotesPage() {
               disabled={generating}
               className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
-              {generating ? "Generating lesson note..." : "✦ Generate lesson note"}
+              {generating
+                ? "Generating lesson note..."
+                : "✦ Generate lesson note"}
             </button>
           </section>
 
@@ -651,7 +804,7 @@ export default function TeacherLessonNotesPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2 print:hidden">
+              <div className="flex flex-wrap gap-2 print:hidden">
                 <button
                   type="button"
                   onClick={printNote}
@@ -659,13 +812,23 @@ export default function TeacherLessonNotesPage() {
                 >
                   Print
                 </button>
+
                 <button
                   type="button"
                   onClick={saveNote}
-                  disabled={saving || !content.introduction.trim()}
-                  className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+                  disabled={saving || Boolean(selectedNoteId)}
+                  title={
+                    selectedNoteId
+                      ? "Updating an existing saved note is not available yet."
+                      : "Save this lesson note"
+                  }
+                  className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {saving ? "Saving..." : "Save note"}
+                  {saving
+                    ? "Saving..."
+                    : selectedNoteId
+                      ? "Already saved"
+                      : "Save note"}
                 </button>
               </div>
             </div>
@@ -831,39 +994,63 @@ export default function TeacherLessonNotesPage() {
             <h2 className="font-semibold text-white">Lesson overview</h2>
 
             <div className="mt-4 space-y-3 text-sm">
-              <SummaryRow label="Session" value={selectedSession?.name || "Not selected"} />
-              <SummaryRow label="Term" value={selectedTerm?.name || "Not selected"} />
-              <SummaryRow label="Class" value={selectedClass?.name || "Not selected"} />
-              <SummaryRow label="Subject" value={selectedSubject?.name || "Not selected"} />
-              <SummaryRow label="Duration" value={`${durationMinutes || 0} minutes`} />
-              <SummaryRow label="Status" value={selectedNoteId ? "Saved" : "Draft"} />
+              <SummaryRow
+                label="Session"
+                value={selectedSession?.name || "Not selected"}
+              />
+              <SummaryRow
+                label="Term"
+                value={selectedTerm?.name || "Not selected"}
+              />
+              <SummaryRow
+                label="Class"
+                value={selectedClass?.name || "Not selected"}
+              />
+              <SummaryRow
+                label="Subject"
+                value={selectedSubject?.name || "Not selected"}
+              />
+              <SummaryRow
+                label="Duration"
+                value={`${durationMinutes || 0} minutes`}
+              />
+              <SummaryRow
+                label="Status"
+                value={selectedNoteId ? "Saved" : "Draft"}
+              />
             </div>
           </section>
 
           <section className="rounded-2xl border border-white/10 bg-slate-900/70 p-5">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h2 className="font-semibold text-white">Saved lesson notes</h2>
+                <h2 className="font-semibold text-white">
+                  Saved lesson notes
+                </h2>
                 <p className="mt-1 text-xs text-slate-400">
                   Open a note to review it.
                 </p>
               </div>
+
               <button
                 type="button"
-                onClick={loadSavedNotes}
+                onClick={() => {
+                  setError("");
+                  void loadSavedNotes();
+                }}
                 disabled={loadingNotes}
                 className="text-xs text-cyan-300 hover:text-cyan-200 disabled:opacity-50"
               >
-                Refresh
+                {loadingNotes ? "Loading..." : "Refresh"}
               </button>
             </div>
 
             <div className="mt-4 space-y-3">
-              {loadingNotes ? (
+              {loadingNotes && notes.length === 0 ? (
                 <p className="text-sm text-slate-400">Loading notes...</p>
               ) : notes.length === 0 ? (
                 <p className="rounded-xl bg-white/[0.03] p-4 text-sm text-slate-400">
-                  Your saved lesson notes will appear here.
+                  No saved lesson notes yet.
                 </p>
               ) : (
                 notes.map((note, index) => (
@@ -937,9 +1124,11 @@ function ContentTextarea({
       <label className="block text-sm font-semibold text-slate-200 print:text-black">
         {title}
       </label>
+
       {hint && (
         <p className="text-xs text-slate-500 print:hidden">{hint}</p>
       )}
+
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
