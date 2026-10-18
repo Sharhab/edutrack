@@ -26,7 +26,7 @@ import timetableRoutes from "../modules/timetables/timetable.routes.js";
 import classTimetableRoutes from "../modules/timetables/class-timetable.routes.js";
 import studentTimetableRoutes from "../modules/timetables/student-timetable.routes.js";
 import parentTimetableRoutes from "../modules/timetables/parent-timetable.routes.js";
-
+import lessonNoteRoutes from "../modules/lesson-notes/lesson-note.routes.js";
 import teacherRoutes from "../modules/teachers/teacher.routes.js";
 import parentRoutes from "../modules/parents/parent.routes.js";
 import studentRoutes from "../modules/students/student.routes.js";
@@ -202,7 +202,7 @@ router.get("/invoices", getSchoolInvoices);
  */
 router.use("/parent", parentPortalRoutes);
 router.use("/teacher", teacherPortalRoutes);
-
+router.use("/lesson-notes", lessonNoteRoutes);
 /**
  * REMINDERS
  */
