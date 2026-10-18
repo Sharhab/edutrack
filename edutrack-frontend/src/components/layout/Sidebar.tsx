@@ -17,6 +17,7 @@ import {
   Upload,
   Library,
   CalendarDays,
+  Sparkles,
 } from "lucide-react";
 import clsx from "clsx";
 import { UserRole } from "../../types/auth";
@@ -109,6 +110,11 @@ icon: CalendarDays,
 
   teacher: [
   { label: "Dashboard", href: "/teacher", icon: LayoutDashboard },
+    {
+  label: "AI Lesson Notes",
+  href: "/teacher/lesson-notes",
+  icon: Sparkles,
+},
   { label: "My Classes", href: "/teacher/students", icon: GraduationCap },
   { label: "My Timetable", href: "/teacher/timetable", icon: CalendarDays },
   { label: "Result Entry", href: "/teacher/results/entry", icon: BookOpen },
