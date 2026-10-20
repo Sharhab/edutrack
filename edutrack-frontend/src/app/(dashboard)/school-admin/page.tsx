@@ -210,11 +210,10 @@ const {
           roundedClassName="rounded-xl"
         />
 
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-white">
-            {tenant?.schoolName || "Your School"}
-          </p>
-
+        <div className="min-w-0">      
+<p className="break-words [overflow-wrap:anywhere] font-semibold text-white">
+  {tenant?.schoolName || "Your School"}
+</p>
           <p className="mt-1 max-w-md text-sm leading-relaxed text-slate-400">
             Select a session and term to view the matching school records and finances.
           </p>
