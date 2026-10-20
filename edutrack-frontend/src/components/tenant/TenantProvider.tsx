@@ -37,29 +37,43 @@ export function TenantProvider({
   const [tenant, setTenantState] = useState<ResolvedTenant | null>(null);
   const [tenantLoaded, setTenantLoaded] = useState(false);
 
+  // Restore the previously saved school branding.
   useEffect(() => {
-    const saved = getResolvedTenant();
+    try {
+      const savedTenant = getResolvedTenant();
 
-    if (saved) {
-      setTenantState(saved);
+      if (savedTenant) {
+        setTenantState(savedTenant);
+      }
+    } catch (error) {
+      console.error("Failed to restore saved tenant:", error);
+    } finally {
+      setTenantLoaded(true);
     }
-
-    setTenantLoaded(true);
   }, []);
 
-  const setTenant = useCallback((nextTenant: ResolvedTenant | null) => {
-    setTenantState(nextTenant);
-    saveResolvedTenant(nextTenant);
-  }, []);
+  // Preserve the existing public context API.
+  const setTenant = useCallback(
+    (nextTenant: ResolvedTenant | null) => {
+      setTenantState(nextTenant);
+      saveResolvedTenant(nextTenant);
+    },
+    []
+  );
 
   const patchTenant = useCallback(
     (updates: Partial<ResolvedTenant>) => {
       setTenantState((previous) => {
         if (!previous) return previous;
 
-        const updated = { ...previous, ...updates };
-        saveResolvedTenant(updated);
-        return updated;
+        const updatedTenant: ResolvedTenant = {
+          ...previous,
+          ...updates,
+        };
+
+        saveResolvedTenant(updatedTenant);
+
+        return updatedTenant;
       });
     },
     []
@@ -70,38 +84,53 @@ export function TenantProvider({
     saveResolvedTenant(null);
   }, []);
 
+  // Refresh saved branding for the authenticated school user.
   useEffect(() => {
-    if (!hydrated || !tenantLoaded || !user) return;
+    if (!hydrated || !tenantLoaded || !user) {
+      return;
+    }
+
+    // Capture values while user is known to be non-null.
+    const schoolId = user.schoolId;
+    const userRole = user.role;
 
     let cancelled = false;
 
     async function refreshTenant() {
       try {
-        // Prefer the existing saved school slug. It is needed to resolve
-        // the same school for administrators, teachers and parents.
         const savedTenant = getResolvedTenant();
         const slug = savedTenant?.slug;
 
+        // The existing resolver requires a school slug.
+        // Keep the saved tenant if no slug is available.
         if (!slug) return;
 
-        const resolved = await resolveTenantBySlug(slug);
+        const resolvedTenant = await resolveTenantBySlug(slug);
 
-        if (cancelled || !resolved) return;
-
-        // Do not overwrite a tenant with a different school.
-        if (
-          user.schoolId &&
-          resolved._id &&
-          resolved._id !== user.schoolId
-        ) {
-          console.warn("Resolved tenant does not match the signed-in user's school.");
+        if (cancelled || !resolvedTenant) {
           return;
         }
 
-        setTenant(resolved);
+        // Prevent branding from another school being applied.
+        if (
+          schoolId &&
+          resolvedTenant._id &&
+          resolvedTenant._id !== schoolId
+        ) {
+          console.warn(
+            "Resolved tenant does not match the signed-in user's school."
+          );
+          return;
+        }
+
+        // Only update branding after the school has been verified.
+        setTenant(resolvedTenant);
       } catch (error) {
-        console.error("Failed to refresh school branding:", error);
-        // Keep saved branding available if refresh fails.
+        // Retain the existing tenant if refresh fails.
+        console.error(
+          `Failed to refresh tenant for ${userRole}:`,
+          error
+        );
       }
     }
 
@@ -112,7 +141,7 @@ export function TenantProvider({
     };
   }, [hydrated, tenantLoaded, user, setTenant]);
 
-  const value = useMemo(
+  const value = useMemo<TenantContextType>(
     () => ({
       tenant,
       setTenant,
@@ -133,7 +162,9 @@ export function useTenant() {
   const context = useContext(TenantContext);
 
   if (!context) {
-    throw new Error("useTenant must be used inside TenantProvider");
+    throw new Error(
+      "useTenant must be used inside TenantProvider"
+    );
   }
 
   return context;
