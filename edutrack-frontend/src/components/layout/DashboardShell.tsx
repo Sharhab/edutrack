@@ -27,19 +27,22 @@ export default function DashboardShell({
   return (
     <div
       className="
-        mx-auto
-        flex
-        min-h-screen
-        max-w-[1600px]
-        gap-6
-        px-4
-        py-6
-        md:px-6
+  mx-auto
+  flex
+  w-full
+  min-w-0
+  min-h-screen
+  max-w-[1600px]
+  gap-6
+  overflow-x-clip
+  px-4
+  py-6
+  md:px-6
 
-        print:block
-        print:max-w-none
-        print:p-0
-      "
+  print:block
+  print:max-w-none
+  print:p-0
+"
     >
       {/* Overlay (mobile only) */}
       {sidebarOpen && (
@@ -61,7 +64,7 @@ export default function DashboardShell({
       </div>
 
       {/* Main Content */}
-      <main className="min-w-0 flex-1 print:w-full">
+     <main className="w-full min-w-0 flex-1 print:w-full">
         {/* Header */}
         <div className="print:hidden">
           <Header
