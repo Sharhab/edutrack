@@ -16,9 +16,9 @@ import {
   getResolvedTenant,
   saveResolvedTenant,
 } from "../../lib/tenant-storage";
-import { getSchoolProfile } from "../../lib/settings";
+import { getSchoolProfile, getSchoolBranding, } from "../../lib/settings";
 import { useAuth } from "../providers/AuthProvider";
-
+";
 type TenantContextType = {
   tenant: ResolvedTenant | null;
   setTenant: (tenant: ResolvedTenant | null) => void;
@@ -52,7 +52,49 @@ export function TenantProvider({
       setHydrated(true);
     }
   }, []);
+ 
+  useEffect(() => {
+  if (!authHydrated || !token || !user) return;
 
+  if (
+    user.role !== "teacher" &&
+    user.role !== "parent"
+  ) {
+    return;
+  }
+
+  if (!user.schoolId) return;
+
+  let cancelled = false;
+
+  async function loadBranding() {
+    try {
+      const branding = await getSchoolBranding();
+
+      if (cancelled) return;
+
+      setTenantState((previous) => {
+        const updated = {
+          ...(previous ?? {}),
+          ...branding,
+        } as ResolvedTenant;
+
+        saveResolvedTenant(updated);
+        return updated;
+      });
+    } catch (error) {
+      if (!cancelled) {
+        console.error("Failed to load teacher/parent branding:", error);
+      }
+    }
+  }
+
+  void loadBranding();
+
+  return () => {
+    cancelled = true;
+  };
+}, [authHydrated, token, user]);
   // Keep the existing public context API.
   const setTenant = useCallback(
     (nextTenant: ResolvedTenant | null) => {
