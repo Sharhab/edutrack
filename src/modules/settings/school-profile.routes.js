@@ -15,9 +15,16 @@ import {
 const router = express.Router();
 
 router.use(protect);
-router.use(authorize("school_admin"));
 
-router.get("/", asyncHandler(getSchoolProfileHandler));
+// Branding is read-only and available to school users.
+router.get(
+  "/branding",
+  authorize("school_admin", "teacher", "parent"),
+  asyncHandler(getSchoolBrandingHandler)
+);
+
+// Keep all other profile routes restricted to school admins.
+router.use(authorize("school_admin"));
 /*
 =========================================
 GET PROFILE
