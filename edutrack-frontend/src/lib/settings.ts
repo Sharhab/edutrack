@@ -25,6 +25,16 @@ export async function getSchoolProfile(): Promise<SchoolProfile> {
   return data.data.profile;
 }
 
+export async function getSchoolBranding() {
+  const { data } = await api.get<{
+    success: boolean;
+    data: {
+      branding: import("../types/tenant-resolver").ResolvedTenant;
+    };
+  }>("/settings/school-profile/branding");
+
+  return data.data.branding;
+}
 /* =========================================
    UPDATE PROFILE
 ========================================= */
