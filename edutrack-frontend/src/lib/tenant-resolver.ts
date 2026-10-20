@@ -6,22 +6,26 @@ const TENANT_RESOLVER_ENDPOINTS = {
   byDomain: (domain: string) => `/public/tenant/domain/${domain}`,
 };
 
-export async function resolveTenantBySlug(slug: string): Promise<ResolvedTenant | null> {
+export async function resolveTenantBySlug(
+  slug: string
+): Promise<ResolvedTenant | null> {
   if (!slug.trim()) return null;
 
-  const { data } = await api.get<ResolveTenantResponse>(
-    TENANT_RESOLVER_ENDPOINTS.bySlug(slug)
+  const { data } = await api.get(
+    TENANT_RESOLVER_ENDPOINTS.bySlug(encodeURIComponent(slug))
   );
 
-  return data.tenant || null;
+  return data?.data?.tenant ?? data?.data ?? data?.tenant ?? null;
 }
 
-export async function resolveTenantByDomain(domain: string): Promise<ResolvedTenant | null> {
+export async function resolveTenantByDomain(
+  domain: string
+): Promise<ResolvedTenant | null> {
   if (!domain.trim()) return null;
 
-  const { data } = await api.get<ResolveTenantResponse>(
-    TENANT_RESOLVER_ENDPOINTS.byDomain(domain)
+  const { data } = await api.get(
+    TENANT_RESOLVER_ENDPOINTS.byDomain(encodeURIComponent(domain))
   );
 
-  return data.tenant || null;
+  return data?.data?.tenant ?? data?.data ?? data?.tenant ?? null;
 }
