@@ -285,17 +285,10 @@ export async function submitTeacherAttendance(
   }
 
   /* =========================================
-     TODAY
-  ========================================= */
+   TODAY — YYYY-MM-DD
+========================================= */
 
-  const today = new Date();
-
-  today.setHours(
-    0,
-    0,
-    0,
-    0
-  );
+const today = new Date().toISOString().slice(0, 10);
 
   /* =========================================
      SAVE ATTENDANCE
