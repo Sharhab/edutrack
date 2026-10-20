@@ -150,6 +150,43 @@ function mapProfile(school, currentSession, currentTerm) {
   };
 }
 
+export async function getSchoolBranding(user) {
+  if (!user?.schoolId) {
+    throw new ApiError(403, "User is not linked to a school");
+  }
+
+  const school = await School.findById(user.schoolId)
+    .select(
+      "_id name slug domain fullDomain logo themeColor currentSession currentTerm"
+    )
+    .lean();
+
+  if (!school) {
+    throw new ApiError(404, "School not found");
+  }
+
+  const apiUrl =
+    process.env.APP_URL ||
+    "https://edutrack-dpui.onrender.com";
+
+  let logoUrl = school.logo || "";
+
+  if (logoUrl && !/^https?:\/\//i.test(logoUrl)) {
+    logoUrl = `${apiUrl}${logoUrl}`;
+  }
+
+  return {
+    _id: String(school._id),
+    schoolName: school.name || "",
+    slug: school.slug || "",
+    domain: school.domain || "",
+    fullDomain: school.fullDomain || "",
+    logoUrl,
+    themeColor: school.themeColor || "#06b6d4",
+    currentSession: school.currentSession || "",
+    currentTerm: school.currentTerm || "",
+  };
+}
 /**
  * =========================================
  * GET SCHOOL PROFILE
