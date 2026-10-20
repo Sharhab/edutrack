@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import {
@@ -10,13 +11,11 @@ import {
   useState,
 } from "react";
 
-import { ResolvedTenant } from "../../types/tenant-resolver";
+import type { ResolvedTenant } from "../../types/tenant-resolver";
 import {
   getResolvedTenant,
   saveResolvedTenant,
 } from "../../lib/tenant-storage";
-import { resolveTenantBySlug } from "../../lib/tenant-resolver";
-import { useAuth } from "../providers/AuthProvider";
 
 type TenantContextType = {
   tenant: ResolvedTenant | null;
@@ -32,31 +31,31 @@ export function TenantProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, hydrated } = useAuth();
+  const [tenant, setTenantState] =
+    useState<ResolvedTenant | null>(null);
 
-  const [tenant, setTenantState] = useState<ResolvedTenant | null>(null);
-  const [tenantLoaded, setTenantLoaded] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
-  // Restore the previously saved school branding.
+  // Restore the saved school branding on initial load.
   useEffect(() => {
     try {
-      const savedTenant = getResolvedTenant();
-
-      if (savedTenant) {
-        setTenantState(savedTenant);
-      }
+      setTenantState(getResolvedTenant());
     } catch (error) {
-      console.error("Failed to restore saved tenant:", error);
+      console.error("Failed to restore tenant:", error);
     } finally {
-      setTenantLoaded(true);
+      setHydrated(true);
     }
   }, []);
 
-  // Preserve the existing public context API.
   const setTenant = useCallback(
     (nextTenant: ResolvedTenant | null) => {
       setTenantState(nextTenant);
-      saveResolvedTenant(nextTenant);
+
+      try {
+        saveResolvedTenant(nextTenant);
+      } catch (error) {
+        console.error("Failed to save tenant:", error);
+      }
     },
     []
   );
@@ -66,14 +65,18 @@ export function TenantProvider({
       setTenantState((previous) => {
         if (!previous) return previous;
 
-        const updatedTenant: ResolvedTenant = {
+        const updated = {
           ...previous,
           ...updates,
         };
 
-        saveResolvedTenant(updatedTenant);
+        try {
+          saveResolvedTenant(updated);
+        } catch (error) {
+          console.error("Failed to save tenant updates:", error);
+        }
 
-        return updatedTenant;
+        return updated;
       });
     },
     []
@@ -81,67 +84,15 @@ export function TenantProvider({
 
   const clearTenant = useCallback(() => {
     setTenantState(null);
-    saveResolvedTenant(null);
+
+    try {
+      saveResolvedTenant(null);
+    } catch (error) {
+      console.error("Failed to clear tenant:", error);
+    }
   }, []);
 
-  // Refresh saved branding for the authenticated school user.
-  useEffect(() => {
-    if (!hydrated || !tenantLoaded || !user) {
-      return;
-    }
-
-    // Capture values while user is known to be non-null.
-    const schoolId = user.schoolId;
-    const userRole = user.role;
-
-    let cancelled = false;
-
-    async function refreshTenant() {
-      try {
-        const savedTenant = getResolvedTenant();
-        const slug = savedTenant?.slug;
-
-        // The existing resolver requires a school slug.
-        // Keep the saved tenant if no slug is available.
-        if (!slug) return;
-
-        const resolvedTenant = await resolveTenantBySlug(slug);
-
-        if (cancelled || !resolvedTenant) {
-          return;
-        }
-
-        // Prevent branding from another school being applied.
-        if (
-          schoolId &&
-          resolvedTenant._id &&
-          resolvedTenant._id !== schoolId
-        ) {
-          console.warn(
-            "Resolved tenant does not match the signed-in user's school."
-          );
-          return;
-        }
-
-        // Only update branding after the school has been verified.
-        setTenant(resolvedTenant);
-      } catch (error) {
-        // Retain the existing tenant if refresh fails.
-        console.error(
-          `Failed to refresh tenant for ${userRole}:`,
-          error
-        );
-      }
-    }
-
-    void refreshTenant();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hydrated, tenantLoaded, user, setTenant]);
-
-  const value = useMemo<TenantContextType>(
+  const value = useMemo(
     () => ({
       tenant,
       setTenant,
@@ -150,6 +101,9 @@ export function TenantProvider({
     }),
     [tenant, setTenant, patchTenant, clearTenant]
   );
+
+  // Avoid rendering children until saved tenant data has been restored.
+  if (!hydrated) return null;
 
   return (
     <TenantContext.Provider value={value}>
