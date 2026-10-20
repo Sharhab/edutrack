@@ -254,17 +254,20 @@ export async function submitTeacherAttendance(
      VERIFY TERM BELONGS TO SCHOOL
   ========================================= */
 
-  const term = await Term.findOne({
-    _id: termId,
-    schoolId: teacher.schoolId,
-  }).lean();
+  
+const term = await Term.findOne({
+  _id: termId,
+  schoolId: teacher.schoolId,
+  sessionId,
+}).lean();
 
-  if (!term) {
-    throw new ApiError(
-      400,
-      "Invalid academic term"
-    );
-  }
+if (!term) {
+  throw new ApiError(
+    400,
+    "Invalid academic term for the selected session"
+  );
+}
+
 
   /* =========================================
      VALIDATE ATTENDANCE DATA
