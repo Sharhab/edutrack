@@ -16,9 +16,11 @@ import {
   getResolvedTenant,
   saveResolvedTenant,
 } from "../../lib/tenant-storage";
-import { getSchoolProfile, getSchoolBranding, } from "../../lib/settings";
+import {
+  getSchoolProfile, 
+  getSchoolBranding,
+} from "../../lib/settings";
 import { useAuth } from "../providers/AuthProvider";
-";
 type TenantContextType = {
   tenant: ResolvedTenant | null;
   setTenant: (tenant: ResolvedTenant | null) => void;
