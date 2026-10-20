@@ -21,6 +21,52 @@ import {
 
 import { ApiError } from "../../utils/apiError.js";
 
+async function getTeacherAttendancePending({
+  schoolId,
+  classIds,
+  sessionId,
+  termId,
+  date,
+}) {
+  if (!classIds.length || !sessionId || !termId) {
+    return 0;
+  }
+
+  const pendingClasses = await Promise.all(
+    classIds.map(async (classId) => {
+      const students = await Student.find({
+        schoolId,
+        classId,
+      })
+        .select("_id")
+        .lean();
+
+      if (students.length === 0) {
+        return 0;
+      }
+
+      const studentIds = students.map(
+        (student) => student._id
+      );
+
+      const markedCount = await Attendance.countDocuments({
+        schoolId,
+        classId,
+        sessionId,
+        termId,
+        date,
+        studentId: { $in: studentIds },
+      });
+
+      return markedCount < students.length ? 1 : 0;
+    })
+  );
+
+  return pendingClasses.reduce(
+    (total, count) => total + count,
+    0
+  );
+}
 /* =====================================
    HELPERS
 ===================================== */
@@ -440,61 +486,130 @@ export async function getParentChildSummary(
    TEACHER DASHBOARD
 ========================================= */
 export async function getTeacherDashboard(user) {
-  const schoolId = user.schoolId;
+  const schoolId = normalizeSchoolId(user);
 
   const teacher = await Teacher.findOne({
     schoolId,
     userId: user._id,
+    status: "active",
   })
     .populate("classIds", "name level")
     .populate("subjectIds", "name code");
 
   if (!teacher) {
-    throw new Error("Teacher profile not found");
+    throw new ApiError(404, "Teacher profile not found");
+  }
+
+  const assignedClasses = teacher.classIds || [];
+  const assignedSubjects = teacher.subjectIds || [];
+
+  const classIds = assignedClasses.map(
+    (cls) => cls._id
+  );
+
+  /* =========================================
+     SCHOOL AND ACADEMIC PERIOD
+  ========================================= */
+
+  const school = await School.findById(schoolId)
+    .select("currentSession currentTerm")
+    .lean();
+
+  if (!school) {
+    throw new ApiError(404, "School not found");
+  }
+
+  let activeSession = await Session.findOne({
+    schoolId,
+    isCurrent: true,
+  }).sort({ createdAt: -1 });
+
+  if (!activeSession && school.currentSession) {
+    activeSession = await Session.findOne({
+      schoolId,
+      name: school.currentSession,
+    });
+  }
+
+  let activeTerm = null;
+
+  if (activeSession) {
+    activeTerm = await Term.findOne({
+      schoolId,
+      sessionId: activeSession._id,
+      isCurrent: true,
+    }).sort({ createdAt: -1 });
+
+    if (!activeTerm && school.currentTerm) {
+      activeTerm = await Term.findOne({
+        schoolId,
+        sessionId: activeSession._id,
+        name: school.currentTerm,
+      });
+    }
   }
 
   /* =========================================
      TOTAL STUDENTS
   ========================================= */
-  const students = await Student.countDocuments({
-    schoolId,
-    classId: {
-      $in: teacher.classIds.map((c) => c._id),
-    },
-  });
+
+  const students = classIds.length
+    ? await Student.countDocuments({
+        schoolId,
+        classId: { $in: classIds },
+      })
+    : 0;
 
   /* =========================================
      RECENT ANNOUNCEMENTS
   ========================================= */
-  const recentAnnouncements =
-    await Announcement.find({ schoolId })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select("title message createdAt");
+
+  const recentAnnouncements = await Announcement.find({
+    schoolId,
+  })
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .select("title message createdAt")
+    .lean();
 
   /* =========================================
      RESULTS DRAFTED
   ========================================= */
-  const resultsDrafted =
-    await Result.countDocuments({
-      schoolId,
-      enteredBy: user._id,
-    });
+
+  const resultsDrafted = await Result.countDocuments({
+    schoolId,
+    enteredBy: user._id,
+  });
+
+  /* =========================================
+     ATTENDANCE PENDING
+  ========================================= */
+
+  const attendancePending =
+    activeSession && activeTerm
+      ? await getTeacherAttendancePending({
+          schoolId,
+          classIds,
+          sessionId: activeSession._id,
+          termId: activeTerm._id,
+          date: todayDateString(),
+        })
+      : 0;
 
   /* =========================================
      BUILD ASSIGNMENTS
   ========================================= */
+
   const assignments = [];
 
-  for (const cls of teacher.classIds) {
-    for (const subject of teacher.subjectIds) {
+  for (const cls of assignedClasses) {
+    for (const subject of assignedSubjects) {
       assignments.push({
         classId: {
           _id: cls._id,
           name: cls.name,
           level: cls.level,
         },
-
         subjectId: {
           _id: subject._id,
           name: subject.name,
@@ -504,38 +619,32 @@ export async function getTeacherDashboard(user) {
     }
   }
 
+  /* =========================================
+     DASHBOARD RESPONSE
+  ========================================= */
+
   return {
     stats: {
-      myClasses: teacher.classIds.length,
-
-      mySubjects:
-        teacher.subjectIds.length,
-
+      myClasses: assignedClasses.length,
+      mySubjects: assignedSubjects.length,
       students,
-
-      attendancePending: 0,
-
+      attendancePending,
       resultsDrafted,
     },
 
-    myClasses: teacher.classIds.map(
-      (cls) => ({
-        _id: cls._id,
-        name: cls.name,
-        level: cls.level,
-      })
-    ),
+    myClasses: assignedClasses.map((cls) => ({
+      _id: cls._id,
+      name: cls.name,
+      level: cls.level,
+    })),
 
-    mySubjects: teacher.subjectIds.map(
-      (subject) => ({
-        _id: subject._id,
-        name: subject.name,
-        code: subject.code,
-      })
-    ),
+    mySubjects: assignedSubjects.map((subject) => ({
+      _id: subject._id,
+      name: subject.name,
+      code: subject.code,
+    })),
 
     assignments,
-
     recentAnnouncements,
   };
 }
