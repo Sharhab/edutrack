@@ -203,23 +203,25 @@ const {
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
-        <TenantLogo
-          tenant={tenant}
-          size={42}
-          roundedClassName="rounded-xl"
-        />
+      <div className="mt-4 flex w-full min-w-0 items-start gap-3">
+  <div className="shrink-0">
+    <TenantLogo
+      tenant={tenant}
+      size={42}
+      roundedClassName="rounded-xl"
+    />
+  </div>
 
-        <div className="min-w-0">      
-<p className="break-words [overflow-wrap:anywhere] font-semibold text-white">
-  {tenant?.schoolName || "Your School"}
-</p>
-          <p className="mt-1 max-w-md text-sm leading-relaxed text-slate-400">
-            Select a session and term to view the matching school records and finances.
-          </p>
-        </div>
-      </div>
+  <div className="min-w-0 flex-1">
+    <p className="whitespace-normal break-words [overflow-wrap:anywhere] font-semibold text-white">
+      {tenant?.schoolName || "Your School"}
+    </p>
 
+    <p className="mt-1 max-w-md text-sm leading-relaxed text-slate-400">
+      Select a session and term to view the matching school records and finances.
+    </p>
+  </div>
+</div>
       <span
         className="mt-4 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold"
         style={{
