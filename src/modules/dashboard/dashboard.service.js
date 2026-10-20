@@ -21,6 +21,7 @@ import {
 
 import { ApiError } from "../../utils/apiError.js";
 
+
 async function getTeacherAttendancePending({
   schoolId,
   classIds,
@@ -28,11 +29,16 @@ async function getTeacherAttendancePending({
   termId,
   date,
 }) {
-  if (!classIds.length || !sessionId || !termId) {
+  if (
+    !classIds?.length ||
+    !sessionId ||
+    !termId ||
+    !date
+  ) {
     return 0;
   }
 
-  const pendingClasses = await Promise.all(
+  const pendingFlags = await Promise.all(
     classIds.map(async (classId) => {
       const students = await Student.find({
         schoolId,
@@ -41,6 +47,7 @@ async function getTeacherAttendancePending({
         .select("_id")
         .lean();
 
+      // An empty class is not pending.
       if (students.length === 0) {
         return 0;
       }
@@ -49,24 +56,37 @@ async function getTeacherAttendancePending({
         (student) => student._id
       );
 
-      const markedCount = await Attendance.countDocuments({
-        schoolId,
-        classId,
-        sessionId,
-        termId,
-        date,
-        studentId: { $in: studentIds },
-      });
+      // Count distinct students, not attendance documents.
+      const markedStudentIds =
+        await Attendance.distinct("studentId", {
+          schoolId,
+          classId,
+          sessionId,
+          termId,
+          date,
+          studentId: {
+            $in: studentIds,
+          },
+        });
 
-      return markedCount < students.length ? 1 : 0;
+      const markedIds = new Set(
+        markedStudentIds.map((id) => String(id))
+      );
+
+      const allStudentsMarked = studentIds.every(
+        (id) => markedIds.has(String(id))
+      );
+
+      return allStudentsMarked ? 0 : 1;
     })
   );
 
-  return pendingClasses.reduce(
-    (total, count) => total + count,
+  return pendingFlags.reduce(
+    (total, isPending) => total + isPending,
     0
   );
 }
+
 /* =====================================
    HELPERS
 ===================================== */
