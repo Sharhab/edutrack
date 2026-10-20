@@ -9,6 +9,7 @@ import {
   getSchoolProfileHandler,
   updateSchoolProfileHandler,
   uploadSchoolLogoHandler,
+  getSchoolBrandingHandler,
 } from "./school-profile.controller.js";
 
 const router = express.Router();
@@ -16,6 +17,7 @@ const router = express.Router();
 router.use(protect);
 router.use(authorize("school_admin"));
 
+router.get("/", asyncHandler(getSchoolProfileHandler));
 /*
 =========================================
 GET PROFILE
