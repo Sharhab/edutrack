@@ -4,9 +4,19 @@ import {
   getSchoolProfile,
   updateSchoolProfile,
   uploadSchoolLogo,
+  getSchoolBranding,
 } from "./school-profile.service.js";
 import { ApiError } from "../../utils/apiError.js";
 
+export async function getSchoolBrandingHandler(req, res) {
+  const branding = await getSchoolBranding(req.user);
+
+  res.json({
+    success: true,
+    message: "School branding fetched successfully",
+    data: { branding },
+  });
+}
 /* =========================================
    GET PROFILE
 ========================================= */
