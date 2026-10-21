@@ -113,39 +113,58 @@ export default function ReportCardTemplate({
   return (
     <>
       <style jsx global>{`
+     .report-card-page {
+      width: 100%;
+      max-width: 210mm;
+      min-width: 0;
+      min-height: 0;
+      height: auto;
+      margin: 0 auto;
+      padding: 3mm 5mm;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    
+    .report-card-paper {
+      width: 100%;
+      min-width: 0;
+      height: auto;
+      min-height: 0;
+      max-height: none;
+      margin: 0 auto;
+      box-sizing: border-box;
+    }
+    
+    @media print {
       .report-card-page {
-  width: 210mm !important;
-  min-width: 210mm !important;
-
-  height: 297mm !important;
-  min-height: 297mm !important;
-  max-height: 297mm !important;
-
-  margin: 0 !important;
-  padding: 3mm 5mm !important;
-
-  box-sizing: border-box !important;
-  overflow: hidden !important;
-
-  page-break-before: avoid !important;
-  page-break-after: avoid !important;
-  break-before: avoid !important;
-  break-after: avoid !important;
-}
-
-        .report-card-paper {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  max-height: 100% !important;
-
-  box-sizing: border-box !important;
-  overflow: hidden !important;
-
-  page-break-inside: avoid !important;
-  break-inside: avoid !important;
-}
-
+        width: 210mm !important;
+        min-width: 210mm !important;
+        max-width: 210mm !important;
+        height: 297mm !important;
+        min-height: 297mm !important;
+        max-height: 297mm !important;
+        margin: 0 !important;
+        padding: 3mm 5mm !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        break-before: auto !important;
+        break-after: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+    
+      .report-card-paper {
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: 100% !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+    }
         /* =================================================
            TOP HEADER
            PASSPORT LEFT
