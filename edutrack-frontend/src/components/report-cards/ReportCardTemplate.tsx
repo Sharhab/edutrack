@@ -558,202 +558,190 @@ export default function ReportCardTemplate({
          * This template does not force another page break.
          */
 
-        @media print {
-          html,
-          body {
-            width: 100% !important;
-            min-width: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #fff !important;
-          }
+       
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
 
-          *,
-          *::before,
-          *::after {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            box-sizing: border-box !important;
-          }
+  html,
+  body {
+    width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
 
-          .report-card-page {
-            width: 210mm !important;
-            min-width: 0 !important;
-            max-width: 210mm !important;
-            height: 297mm !important;
-            min-height: 0 !important;
-            max-height: 297mm !important;
-            margin: 0 !important;
-            padding: 3mm 5mm !important;
-            overflow: hidden !important;
-            break-before: auto !important;
-            break-after: auto !important;
-            break-inside: avoid !important;
-            page-break-before: auto !important;
-            page-break-after: auto !important;
-            page-break-inside: avoid !important;
-          }
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-sizing: border-box !important;
+  }
 
-          .report-card-paper {
-            width: 100% !important;
-            height: 100% !important;
-            min-width: 0 !important;
-            min-height: 0 !important;
-            max-height: 100% !important;
-            margin: 0 !important;
-            overflow: hidden !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+  .report-card-page {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-width: 0 !important;
+    height: 297mm !important;
+    min-height: 0 !important;
+    max-height: 297mm !important;
+    margin: 0 !important;
+    padding: 3mm 5mm !important;
+    overflow: hidden !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
 
-          .report-content {
-            overflow: hidden !important;
-          }
+  .report-card-paper {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
 
-          .report-card-header {
-            min-height: 29mm !important;
-            padding: 2.5mm 3mm !important;
-          }
+  .report-content {
+    padding: 2mm 3mm 0 !important;
+    overflow: visible !important;
+  }
 
-          .school-heading,
-          .school-address {
-            text-align: center !important;
-          }
+  .report-card-header {
+    min-height: 27mm !important;
+    padding: 2mm 3mm !important;
+  }
 
-          .section-title {
-            margin-bottom: 1mm !important;
-            padding-bottom: 0.5mm !important;
-          }
+  .section-title {
+    margin-bottom: 0.8mm !important;
+    padding-bottom: 0.4mm !important;
+  }
 
-          .student-information {
-            margin-bottom: 2mm !important;
-          }
+  .student-information {
+    margin-bottom: 1.5mm !important;
+  }
 
-          .student-info-item {
-            padding: 1.2mm 1.6mm !important;
-          }
+  .student-info-item {
+    padding: 1mm 1.4mm !important;
+  }
 
-          .academic-section {
-            margin-bottom: 2mm !important;
-            overflow: visible !important;
-          }
+  .academic-section {
+    margin-bottom: 1.5mm !important;
+    overflow: visible !important;
+  }
 
-          .academic-table-wrapper {
-            width: 100% !important;
-            overflow: visible !important;
-          }
+  .academic-table-wrapper {
+    width: 100% !important;
+    overflow: visible !important;
+  }
 
-          .academic-table-wrapper table {
-            display: table !important;
-            visibility: visible !important;
-            width: 100% !important;
-            min-width: 0 !important;
-          }
+  .academic-table-wrapper table {
+    display: table !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
 
-          .academic-table-wrapper thead,
-          .academic-table-wrapper tbody,
-          .academic-table-wrapper tr,
-          .academic-table-wrapper th,
-          .academic-table-wrapper td {
-            visibility: visible !important;
-          }
+  .academic-table-wrapper th,
+  .academic-table-wrapper td {
+    padding: 1.2px 2px !important;
+    font-size: 6px !important;
+    line-height: 1 !important;
+  }
 
-          .academic-table-wrapper th {
-            padding: 1.5px 2px !important;
-            font-size: 6.2px !important;
-            line-height: 1 !important;
-          }
+  .horizontal-section-row {
+    gap: 1.5mm !important;
+    margin-bottom: 1.5mm !important;
+  }
 
-          .academic-table-wrapper td {
-            padding: 1.5px 2px !important;
-            font-size: 6.2px !important;
-            line-height: 1 !important;
-          }
+  .report-box-title {
+    min-height: 4.5mm !important;
+    padding: 0 1.5mm !important;
+    font-size: 6px !important;
+  }
 
-          .horizontal-section-row {
-            gap: 2mm !important;
-            margin-bottom: 2mm !important;
-          }
+  .report-box-body {
+    padding: 1mm !important;
+  }
 
-          .report-box-title {
-            min-height: 5.5mm !important;
-            padding: 0 2mm !important;
-            font-size: 6.5px !important;
-          }
+  .comments-row {
+    gap: 1.5mm !important;
+    margin-bottom: 1.5mm !important;
+  }
 
-          .report-box-body {
-            padding: 1.2mm !important;
-          }
+  .comment-box {
+    height: 19mm !important;
+    overflow: hidden !important;
+  }
 
-          .comments-row {
-            gap: 2mm !important;
-            margin-bottom: 2mm !important;
-          }
+  .comment-content {
+    padding: 1mm 1.5mm !important;
+  }
 
-          .comment-box {
-            height: 21mm !important;
-          }
+  .comment-label {
+    margin-bottom: 1mm !important;
+  }
 
-          .comment-content {
-            padding: 1.2mm 2mm !important;
-          }
+  .comment-text {
+    min-height: 0 !important;
+    font-size: 6.2px !important;
+    line-height: 1.2 !important;
+  }
 
-          .writing-lines {
-            gap: 3mm !important;
-            margin-top: 1mm !important;
-          }
+  .writing-lines {
+    gap: 2mm !important;
+    margin-top: 1mm !important;
+  }
 
-          .bottom-grid {
-            gap: 2mm !important;
-            margin-bottom: 0.5mm !important;
-          }
+  .bottom-grid {
+    gap: 1.5mm !important;
+    margin-bottom: 0 !important;
+  }
 
-          .grading-table {
-            display: table !important;
-            visibility: visible !important;
-            width: 100% !important;
-          }
+  .grading-table th,
+  .grading-table td {
+    padding: 0.7mm 0.6mm !important;
+    font-size: 5.2px !important;
+    line-height: 1 !important;
+  }
 
-          .grading-table th,
-          .grading-table td {
-            padding: 0.9mm 0.8mm !important;
-            font-size: 5.4px !important;
-            line-height: 1 !important;
-            visibility: visible !important;
-          }
+  .approval-area {
+    padding: 1mm !important;
+    gap: 1.5mm !important;
+  }
 
-          .approval-area {
-            padding: 1.5mm !important;
-            gap: 2mm !important;
-          }
+  .signature-space {
+    height: 5mm !important;
+    margin-bottom: 0.8mm !important;
+  }
 
-          .signature-space {
-            height: 6mm !important;
-            margin-bottom: 1mm !important;
-          }
+  .report-footer {
+    margin-top: 0.5mm !important;
+    padding-top: 0.5mm !important;
+  }
 
-          .report-footer {
-            margin-top: 0.5mm !important;
-            padding-top: 0.8mm !important;
-          }
+  .report-box,
+  .horizontal-section-row,
+  .comments-row,
+  .bottom-grid,
+  .academic-section,
+  table {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
 
-          .academic-section,
-          .horizontal-section-row,
-          .comments-row,
-          .bottom-grid,
-          .report-box,
-          .comment-box,
-          table {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
+  img {
+    max-width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
 
-          img {
-            max-width: 100% !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-        }
 
         @page {
           size: A4 portrait;
