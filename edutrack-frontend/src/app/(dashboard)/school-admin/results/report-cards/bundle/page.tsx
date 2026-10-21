@@ -188,84 +188,124 @@ export default function ClassReportBundlePage() {
   ========================================== */
 
   return (
-    <div className="bg-gray-50 min-h-screen print:bg-white print:p-0">
+   
+  return (
+    <div className="report-bundle min-h-screen bg-gray-50 print:min-h-0 print:bg-white">
+      <style jsx global>{`
+        @page {
+          size: A4 portrait;
+          margin: 0;
+        }
 
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-4 print:hidden">
+        @media print {
+          html,
+          body {
+            width: 210mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+
+          body * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .report-bundle {
+            width: 210mm !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+
+          .report-bundle-toolbar {
+            display: none !important;
+          }
+
+          .report-bundle-list {
+            display: block !important;
+            width: 210mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
+          .report-bundle-item {
+            display: block !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 0 !important;
+            max-height: 297mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            overflow: hidden !important;
+
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            break-after: page !important;
+            page-break-after: always !important;
+          }
+
+          .report-bundle-item:last-child {
+            break-after: auto !important;
+            page-break-after: auto !important;
+          }
+
+          .report-bundle-item .print-report {
+            width: 210mm !important;
+            height: 297mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+          }
+        }
+      `}</style>
+
+      <div className="report-bundle-toolbar mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">
-            Report Card Bundle
-          </h1>
-
+          <h1 className="text-xl font-bold">Report Card Bundle</h1>
           <p className="text-sm text-gray-500">
-            Class: {bundle.class.name} • Total Students:{" "}
+            Class: {bundle.class.name} · Total Students:{" "}
             {bundle.totalStudents}
           </p>
         </div>
 
         <div className="flex gap-2">
           <PrintButton />
-
-          <DownloadPdfButton
-            onClick={() => window.print()}
-          />
+          <DownloadPdfButton onClick={() => window.print()} />
         </div>
       </div>
 
-      {/* REPORTS */}
-      <div className="space-y-10">
+      <div className="report-bundle-list space-y-10 print:space-y-0">
         {bundle.reports.map((item, index) => {
           if (!item?.reportCard) return null;
 
           const rc = item.reportCard;
 
           return (
-            <div
-  key={rc.student._id || index}
-  className="
-    bg-white
-    shadow-sm
-    rounded-md
-    p-4
-    print:p-0
-    print:shadow-none
-    print:rounded-none
-    print:break-after-page
-    print:min-h-0
-  "
->
+            <section
+              key={rc.student?._id || index}
+              className="report-bundle-item rounded-md bg-white p-4 shadow-sm print:rounded-none print:p-0 print:shadow-none"
+            >
               <div className="print-report">
-
                 <ReportCardTemplate
                   data={rc}
-
-                  /*
-                   * SCHOOL PROFILE
-                   *
-                   * These values come directly from:
-                   * /settings/school-profile
-                   */
-                  schoolName={
-                    schoolProfile?.schoolName
-                  }
-
-                  schoolAddress={
-                    schoolProfile?.address
-                  }
-
-                  schoolLogo={
-                    schoolProfile?.logoUrl
-                  }
-
-                  brandColor={
-                    schoolProfile?.themeColor ||
-                    "#06b6d4"
-                  }
+                  schoolName={schoolProfile?.schoolName}
+                  schoolAddress={schoolProfile?.address}
+                  schoolLogo={schoolProfile?.logoUrl}
+                  brandColor={schoolProfile?.themeColor || "#06b6d4"}
                 />
-
               </div>
-            </div>
+            </section>
           );
+        })}
+      </div>
+    </div>
+  );
         })}
       </div>
     </div>
