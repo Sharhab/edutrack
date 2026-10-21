@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-
+import type { StudentReportCard } from "../../../../../../types/report-card";
 import api from "../../../../../../lib/axios";
 import { getSchoolProfile } from "../../../../../../lib/settings";
 import type { SchoolProfile } from "../../../../../../types/settings";
@@ -16,23 +16,7 @@ import PrintButton from "../../../../../../components/report-cards/PrintButton";
    TYPES
 ========================================= */
 
-type ReportCard = {
-  student?: {
-    _id?: string;
-    firstName?: string;
-    lastName?: string;
-  };
-  session: any;
-  term: any;
-  results: any[];
-  summary: any;
-  attendance: any;
-  comments?: {
-    classTeacher?: string;
-    principal?: string;
-  };
-};
-
+type ReportCard = StudentReportCard;
 type ClassBundle = {
   class: {
     _id: string;
@@ -49,7 +33,6 @@ type ClassBundle = {
     message?: string;
   }>;
 };
-
 const isValidObjectId = (id: string | null): boolean =>
   Boolean(id && /^[0-9a-fA-F]{24}$/.test(id));
 
