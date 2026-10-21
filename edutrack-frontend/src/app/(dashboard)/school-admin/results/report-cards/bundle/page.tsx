@@ -10,33 +10,23 @@ import DownloadPdfButton from "../../../../../../components/report-cards/Downloa
 import PrintButton from "../../../../../../components/report-cards/PrintButton";
 
 import { getSchoolProfile } from "../../../../../../lib/settings";
-import { SchoolProfile } from "../../../../../../types/settings";
+import type { SchoolProfile } from "../../../../../../types/settings";
+import type { StudentReportCard } from "../../../../../../types/report-card";
 
 /* =========================================
    TYPES
 ========================================= */
 
-type ReportCard = {
-  student?: {
-    _id?: string;
-    firstName?: string;
-    lastName?: string;
-    admissionNumber?: string;
-  };
-  session?: unknown;
-  term?: unknown;
-  results?: unknown[];
-  summary?: unknown;
-  attendance?: unknown;
+type BundleReportCard = StudentReportCard & {
   error?: boolean;
   message?: string;
 };
 
 type BundleReportItem = {
-  reportCard?: ReportCard;
+  reportCard?: BundleReportCard;
   error?: boolean;
   message?: string;
-  student?: ReportCard["student"];
+  student?: StudentReportCard["student"];
 };
 
 type ClassBundle = {
@@ -56,17 +46,34 @@ type ClassBundle = {
    HELPERS
 ========================================= */
 
-const isValidObjectId = (id: string | null): boolean =>
-  Boolean(id && /^[0-9a-fA-F]{24}$/.test(id));
+function isValidObjectId(id: string | null): id is string {
+  return Boolean(id && /^[0-9a-fA-F]{24}$/.test(id));
+}
 
-const getStudentName = (student?: ReportCard["student"]) => {
-  const name = [student?.firstName, student?.lastName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+function getErrorMessage(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const requestError = err as {
+      response?: {
+        data?: {
+          message?: string;
+        };
+      };
+      message?: string;
+    };
 
-  return name || student?.admissionNumber || "Unknown student";
-};
+    return (
+      requestError.response?.data?.message ||
+      requestError.message ||
+      "Failed to load report card bundle."
+    );
+  }
+
+  return "Failed to load report card bundle.";
+}
+
+/* =========================================
+   PAGE
+========================================= */
 
 export default function ClassReportBundlePage() {
   const searchParams = useSearchParams();
@@ -79,21 +86,22 @@ export default function ClassReportBundlePage() {
   const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<ClassBundle | null>(null);
 
-  /* =========================================
-     SCHOOL PROFILE
-  ========================================== */
-
   const [schoolProfile, setSchoolProfile] =
     useState<SchoolProfile | null>(null);
 
   const [schoolProfileLoading, setSchoolProfileLoading] =
     useState(true);
 
+  /* =========================================
+     FETCH SCHOOL PROFILE
+  ========================================== */
+
   const fetchSchoolProfile = useCallback(async () => {
     try {
       setSchoolProfileLoading(true);
 
       const profile = await getSchoolProfile();
+
       setSchoolProfile(profile);
     } catch (err) {
       console.error("Failed to load school profile:", err);
@@ -103,7 +111,7 @@ export default function ClassReportBundlePage() {
   }, []);
 
   /* =========================================
-     FETCH REPORT CARD BUNDLE
+     FETCH CLASS BUNDLE
   ========================================== */
 
   const fetchBundle = useCallback(async () => {
@@ -113,18 +121,18 @@ export default function ClassReportBundlePage() {
       setBundle(null);
 
       if (!isValidObjectId(classId)) {
-        throw new Error("Invalid class ID");
+        throw new Error("Invalid class ID.");
       }
 
       if (!isValidObjectId(sessionId)) {
-        throw new Error("Invalid session ID");
+        throw new Error("Invalid session ID.");
       }
 
       if (!isValidObjectId(termId)) {
-        throw new Error("Invalid term ID");
+        throw new Error("Invalid term ID.");
       }
 
-      const res = await api.get(
+      const response = await api.get(
         `/report-cards/class/${classId}/bundle`,
         {
           params: {
@@ -134,7 +142,7 @@ export default function ClassReportBundlePage() {
         }
       );
 
-      const data = res.data?.data ?? res.data;
+      const data = response.data?.data ?? response.data;
 
       if (!data || !Array.isArray(data.reports)) {
         throw new Error(
@@ -144,16 +152,7 @@ export default function ClassReportBundlePage() {
 
       setBundle(data as ClassBundle);
     } catch (err: unknown) {
-      const requestError = err as {
-        response?: { data?: { message?: string } };
-        message?: string;
-      };
-
-      setError(
-        requestError.response?.data?.message ||
-          requestError.message ||
-          "Failed to load report card bundle."
-      );
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -169,24 +168,27 @@ export default function ClassReportBundlePage() {
   }, [fetchBundle, fetchSchoolProfile]);
 
   /* =========================================
-     LOADING
+     LOADING STATE
   ========================================== */
 
   if (loading) {
     return (
-      <div className="p-6 text-gray-500 animate-pulse">
+      <div className="animate-pulse p-6 text-gray-500">
         Loading report card bundle...
       </div>
     );
   }
 
   /* =========================================
-     ERROR
+     ERROR STATE
   ========================================== */
 
   if (error) {
     return (
-      <div className="p-6 text-red-600" role="alert">
+      <div
+        className="p-6 text-red-600"
+        role="alert"
+      >
         {error}
       </div>
     );
@@ -195,34 +197,39 @@ export default function ClassReportBundlePage() {
   if (!bundle) {
     return (
       <div className="p-6 text-gray-500">
-        No bundle found.
+        No report card bundle found.
       </div>
     );
   }
 
   /* =========================================
-     NORMALIZE REPORTS
-     Failed records must not print as empty cards.
+     VALIDATE REPORT CARDS
+     Preserve the existing StudentReportCard type.
   ========================================== */
 
-  const validReports = bundle.reports.filter((item) => {
+  const validReports: StudentReportCard[] = [];
+  let failedReportsCount = 0;
+
+  for (const item of bundle.reports) {
     const reportCard = item?.reportCard;
 
-    return Boolean(
-      reportCard &&
-        !item.error &&
-        !reportCard.error &&
-        reportCard.student?._id
-    );
-  });
+    if (
+      !reportCard ||
+      item.error ||
+      reportCard.error ||
+      !reportCard.student?._id ||
+      !reportCard.session ||
+      !reportCard.term ||
+      !Array.isArray(reportCard.results) ||
+      !reportCard.summary ||
+      !reportCard.attendance
+    ) {
+      failedReportsCount += 1;
+      continue;
+    }
 
-  const failedReports = bundle.reports.filter((item) => {
-    return Boolean(
-      item?.error ||
-        item?.reportCard?.error ||
-        !item?.reportCard
-    );
-  });
+    validReports.push(reportCard);
+  }
 
   /* =========================================
      MAIN UI
@@ -231,16 +238,19 @@ export default function ClassReportBundlePage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4 print:min-h-0 print:bg-white print:p-0">
       {/* SCREEN-ONLY HEADER */}
-      <div className="mb-4 flex items-center justify-between gap-4 print:hidden">
+
+      <header className="mb-4 flex items-center justify-between gap-4 print:hidden">
         <div>
           <h1 className="text-xl font-bold">
             Report Card Bundle
           </h1>
 
           <p className="text-sm text-gray-500">
-            Class: {bundle.class?.name || "Unknown class"}{" "}
-            • Students: {bundle.totalStudents}{" "}
-            • Report cards: {validReports.length}
+            Class: {bundle.class?.name || "Unknown class"}
+            {" • "}
+            Students: {bundle.totalStudents}
+            {" • "}
+            Valid reports: {validReports.length}
           </p>
 
           {schoolProfileLoading && (
@@ -257,45 +267,44 @@ export default function ClassReportBundlePage() {
             onClick={() => window.print()}
           />
         </div>
-      </div>
+      </header>
 
-      {/* SCREEN-ONLY GENERATION WARNINGS */}
-      {failedReports.length > 0 && (
+      {/* FAILED REPORT NOTICE */}
+
+      {failedReportsCount > 0 && (
         <div
           className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 print:hidden"
           role="status"
         >
-          {failedReports.length} report card(s) could not be
-          generated and will not be printed. Check the report
-          card API response and saved results for those students.
+          {failedReportsCount} report card(s) are incomplete
+          or failed to generate. They have been excluded from
+          printing. Check the saved results and API response
+          for the affected students.
         </div>
       )}
 
       {/* REPORT CARDS */}
+
       {validReports.length > 0 ? (
         <div id="report-card-bundle">
-          {validReports.map((item, index) => {
-            const rc = item.reportCard!;
-
-            return (
-              <section
-                key={rc.student?._id || `report-${index}`}
-                className="report-card-student mb-10 bg-white p-4 shadow-sm print:mb-0 print:p-0 print:shadow-none"
-              >
-                <div className="print-report">
-                  <ReportCardTemplate
-                    data={rc}
-                    schoolName={schoolProfile?.schoolName}
-                    schoolAddress={schoolProfile?.address}
-                    schoolLogo={schoolProfile?.logoUrl}
-                    brandColor={
-                      schoolProfile?.themeColor || "#06b6d4"
-                    }
-                  />
-                </div>
-              </section>
-            );
-          })}
+          {validReports.map((reportCard) => (
+            <section
+              key={reportCard.student._id}
+              className="report-card-student mb-10 bg-white p-4 shadow-sm print:mb-0 print:p-0 print:shadow-none"
+            >
+              <div className="print-report">
+                <ReportCardTemplate
+                  data={reportCard}
+                  schoolName={schoolProfile?.schoolName}
+                  schoolAddress={schoolProfile?.address}
+                  schoolLogo={schoolProfile?.logoUrl}
+                  brandColor={
+                    schoolProfile?.themeColor || "#06b6d4"
+                  }
+                />
+              </div>
+            </section>
+          ))}
         </div>
       ) : (
         <div className="rounded-md bg-white p-6 text-gray-600 print:hidden">
