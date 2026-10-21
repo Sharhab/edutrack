@@ -273,38 +273,37 @@ export default function ClassReportBundlePage() {
             padding: 0 !important;
             gap: 0 !important;
           }
-
-        
+          
 .report-bundle-item {
   display: block !important;
   width: 210mm !important;
   max-width: 210mm !important;
-  min-width: 0 !important;
   height: 297mm !important;
   min-height: 0 !important;
   max-height: 297mm !important;
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
-  border-radius: 0 !important;
   box-shadow: none !important;
   background: #fff !important;
   overflow: hidden !important;
+
   break-inside: avoid !important;
   page-break-inside: avoid !important;
-  break-after: page !important;
-  page-break-after: always !important;
-}
 
-.report-bundle-item:last-child {
+  /* Avoid Safari adding an extra blank page */
   break-after: auto !important;
   page-break-after: auto !important;
+}
+
+.report-bundle-item + .report-bundle-item {
+  break-before: page !important;
+  page-break-before: always !important;
 }
 
 .report-bundle-item .print-report {
   width: 210mm !important;
   height: 297mm !important;
-  min-width: 0 !important;
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
@@ -313,7 +312,6 @@ export default function ClassReportBundlePage() {
 .report-bundle-item .report-card-page {
   width: 210mm !important;
   max-width: 210mm !important;
-  min-width: 0 !important;
   height: 297mm !important;
   min-height: 0 !important;
   max-height: 297mm !important;
