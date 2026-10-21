@@ -1,35 +1,36 @@
+
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import api from "../../../../../../lib/axios";
+import { getSchoolProfile } from "../../../../../../lib/settings";
+import type { SchoolProfile } from "../../../../../../types/settings";
 
 import ReportCardTemplate from "../../../../../../components/report-cards/ReportCardTemplate";
-import ReportCardHeader from "../../../../../../components/report-cards/ReportCardHeader";
-import ReportCardSummary from "../../../../../../components/report-cards/ReportCardSummary";
-import ReportCardSubjectTable from "../../../../../../components/report-cards/ReportCardSubjectTable";
-import ReportCardAttendance from "../../../../../../components/report-cards/ReportCardAttendance";
-import ReportCardFooter from "../../../../../../components/report-cards/ReportCardFooter";
-import StudentRankBadge from "../../../../../../components/report-cards/StudentRankBadge";
-
 import DownloadPdfButton from "../../../../../../components/report-cards/DownloadpdfButton";
 import PrintButton from "../../../../../../components/report-cards/PrintButton";
 
-import { getSchoolProfile } from "../../../../../../lib/settings";
-import { SchoolProfile } from "../../../../../../types/settings";
-
 /* =========================================
-   TYPES (bundle-safe minimal shape)
+   TYPES
 ========================================= */
 
 type ReportCard = {
-  student: any;
+  student?: {
+    _id?: string;
+    firstName?: string;
+    lastName?: string;
+  };
   session: any;
   term: any;
   results: any[];
   summary: any;
   attendance: any;
+  comments?: {
+    classTeacher?: string;
+    principal?: string;
+  };
 };
 
 type ClassBundle = {
@@ -43,11 +44,37 @@ type ClassBundle = {
   termId: string;
   generatedAt: string;
   reports: Array<{
-    reportCard: ReportCard;
+    reportCard?: ReportCard;
     error?: boolean;
     message?: string;
   }>;
 };
+
+const isValidObjectId = (id: string | null): boolean =>
+  Boolean(id && /^[0-9a-fA-F]{24}$/.test(id));
+
+function getErrorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null) {
+    const value = error as {
+      message?: string;
+      response?: {
+        data?: { message?: string };
+      };
+    };
+
+    return (
+      value.response?.data?.message ||
+      value.message ||
+      "Failed to load report cards."
+    );
+  }
+
+  return "Failed to load report cards.";
+}
+
+/* =========================================
+   PAGE
+========================================= */
 
 export default function ClassReportBundlePage() {
   const searchParams = useSearchParams();
@@ -58,69 +85,34 @@ export default function ClassReportBundlePage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [bundle, setBundle] = useState<ClassBundle | null>(null);
-
-  /* =========================================
-     SCHOOL PROFILE
-  ========================================== */
 
   const [schoolProfile, setSchoolProfile] =
     useState<SchoolProfile | null>(null);
 
-  const [schoolProfileLoading, setSchoolProfileLoading] =
-    useState(true);
-
   /* =========================================
-     VALIDATION (PREVENT bundle/student bug)
-  ========================================== */
-
-  const isValidObjectId = (id: string | null) =>
-    !!id && /^[0-9a-fA-F]{24}$/.test(id);
-
-  /* =========================================
-     FETCH SCHOOL PROFILE
-  ========================================== */
-
-  const fetchSchoolProfile = useCallback(async () => {
-    try {
-      setSchoolProfileLoading(true);
-
-      const profile = await getSchoolProfile();
-
-      setSchoolProfile(profile);
-    } catch (err) {
-      console.error(
-        "Failed to load school profile:",
-        err
-      );
-    } finally {
-      setSchoolProfileLoading(false);
-    }
-  }, []);
-
-  /* =========================================
-     FETCH BUNDLE
+     FETCH REPORT BUNDLE
   ========================================== */
 
   const fetchBundle = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    setLoading(true);
+    setError(null);
+    setBundle(null);
 
+    try {
       if (!isValidObjectId(classId)) {
-        throw new Error("Invalid class ID");
+        throw new Error("Invalid class ID.");
       }
 
       if (!isValidObjectId(sessionId)) {
-        throw new Error("Invalid session ID");
+        throw new Error("Invalid session ID.");
       }
 
       if (!isValidObjectId(termId)) {
-        throw new Error("Invalid term ID");
+        throw new Error("Invalid term ID.");
       }
 
-      const res = await api.get(
+      const response = await api.get(
         `/report-cards/class/${classId}/bundle`,
         {
           params: {
@@ -130,25 +122,44 @@ export default function ClassReportBundlePage() {
         }
       );
 
-      setBundle(res.data);
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Failed to load bundle"
-      );
+      // Support either a direct bundle response or { data: bundle }.
+      const payload = response.data?.data ?? response.data;
+
+      if (!payload || !Array.isArray(payload.reports)) {
+        throw new Error(
+          "The server returned an invalid report-card bundle."
+        );
+      }
+
+      setBundle(payload as ClassBundle);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }, [classId, sessionId, termId]);
 
   /* =========================================
+     FETCH SCHOOL PROFILE
+  ========================================== */
+
+  const fetchSchoolProfile = useCallback(async () => {
+    try {
+      const profile = await getSchoolProfile();
+      setSchoolProfile(profile);
+    } catch (err) {
+      // Report cards can still render if branding fails to load.
+      console.error("Failed to load school profile:", err);
+    }
+  }, []);
+
+  /* =========================================
      LOAD DATA
   ========================================== */
 
   useEffect(() => {
-    fetchBundle();
-    fetchSchoolProfile();
+    void fetchBundle();
+    void fetchSchoolProfile();
   }, [fetchBundle, fetchSchoolProfile]);
 
   /* =========================================
@@ -169,8 +180,23 @@ export default function ClassReportBundlePage() {
 
   if (error) {
     return (
-      <div className="p-6 text-red-600">
-        {error}
+      <div
+        role="alert"
+        className="m-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700"
+      >
+        <p className="font-semibold">
+          Unable to load report cards
+        </p>
+
+        <p className="mt-1 text-sm">{error}</p>
+
+        <button
+          type="button"
+          onClick={() => void fetchBundle()}
+          className="mt-3 rounded-md border border-red-300 px-4 py-2 text-sm font-medium hover:bg-red-100"
+        >
+          Try again
+        </button>
       </div>
     );
   }
@@ -178,32 +204,65 @@ export default function ClassReportBundlePage() {
   if (!bundle) {
     return (
       <div className="p-6 text-gray-500">
-        No bundle found
+        No report-card bundle found.
       </div>
     );
   }
+
+  const reports = bundle.reports.filter(
+    (item) => Boolean(item?.reportCard)
+  );
 
   /* =========================================
      MAIN UI
   ========================================== */
 
   return (
-   
-  return (
-    <div className="report-bundle min-h-screen bg-gray-50 print:min-h-0 print:bg-white">
+    <main className="report-bundle min-h-screen bg-gray-50 p-4 print:min-h-0 print:bg-white print:p-0">
       <style jsx global>{`
         @page {
           size: A4 portrait;
           margin: 0;
         }
 
+        .report-bundle,
+        .report-bundle * {
+          box-sizing: border-box;
+        }
+
+        .report-bundle-list {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 24px;
+        }
+
+        .report-bundle-item {
+          width: 100%;
+          max-width: 210mm;
+          min-width: 0;
+          margin-inline: auto;
+          background: #fff;
+        }
+
+        .report-bundle-item .print-report {
+          width: 100%;
+          min-width: 0;
+          margin-inline: auto;
+        }
+
         @media print {
           html,
           body {
-            width: 210mm !important;
+            width: 100% !important;
+            min-width: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #fff !important;
+          }
+
+          body {
+            overflow: visible !important;
           }
 
           body * {
@@ -212,7 +271,8 @@ export default function ClassReportBundlePage() {
           }
 
           .report-bundle {
-            width: 210mm !important;
+            width: 100% !important;
+            min-width: 0 !important;
             min-height: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -225,14 +285,17 @@ export default function ClassReportBundlePage() {
 
           .report-bundle-list {
             display: block !important;
-            width: 210mm !important;
+            width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
+            gap: 0 !important;
           }
 
           .report-bundle-item {
             display: block !important;
-            width: 210mm !important;
+            width: 100% !important;
+            max-width: none !important;
+            min-width: 0 !important;
             height: 297mm !important;
             min-height: 0 !important;
             max-height: 297mm !important;
@@ -241,6 +304,7 @@ export default function ClassReportBundlePage() {
             border: 0 !important;
             border-radius: 0 !important;
             box-shadow: none !important;
+            background: #fff !important;
             overflow: hidden !important;
 
             break-inside: avoid !important;
@@ -255,40 +319,62 @@ export default function ClassReportBundlePage() {
           }
 
           .report-bundle-item .print-report {
-            width: 210mm !important;
+            width: 100% !important;
             height: 297mm !important;
+            min-width: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
             overflow: hidden !important;
-            box-sizing: border-box !important;
+          }
+
+          .report-bundle-item .report-card-page {
+            width: 100% !important;
+            max-width: none !important;
+            min-width: 0 !important;
+            height: 297mm !important;
+            min-height: 0 !important;
+            max-height: 297mm !important;
+            margin: 0 !important;
           }
         }
       `}</style>
 
-      <div className="report-bundle-toolbar mb-4 flex items-center justify-between">
+      {/* SCREEN TOOLBAR */}
+
+      <header className="report-bundle-toolbar mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold">Report Card Bundle</h1>
-          <p className="text-sm text-gray-500">
-            Class: {bundle.class.name} · Total Students:{" "}
+          <h1 className="text-xl font-bold text-gray-900">
+            Report Card Bundle
+          </h1>
+
+          <p className="mt-1 text-sm text-gray-500">
+            Class: {bundle.class.name} · Total students:{" "}
             {bundle.totalStudents}
+          </p>
+
+          <p className="text-sm text-gray-500">
+            Reports ready: {reports.length}
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <PrintButton />
-          <DownloadPdfButton onClick={() => window.print()} />
+
+          <DownloadPdfButton
+            onClick={() => window.print()}
+          />
         </div>
-      </div>
+      </header>
 
-      <div className="report-bundle-list space-y-10 print:space-y-0">
-        {bundle.reports.map((item, index) => {
-          if (!item?.reportCard) return null;
+      {/* REPORTS — ONE WRAPPER PER STUDENT */}
 
-          const rc = item.reportCard;
+      <div className="report-bundle-list">
+        {reports.map((item, index) => {
+          const rc = item.reportCard!;
 
           return (
             <section
-              key={rc.student?._id || index}
+              key={rc.student?._id ?? index}
               className="report-bundle-item rounded-md bg-white p-4 shadow-sm print:rounded-none print:p-0 print:shadow-none"
             >
               <div className="print-report">
@@ -297,17 +383,15 @@ export default function ClassReportBundlePage() {
                   schoolName={schoolProfile?.schoolName}
                   schoolAddress={schoolProfile?.address}
                   schoolLogo={schoolProfile?.logoUrl}
-                  brandColor={schoolProfile?.themeColor || "#06b6d4"}
+                  brandColor={
+                    schoolProfile?.themeColor || "#06b6d4"
+                  }
                 />
               </div>
             </section>
           );
         })}
       </div>
-    </div>
-  );
-        })}
-      </div>
-    </div>
+    </main>
   );
 }
