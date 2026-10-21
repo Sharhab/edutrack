@@ -294,8 +294,17 @@ export default function SchoolAdminStudentsPage() {
         <SectionCard
           title="Students"
           subtitle="Manage student records, admissions, and profile data"
-         rightAction={
-  <div className="flex gap-3">
+         
+rightAction={
+  <div className="flex flex-wrap gap-3">
+    <Link
+      href="/school-admin/students/bulk"
+      className="btn-secondary inline-flex items-center justify-center"
+    >
+      <Plus size={16} className="mr-2" />
+      Bulk Entry
+    </Link>
+
     <Link
       href="/school-admin/students/import"
       className="inline-flex items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-500/10 px-5 py-3 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/20"
@@ -314,6 +323,7 @@ export default function SchoolAdminStudentsPage() {
     </button>
   </div>
 }
+
         >
           <div className="mb-5">
             <div className="relative max-w-md">
