@@ -720,10 +720,11 @@ export default function ReportCardTemplate({
     margin-bottom: 0.8mm !important;
   }
 
-  .report-footer {
-    margin-top: 0.5mm !important;
-    padding-top: 0.5mm !important;
-  }
+  
+.report-footer {
+  display: none !important;
+}
+
 
   .report-box,
   .horizontal-section-row,
