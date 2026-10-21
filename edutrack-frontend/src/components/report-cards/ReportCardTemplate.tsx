@@ -255,24 +255,27 @@ export default function ReportCardTemplate({
           color: #172033;
         }
 
-        .logo-area {
-          width: 23mm;
-          height: 23mm;
-          box-sizing: border-box;
-          justify-self: end;
-          border: 1px solid #94a3b8;
-          background: #ffffff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-        }
+       .logo-area {
+  width: 23mm;
+  height: 23mm;
+  min-width: 23mm;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  justify-self: end;
+  border: 1px solid #94a3b8;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
 
-        .logo-area img {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-        }
+.logo-area img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 
         .logo-placeholder {
           text-align: center;
@@ -614,38 +617,30 @@ export default function ReportCardTemplate({
   /* ================================
      ONE COMPLETE A4 SHEET
   ================================= */
+.report-card-page {
+  width: 210mm !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 auto !important;
+  padding: 3mm 5mm !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  break-before: avoid !important;
+  break-after: avoid !important;
+}
 
-  .report-card-page {
-    width: 210mm !important;
-    min-width: 210mm !important;
-    height: 297mm !important;
-    min-height: 297mm !important;
-    max-height: 297mm !important;
-
-    margin: 0 auto !important;
-    padding: 3mm 5mm !important;
-
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-
-    page-break-before: avoid !important;
-    page-break-after: avoid !important;
-    break-before: avoid !important;
-    break-after: avoid !important;
-  }
-
-  .report-card-paper {
-    width: 100% !important;
-    height: 100% !important;
-    min-height: 0 !important;
-    max-height: 100% !important;
-
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
+.report-card-paper {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  break-inside: avoid !important;
+}
+  
 
   .report-content {
     overflow: hidden !important;
@@ -1291,9 +1286,6 @@ export default function ReportCardTemplate({
   </div>
 )}
 
-<div className="report-footer">
-  <ReportCardFooter />
-</div>
             {/* =================================================
                 FOOTER
             ================================================= */}
