@@ -3,17 +3,19 @@
 import { useEffect, useState } from "react";
 
 import api from "../../../../../lib/axios";
-
 import {
   getSessions,
   getClassOptions,
 } from "../../../../../lib/options";
+import { getSchoolProfile } from "../../../../../lib/settings";
+import type { SchoolProfile } from "../../../../../types/settings";
 
 import CumulativeReportSheet from "../../../../../components/report-cards/CumulativeReportSheet";
 
 type Option = {
   _id: string;
   name: string;
+  isCurrent?: boolean;
 };
 
 type Student = {
@@ -27,6 +29,8 @@ export default function CumulativeReportPage() {
   const [sessions, setSessions] = useState<Option[]>([]);
   const [classes, setClasses] = useState<Option[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [schoolProfile, setSchoolProfile] =
+    useState<SchoolProfile | null>(null);
 
   const [sessionId, setSessionId] = useState("");
   const [classId, setClassId] = useState("");
@@ -37,38 +41,55 @@ export default function CumulativeReportPage() {
   const [error, setError] = useState("");
 
   /* =========================================
-     LOAD SESSIONS AND CLASSES
+     LOAD SESSIONS, CLASSES AND SCHOOL PROFILE
   ========================================= */
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadOptions() {
-      try {
-        const [sessionOptions, classOptions] =
-          await Promise.all([
-            getSessions(),
-            getClassOptions(),
-          ]);
+      setError("");
 
-        if (cancelled) return;
+      const [sessionsResult, classesResult, profileResult] =
+        await Promise.allSettled([
+          getSessions(),
+          getClassOptions(),
+          getSchoolProfile(),
+        ]);
 
-        setSessions(sessionOptions || []);
-        setClasses(classOptions || []);
+      if (cancelled) return;
 
-        const currentSession = (sessionOptions || []).find(
-          (item: any) => item.isCurrent
+      if (sessionsResult.status === "fulfilled") {
+        const sessionOptions = sessionsResult.value || [];
+
+        setSessions(sessionOptions);
+
+        const currentSession = sessionOptions.find(
+          (item: Option) => item.isCurrent
         );
 
         if (currentSession) {
           setSessionId(currentSession._id);
         }
-      } catch (err) {
-        if (!cancelled) {
-          setError(
-            "Unable to load sessions and classes."
-          );
-        }
+      } else {
+        setError("Unable to load academic sessions.");
+      }
+
+      if (classesResult.status === "fulfilled") {
+        setClasses(classesResult.value || []);
+      } else {
+        setError((previous) =>
+          previous
+            ? `${previous} Unable to load classes.`
+            : "Unable to load classes."
+        );
+      }
+
+      if (profileResult.status === "fulfilled") {
+        setSchoolProfile(profileResult.value);
+      } else {
+        // Branding is optional; the report can still be generated.
+        setSchoolProfile(null);
       }
     }
 
@@ -108,11 +129,12 @@ export default function CumulativeReportPage() {
         setStudents(
           Array.isArray(payload) ? payload : []
         );
-      } catch (err) {
+      } catch (err: any) {
         if (!cancelled) {
           setStudents([]);
           setError(
-            "Unable to load students for this class."
+            err?.response?.data?.message ||
+              "Unable to load students for this class."
           );
         }
       }
@@ -145,9 +167,7 @@ export default function CumulativeReportPage() {
       const response = await api.get(
         `/report-cards/student/${studentId}/cumulative`,
         {
-          params: {
-            sessionId,
-          },
+          params: { sessionId },
         }
       );
 
@@ -190,8 +210,6 @@ export default function CumulativeReportPage() {
       </header>
 
       <section className="no-print grid grid-cols-1 gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-4">
-        {/* SESSION */}
-
         <label className="text-sm text-slate-300">
           Academic Session
 
@@ -201,6 +219,7 @@ export default function CumulativeReportPage() {
             onChange={(e) => {
               setSessionId(e.target.value);
               setReport(null);
+              setError("");
             }}
           >
             <option value="">Select session</option>
@@ -212,8 +231,6 @@ export default function CumulativeReportPage() {
             ))}
           </select>
         </label>
-
-        {/* CLASS */}
 
         <label className="text-sm text-slate-300">
           Class
@@ -236,8 +253,6 @@ export default function CumulativeReportPage() {
             ))}
           </select>
         </label>
-
-        {/* STUDENT */}
 
         <label className="text-sm text-slate-300">
           Student
@@ -264,8 +279,6 @@ export default function CumulativeReportPage() {
           </select>
         </label>
 
-        {/* GENERATE BUTTON */}
-
         <div className="flex items-end">
           <button
             type="button"
@@ -278,14 +291,10 @@ export default function CumulativeReportPage() {
             }
             className="w-full rounded-lg bg-cyan-500 px-4 py-2 font-semibold text-slate-950 disabled:opacity-50"
           >
-            {loading
-              ? "Generating..."
-              : "Generate Report"}
+            {loading ? "Generating..." : "Generate Report"}
           </button>
         </div>
       </section>
-
-      {/* ERROR */}
 
       {error && (
         <p
@@ -296,10 +305,11 @@ export default function CumulativeReportPage() {
         </p>
       )}
 
-      {/* REPORT PREVIEW */}
-
       {report && (
-        <CumulativeReportSheet report={report} />
+        <CumulativeReportSheet
+          report={report}
+          schoolProfile={schoolProfile}
+        />
       )}
     </main>
   );
