@@ -8,7 +8,7 @@ import { Attendance } from "../attendance/attendance.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
 import { ClassModel } from "../classes/class.model.js";
-
+import { getSchoolGradeBands } from "../results/grading-scale.service.js";
 import { ensureParentOwnsStudent } from "../parents/parent.guard.js";
 import { ApiError } from "../../utils/apiError.js";
 
@@ -170,8 +170,47 @@ const performanceComments = {
 /* =========================================================
    PERFORMANCE LEVEL
 ========================================================= */
+function getPerformanceLevel(averageScore, gradeBands = []) {
+  if (Array.isArray(gradeBands) && gradeBands.length > 0) {
+    const sortedBands = [...gradeBands].sort(
+      (a, b) => a.minScore - b.minScore
+    );
 
-function getPerformanceLevel(averageScore) {
+    const matchingBand = sortedBands.find(
+      (band, index) =>
+        averageScore >= band.minScore &&
+        (
+          averageScore < band.maxScore ||
+          (
+            index === sortedBands.length - 1 &&
+            averageScore <= band.maxScore
+          )
+        )
+    );
+
+    if (matchingBand) {
+      const remark = String(matchingBand.remark || "")
+        .trim()
+        .toLowerCase();
+
+      const supportedLevels = {
+        excellent: "Excellent",
+        "very good": "Very Good",
+        good: "Good",
+        fair: "Fair",
+        pass: "Pass",
+        "needs improvement": "Needs Improvement",
+        fail: "Needs Improvement",
+      };
+
+      if (supportedLevels[remark]) {
+        return supportedLevels[remark];
+      }
+    }
+  }
+
+  // Preserve existing comments for unconfigured scales
+  // and custom remarks that do not match a comment category.
   if (averageScore >= 80) return "Excellent";
   if (averageScore >= 70) return "Very Good";
   if (averageScore >= 60) return "Good";
@@ -202,12 +241,15 @@ function buildReportCardComments({
   results = [],
   attendance = {},
   studentId = "",
+  gradeBands = [],
 }) {
   const performanceLevel =
-    getPerformanceLevel(averageScore);
+    getPerformanceLevel(averageScore, gradeBands);
 
   const comments =
     performanceComments[performanceLevel];
+
+  // Keep the rest of the existing function unchanged.
 
   /*
    * Use the student ID to consistently select
@@ -517,6 +559,9 @@ export async function generateStudentReportCard({
       user.schoolId
     );
 
+   const gradeBands =
+  await getSchoolGradeBands(schoolId);
+   
   const studentObjectId =
     new mongoose.Types.ObjectId(
       studentId
@@ -619,13 +664,14 @@ export async function generateStudentReportCard({
       results.length
     );
 
-  const comments =
-    buildReportCardComments({
-      averageScore,
-      results,
-      attendance,
-      studentId: studentObjectId,
-    });
+ const comments =
+  buildReportCardComments({
+    averageScore,
+    results,
+    attendance,
+    studentId: studentObjectId,
+    gradeBands,
+  });
 
   /* -------------------------------------------------------
      CLASSMATES
