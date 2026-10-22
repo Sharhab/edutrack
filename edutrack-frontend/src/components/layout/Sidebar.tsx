@@ -89,6 +89,11 @@ const navByRole: Record<
   },
 
   { label: "Results", href: "/school-admin/results", icon: BookOpen },
+   {
+  label: "Grading Scale",
+  href: "/school-admin/grading-scale",
+  icon: ClipboardCheck,
+},
   { label: "Import Students", href: "/school-admin/students/import", icon: Upload },
   { label: "Students Bulk Entry", href: "/school-admin/students/bulk", icon: Users },
   { label: "Report Cards", href: "/school-admin/results/report-cards", icon: FileText },
