@@ -320,7 +320,67 @@ export default function ReportCardTemplate({
           line-height: 1.1 !important;
           overflow-wrap: anywhere;
         }
+        .academic-table-wrapper .report-subject-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
 
+.academic-table-wrapper .report-subject-table th,
+.academic-table-wrapper .report-subject-table td {
+  padding: 5px 4px;
+  vertical-align: middle;
+  border: 1px solid #cbd5e1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.academic-table-wrapper .report-subject-table th {
+  font-weight: 700;
+  white-space: normal;
+  color: #fff;
+}
+
+.academic-table-wrapper .report-subject-table th:first-child,
+.academic-table-wrapper .report-subject-table td:first-child {
+  width: 23%;
+  text-align: left;
+}
+
+.academic-table-wrapper .report-subject-table th:nth-child(2),
+.academic-table-wrapper .report-subject-table th:nth-child(3),
+.academic-table-wrapper .report-subject-table th:nth-child(5),
+.academic-table-wrapper .report-subject-table th:nth-child(6),
+.academic-table-wrapper .report-subject-table td:nth-child(2),
+.academic-table-wrapper .report-subject-table td:nth-child(3),
+.academic-table-wrapper .report-subject-table td:nth-child(5),
+.academic-table-wrapper .report-subject-table td:nth-child(6) {
+  width: 9%;
+}
+
+.academic-table-wrapper .report-subject-table th:nth-child(4),
+.academic-table-wrapper .report-subject-table td:nth-child(4) {
+  width: 12%;
+}
+
+.academic-table-wrapper .report-subject-table th:nth-child(7),
+.academic-table-wrapper .report-subject-table td:nth-child(7) {
+  width: 9%;
+}
+
+.academic-table-wrapper .report-subject-table th:nth-child(8),
+.academic-table-wrapper .report-subject-table td:nth-child(8) {
+  width: 20%;
+}
+
+@media print {
+  .academic-table-wrapper .report-subject-table th,
+  .academic-table-wrapper .report-subject-table td {
+    padding: 2px 3px !important;
+    font-size: 7px !important;
+    line-height: 1.15 !important;
+  }
+}
         .horizontal-section-row {
           width: 100%;
           display: grid;
