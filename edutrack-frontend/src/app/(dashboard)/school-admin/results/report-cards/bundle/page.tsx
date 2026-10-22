@@ -114,19 +114,20 @@ export default function ClassReportBundlePage() {
         );
       }
 
-       console.log(
-  bundle.reports.map((item) => ({
-    admissionNumber: item.reportCard?.student?.admissionNumber,
-    studentId: item.reportCard?.student?._id,
-    session: item.reportCard?.session,
-    term: item.reportCard?.term,
-    resultsIsArray: Array.isArray(item.reportCard?.results),
-    resultsCount: item.reportCard?.results?.length,
-    summary: item.reportCard?.summary,
-    hasReportCard: Boolean(item.reportCard),
-    error: item.error,
-    message: item.message,
-  }))
+      console.log(
+  "MARY OSE REPORT",
+  payload.reports?.find(
+    (item: any) =>
+      item.reportCard?.student?.admissionNumber === "Jss2/004"
+  )
+);
+
+console.log(
+  "WORKING STUDENT REPORT",
+  payload.reports?.find(
+    (item: any) =>
+      item.reportCard?.student?.admissionNumber === "10101"
+  )
 );
        
       setBundle(payload as ClassBundle);
