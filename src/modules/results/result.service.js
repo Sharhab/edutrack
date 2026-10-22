@@ -468,11 +468,6 @@ export async function bulkUpsertResults({
    * =========================================
    */
 
-const gradeBands = await getSchoolGradeBands(schoolId);
-
-const computedResults = results.map((r) =>
-  calculateResultFields(r, gradeBands)
-);
 
   const lockedResults =
     await Result.find({
