@@ -7,47 +7,52 @@ import { RankingStudent } from "../../types/report-card";
 /**
  * Calculate class-level performance stats
  */
+
 export function calculateClassStatistics(students: RankingStudent[]) {
-  if (!students.length) {
+  const validStudents = students.filter(
+    (student) =>
+      Number.isFinite(student.averageScore) &&
+      student.averageScore >= 0
+  );
+
+  if (validStudents.length === 0) {
     return {
-      highestAverage: 0,
-      lowestAverage: 0,
-      classAverage: 0,
+      highestAverage: null,
+      lowestAverage: null,
+      classAverage: null,
       excellentCount: 0,
       passCount: 0,
       failCount: 0,
     };
   }
 
-  const averages = students.map((s) => s.averageScore || 0);
+  const averages = validStudents.map(
+    (student) => student.averageScore
+  );
 
   const highestAverage = Math.max(...averages);
   const lowestAverage = Math.min(...averages);
 
   const classAverage =
-    averages.reduce((a, b) => a + b, 0) / averages.length;
-
-  const excellentCount = students.filter(
-    (s) => s.averageScore >= 75
-  ).length;
-
-  const passCount = students.filter(
-    (s) => s.averageScore >= 50
-  ).length;
-
-  const failCount = students.filter(
-    (s) => s.averageScore < 50
-  ).length;
+    averages.reduce((sum, score) => sum + score, 0) /
+    averages.length;
 
   return {
     highestAverage: Number(highestAverage.toFixed(2)),
     lowestAverage: Number(lowestAverage.toFixed(2)),
     classAverage: Number(classAverage.toFixed(2)),
-    excellentCount,
-    passCount,
-    failCount,
+    excellentCount: validStudents.filter(
+      (student) => student.averageScore >= 75
+    ).length,
+    passCount: validStudents.filter(
+      (student) => student.averageScore >= 50
+    ).length,
+    failCount: validStudents.filter(
+      (student) => student.averageScore < 50
+    ).length,
   };
 }
+
 
 /* =========================================
    PERFORMANCE REMARK (FOR PDF)
