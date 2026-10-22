@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import type { SchoolProfile } from "../../types/settings";
 
 type Term = {
   _id: string;
@@ -70,19 +71,35 @@ type Report = {
   attendance: AttendanceSummary;
 };
 
-const BRAND = "#06b6d4";
+type Props = {
+  report: Report;
+  schoolProfile?: SchoolProfile | null;
+};
 
 export default function CumulativeReportSheet({
   report,
-}: {
-  report: Report;
-}) {
-  const studentName =
-    `${report.student.firstName || ""} ${
-      report.student.lastName || ""
-    }`.trim();
+  schoolProfile,
+}: Props) {
+  const brandColor = schoolProfile?.themeColor || "#06b6d4";
+  const schoolName = schoolProfile?.schoolName?.trim() || "School";
 
-  const formatScore = (value: number) =>
+  const schoolContact = [
+    schoolProfile?.address,
+    schoolProfile?.phone,
+    schoolProfile?.email,
+  ]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(" · ");
+
+  const studentName = [
+    report.student.firstName,
+    report.student.lastName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const formatScore = (value: number | null | undefined) =>
     Number(value || 0).toLocaleString("en-NG", {
       maximumFractionDigits: 1,
     });
@@ -106,7 +123,7 @@ export default function CumulativeReportSheet({
           grid-template-columns: 0.8in 1fr 0.8in;
           gap: 0.12in;
           align-items: center;
-          border-bottom: 3px solid ${BRAND};
+          border-bottom: 3px solid ${brandColor};
           padding-bottom: 0.12in;
         }
 
@@ -123,15 +140,24 @@ export default function CumulativeReportSheet({
           color: #64748b;
           padding: 4px;
           box-sizing: border-box;
+          overflow: hidden;
+        }
+
+        .cum-logo img {
+          display: block;
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
         }
 
         .cum-school {
           text-align: center;
+          min-width: 0;
+          overflow-wrap: anywhere;
         }
 
         .cum-school h1 {
           margin: 0;
-          color: #087fa3;
           font-size: 19px;
           font-weight: 800;
           text-transform: uppercase;
@@ -155,7 +181,7 @@ export default function CumulativeReportSheet({
 
         .cum-section-title {
           background: #eff6fa;
-          border-left: 4px solid ${BRAND};
+          border-left: 4px solid ${brandColor};
           padding: 5px 7px;
           margin: 0 0 5px;
           font-size: 10px;
@@ -202,7 +228,7 @@ export default function CumulativeReportSheet({
         }
 
         .cum-table thead th {
-          background: ${BRAND};
+          background: ${brandColor};
           color: white;
           font-weight: 700;
         }
@@ -227,11 +253,12 @@ export default function CumulativeReportSheet({
           border: 1px solid #cbd5e1;
           border-radius: 5px;
           overflow: hidden;
+          min-width: 0;
         }
 
         .cum-card h4 {
           margin: 0;
-          background: #0874b8;
+          background: ${brandColor};
           color: #fff;
           padding: 6px;
           font-size: 9px;
@@ -376,6 +403,7 @@ export default function CumulativeReportSheet({
 
       <div className="no-print mb-4 flex flex-wrap gap-2">
         <button
+          type="button"
           onClick={() => window.print()}
           className="rounded-lg bg-cyan-500 px-4 py-2 font-semibold text-slate-950"
         >
@@ -392,9 +420,12 @@ export default function CumulativeReportSheet({
           </div>
 
           <div className="cum-school">
-            <h1>EduTrack School</h1>
-            <p>School address · Phone · Email</p>
+            <h1 style={{ color: brandColor }}>{schoolName}</h1>
+
+            {schoolContact && <p>{schoolContact}</p>}
+
             <h2>CUMULATIVE REPORT SHEET</h2>
+
             <p>
               Academic Session:{" "}
               <strong>{report.session.name}</strong>
@@ -402,9 +433,14 @@ export default function CumulativeReportSheet({
           </div>
 
           <div className="cum-logo">
-            SCHOOL
-            <br />
-            LOGO
+            {schoolProfile?.logoUrl ? (
+              <img
+                src={schoolProfile.logoUrl}
+                alt={`${schoolName} logo`}
+              />
+            ) : (
+              <span>School Logo</span>
+            )}
           </div>
         </header>
 
@@ -421,17 +457,13 @@ export default function CumulativeReportSheet({
 
             <div>
               <small>Admission No.</small>
-              <strong>
-                {report.student.admissionNumber || "—"}
-              </strong>
+              <strong>{report.student.admissionNumber || "—"}</strong>
             </div>
 
             <div>
               <small>Class</small>
               <strong>
-                {report.student.className ||
-                  report.class.name ||
-                  "—"}
+                {report.student.className || report.class.name || "—"}
               </strong>
             </div>
 
@@ -497,17 +529,13 @@ export default function CumulativeReportSheet({
                     </td>
 
                     {report.terms.map((term) => {
-                      const score =
-                        subject.terms[term._id];
+                      const score = subject.terms[term._id];
 
                       return (
                         <React.Fragment key={term._id}>
                           <td>
-                            {score
-                              ? formatScore(score.score)
-                              : "—"}
+                            {score ? formatScore(score.score) : "—"}
                           </td>
-
                           <td>{score?.grade || "—"}</td>
                         </React.Fragment>
                       );
@@ -520,22 +548,28 @@ export default function CumulativeReportSheet({
                     </td>
 
                     <td className="cum-grade">
-                      {subject.cumulativeGrade}
+                      {subject.cumulativeGrade || "—"}
                     </td>
 
-                    <td>{subject.cumulativeRemark}</td>
+                    <td>{subject.cumulativeRemark || "—"}</td>
                   </tr>
                 ))}
 
                 <tr>
                   <th colSpan={2}>TOTAL SCORE</th>
 
-                  {report.termSummaries.map((term) => (
-                    <React.Fragment key={term.termId}>
-                      <th>{formatScore(term.totalScore)}</th>
-                      <th>—</th>
-                    </React.Fragment>
-                  ))}
+                  {report.terms.map((term) => {
+                    const summary = report.termSummaries.find(
+                      (item) => item.termId === term._id
+                    );
+
+                    return (
+                      <React.Fragment key={term._id}>
+                        <th>{formatScore(summary?.totalScore)}</th>
+                        <th>—</th>
+                      </React.Fragment>
+                    );
+                  })}
 
                   <th>{formatScore(report.summary.totalScore)}</th>
                   <th>—</th>
@@ -545,20 +579,26 @@ export default function CumulativeReportSheet({
                 <tr>
                   <th colSpan={2}>AVERAGE</th>
 
-                  {report.termSummaries.map((term) => (
-                    <React.Fragment key={term.termId}>
-                      <th>{formatScore(term.averageScore)}</th>
-                      <th>{term.grade}</th>
-                    </React.Fragment>
-                  ))}
+                  {report.terms.map((term) => {
+                    const summary = report.termSummaries.find(
+                      (item) => item.termId === term._id
+                    );
+
+                    return (
+                      <React.Fragment key={term._id}>
+                        <th>{formatScore(summary?.averageScore)}</th>
+                        <th>{summary?.grade || "—"}</th>
+                      </React.Fragment>
+                    );
+                  })}
 
                   <th>{formatScore(report.summary.averageScore)}</th>
 
                   <th className="cum-grade">
-                    {report.summary.grade}
+                    {report.summary.grade || "—"}
                   </th>
 
-                  <th>{report.summary.remark}</th>
+                  <th>{report.summary.remark || "—"}</th>
                 </tr>
               </tbody>
             </table>
@@ -587,12 +627,12 @@ export default function CumulativeReportSheet({
 
                 <p>
                   <span>Grade</span>
-                  <strong>{term.grade}</strong>
+                  <strong>{term.grade || "—"}</strong>
                 </p>
 
                 <p>
                   <span>Attendance</span>
-                  <strong>{term.attendance.percentage}%</strong>
+                  <strong>{term.attendance?.percentage ?? 0}%</strong>
                 </p>
               </div>
             ))}
@@ -602,28 +642,24 @@ export default function CumulativeReportSheet({
 
               <p>
                 <span>Total Score</span>
-                <strong>
-                  {formatScore(report.summary.totalScore)}
-                </strong>
+                <strong>{formatScore(report.summary.totalScore)}</strong>
               </p>
 
               <p>
                 <span>Average</span>
-                <strong>
-                  {formatScore(report.summary.averageScore)}
-                </strong>
+                <strong>{formatScore(report.summary.averageScore)}</strong>
               </p>
 
               <p>
                 <span>Final Grade</span>
-                <strong>{report.summary.grade}</strong>
+                <strong>{report.summary.grade || "—"}</strong>
               </p>
 
               <p>
                 <span>Class Position</span>
                 <strong>
-                  {report.summary.positionLabel} /{" "}
-                  {report.summary.classSize}
+                  {report.summary.positionLabel || "—"} /{" "}
+                  {report.summary.classSize ?? "—"}
                 </strong>
               </p>
             </div>
@@ -638,18 +674,18 @@ export default function CumulativeReportSheet({
 
             <div className="cum-comment">
               Total days recorded:{" "}
-              <strong>{report.attendance.total}</strong>
+              <strong>{report.attendance?.total ?? 0}</strong>
               <br />
 
-              Present: <strong>{report.attendance.present}</strong>
+              Present: <strong>{report.attendance?.present ?? 0}</strong>
               {" · "}
-              Absent: <strong>{report.attendance.absent}</strong>
+              Absent: <strong>{report.attendance?.absent ?? 0}</strong>
               {" · "}
-              Late: <strong>{report.attendance.late}</strong>
+              Late: <strong>{report.attendance?.late ?? 0}</strong>
               <br />
 
               Attendance percentage:{" "}
-              <strong>{report.attendance.percentage}%</strong>
+              <strong>{report.attendance?.percentage ?? 0}%</strong>
             </div>
           </div>
 
@@ -661,7 +697,7 @@ export default function CumulativeReportSheet({
             <div className="cum-comment">
               The student&apos;s cumulative average is{" "}
               {formatScore(report.summary.averageScore)}% (
-              {report.summary.remark}). Continue to build on
+              {report.summary.remark || "—"}). Continue to build on
               strengths and address subjects requiring improvement.
             </div>
           </div>
