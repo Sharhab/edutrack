@@ -5,6 +5,7 @@ import { ApiError } from "../../utils/apiError.js";
 import { Teacher } from "../teachers/teacher.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
+import { getSchoolGradeBands } from "./grading-scale.service.js";
 /* =========================================
    CORE UTILS (SINGLE SOURCE OF TRUTH)
 ========================================= */
@@ -47,7 +48,7 @@ function normalizeScore(value, max) {
   return Math.min(Math.max(score, 0), max);
 }
 
-function calculateResultFields(payload) {
+function calculateResultFields(payload, gradeBands = []) {
   const ca1 = normalizeScore(
     payload.ca1,
     SCORE_LIMITS.ca1
@@ -99,7 +100,7 @@ function calculateResultFields(payload) {
   let remark = "";
 
   if (hasAnyScore) {
-    const computed = computeGrade(total);
+const computed = computeGrade(total, gradeBands);
 
     grade = computed.grade;
     remark = computed.remark;
@@ -339,8 +340,8 @@ await validateResultAcademicPeriod({
   termId: payload.termId,
 });
    
-  const computed =
-    calculateResultFields(payload);
+  const gradeBands = await getSchoolGradeBands(schoolId);
+const computed = calculateResultFields(payload, gradeBands);
 
   await ensureTeacherCanEnter({
     user,
@@ -466,9 +467,11 @@ export async function bulkUpsertResults({
    * =========================================
    */
 
-  const studentIds = results.map(
-    (r) => r.studentId
-  );
+const gradeBands = await getSchoolGradeBands(schoolId);
+
+const computedResults = results.map((r) =>
+  calculateResultFields(r, gradeBands)
+);
 
   const lockedResults =
     await Result.find({
@@ -621,11 +624,12 @@ export async function generateClassResults({
   );
 
   let updated = 0;
+const gradeBands = await getSchoolGradeBands(schoolId);
 
-  for (const r of results) {
-    const computed =
-      calculateResultFields(r);
+for (const r of results) {
+  const computed = calculateResultFields(r, gradeBands);
 
+  // Keep your existing save/update logic here.
     r.total = computed.total;
     r.grade = computed.grade;
     r.remark = computed.remark;
