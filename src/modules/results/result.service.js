@@ -341,7 +341,8 @@ await validateResultAcademicPeriod({
 });
    
   const gradeBands = await getSchoolGradeBands(schoolId);
-const computed = calculateResultFields(payload, gradeBands);
+
+const studentIds = results.map((r) => r.studentId);
 
   await ensureTeacherCanEnter({
     user,
@@ -505,9 +506,8 @@ const computedResults = results.map((r) =>
    * =========================================
    */
 
-  const operations = results.map((r) => {
-    const computed =
-      calculateResultFields(r);
+const operations = results.map((r) => {
+  const computed = calculateResultFields(r, gradeBands);
 
     return {
       updateOne: {
