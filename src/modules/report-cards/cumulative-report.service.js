@@ -9,7 +9,7 @@ import { ClassModel } from "../classes/class.model.js";
 
 import { ensureParentOwnsStudent } from "../parents/parent.guard.js";
 import { ApiError } from "../../utils/apiError.js";
-
+import { getSchoolGradeBands } from "../results/grading-scale.service.js";
 /* =========================================
    HELPERS
 ========================================= */
@@ -21,13 +21,40 @@ function ordinal(n) {
   return `${n}${suffix[(v - 20) % 10] || suffix[v] || suffix[0]}`;
 }
 
-function gradeForAverage(value) {
-  if (value >= 75) return { grade: "A", remark: "Excellent" };
-  if (value >= 60) return { grade: "B", remark: "Good" };
-  if (value >= 50) return { grade: "C", remark: "Fair" };
-  if (value >= 40) return { grade: "D", remark: "Pass" };
 
-  return { grade: "F", remark: "Fail" };
+function gradeForAverage(value, bands = []) {
+  // Preserve existing rules if the school has no saved scale.
+  if (!Array.isArray(bands) || bands.length === 0) {
+    if (value >= 75) return { grade: "A", remark: "Excellent" };
+    if (value >= 60) return { grade: "B", remark: "Good" };
+    if (value >= 50) return { grade: "C", remark: "Fair" };
+    if (value >= 40) return { grade: "D", remark: "Pass" };
+    return { grade: "F", remark: "Fail" };
+  }
+
+  const sortedBands = [...bands].sort(
+    (a, b) => a.minScore - b.minScore
+  );
+
+  const matchingBand = sortedBands.find(
+    (band, index) =>
+      value >= band.minScore &&
+      (value < band.maxScore ||
+        (index === sortedBands.length - 1 &&
+          value <= band.maxScore))
+  );
+
+  if (!matchingBand) {
+    throw new ApiError(
+      500,
+      `No grading band matches cumulative average ${value}.`
+    );
+  }
+
+  return {
+    grade: matchingBand.grade,
+    remark: matchingBand.remark,
+  };
 }
 
 function summarizeAttendance(records = []) {
@@ -73,7 +100,8 @@ export async function generateCumulativeStudentReport({
   const schoolId = new mongoose.Types.ObjectId(user.schoolId);
   const studentObjectId = new mongoose.Types.ObjectId(studentId);
   const sessionObjectId = new mongoose.Types.ObjectId(sessionId);
-
+ const gradeBands = await getSchoolGradeBands(schoolId);
+   
   const [student, session] = await Promise.all([
     Student.findOne({
       _id: studentObjectId,
