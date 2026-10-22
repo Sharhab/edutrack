@@ -60,7 +60,13 @@ export default function ReportCardTemplate({
   const gender = student?.gender || "—";
   const sessionName = session?.name || "—";
   const termName = term?.name || "—";
-
+  const nextTermResumptionDate = term?.nextTermResumptionDate
+  ? new Date(term.nextTermResumptionDate).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    })
+  : null;
   const averageScore = Number(summary?.averageScore || 0);
   const performance = getPerformanceRemark(averageScore);
 
@@ -633,7 +639,18 @@ export default function ReportCardTemplate({
     margin-bottom: 1.5mm !important;
     overflow: visible !important;
   }
+ .next-term-resumption {
+  margin-top: 2mm;
+  padding: 2mm 1mm;
+  border-top: 1px solid #cbd5e1;
+  color: #334155;
+  font-size: 8px;
+  line-height: 1.3;
+}
 
+.next-term-resumption strong {
+  color: #172033;
+}
   .academic-table-wrapper {
     width: 100% !important;
     overflow: visible !important;
@@ -995,11 +1012,20 @@ export default function ReportCardTemplate({
               </div>
             </div>
 
-            {/* FOOTER */}
+           {/* NEXT TERM RESUMPTION */}
 
-            <div className="report-footer">
-              <ReportCardFooter />
-            </div>
+{nextTermResumptionDate && (
+  <div className="next-term-resumption">
+    <strong>Next Term Begins:</strong>{" "}
+    {nextTermResumptionDate}
+  </div>
+)}
+
+{/* FOOTER */}
+
+<div className="report-footer">
+  <ReportCardFooter />
+</div>
           </div>
         </div>
       </div>
