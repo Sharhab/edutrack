@@ -8,27 +8,25 @@ type Props = {
   brandColor?: string;
 };
 
-export default function ReportCardSubjectTable({
-  subjects = [],
-  brandColor = "#0f766e",
-}: Props) {
-  const safeSubjects = useMemo(() => {
-    return subjects.map((sub) => ({
-      ...sub,
-      ca1: sub.ca1 || 0,
-      ca2: sub.ca2 || 0,
-      assignment: sub.assignment || 0,
-      exam: sub.exam || 0,
-      total: sub.total || 0,
-      grade: sub.grade || "-",
-      remark: sub.remark || "-",
-    }));
-  }, [subjects]);
+const safeSubjects = useMemo(() => {
+  return subjects.map((sub) => ({
+    ...sub,
+    grade: sub.grade || "—",
+    remark: sub.remark || "—",
+  }));
+}, [subjects]);
+
+const formatMark = (value: number | null | undefined) => {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+
+  return value;
+};
 
   return (
     <div className="w-full overflow-x-auto border rounded-md print:border-black">
-      <table className="w-full text-sm border-collapse">
-
+  <table className="w-full text-sm border-collapse report-subject-table">
         {/* ================= HEADER ================= */}
         <thead
   className="text-white"
