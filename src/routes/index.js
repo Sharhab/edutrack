@@ -5,7 +5,7 @@ import { subdomainMiddleware } from "../middlewares/subdomain.middleware.js";
 import { tenantContextMiddleware } from "../middlewares/tenantContex.middleware.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import { billingGuard } from "../middlewares/billingGuard.middleware.js";
-
+import gradingScaleRoutes from "../modules/results/grading-scale.routes.js";
 // Authentication and public routes
 import authRoutes from "../modules/auth/auth.routes.js";
 import onboardingRoutes from "../modules/onboarding/onboarding.routes.js";
@@ -156,6 +156,7 @@ router.use("/parents", parentRoutes);
 router.use("/students", studentRoutes);
 router.use("/attendance", attendanceRoutes);
 router.use("/results", resultRoutes);
+router.use("/grading-scale", gradingScaleRoutes);
 router.use("/announcements", announcementRoutes);
 
 /**
