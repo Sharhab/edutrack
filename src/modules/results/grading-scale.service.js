@@ -113,6 +113,17 @@ export async function getSchoolGradingScale(user) {
   };
 }
 
+export async function getSchoolGradeBands(schoolId) {
+  if (!mongoose.Types.ObjectId.isValid(schoolId)) {
+    throw new ApiError(400, "A valid school ID is required.");
+  }
+
+  const scale = await GradingScale.findOne({
+    schoolId: new mongoose.Types.ObjectId(schoolId),
+  }).lean();
+
+  return scale?.bands?.length ? scale.bands : [];
+}
 export async function saveSchoolGradingScale(user, bands) {
   const schoolId = getSchoolId(user);
   const validatedBands = validateBands(bands);
@@ -139,3 +150,5 @@ export async function saveSchoolGradingScale(user, bands) {
     updatedAt: scale.updatedAt,
   };
 }
+
+
