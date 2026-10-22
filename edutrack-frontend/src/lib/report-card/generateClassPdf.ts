@@ -443,7 +443,7 @@ function renderPerformanceAnalysis({
       );
 
       pdf.text(
-        String(value),
+     String(value ?? "—"),
         65,
         currentY
       );
