@@ -18,6 +18,7 @@ import {
   Library,
   CalendarDays,
   Sparkles,
+  ClipboardCheck,
 } from "lucide-react";
 import clsx from "clsx";
 import { UserRole } from "../../types/auth";
