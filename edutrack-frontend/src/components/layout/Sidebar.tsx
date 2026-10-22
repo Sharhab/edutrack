@@ -92,7 +92,12 @@ const navByRole: Record<
   { label: "Import Students", href: "/school-admin/students/import", icon: Upload },
   { label: "Students Bulk Entry", href: "/school-admin/students/bulk", icon: Users },
   { label: "Report Cards", href: "/school-admin/results/report-cards", icon: FileText },
-  { label: "Class Reports", href: "/school-admin/results/class-reports", icon: GraduationCap },
+{ label: "Class Reports", href: "/school-admin/results/class-reports", icon: GraduationCap },
+{
+  label: "Cumulative Report",
+  href: "/school-admin/results/cumulative-report",
+  icon: FileText,
+}, 
   { label: "Parents", href: "/school-admin/parents", icon: Users },
   { label: "Announcements", href: "/school-admin/announcements", icon: Bell },
 {
