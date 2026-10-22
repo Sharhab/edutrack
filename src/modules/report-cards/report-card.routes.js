@@ -9,6 +9,11 @@ import {
    generateClassReportCardsBundleController,
 } from "./report-card.controller.js";
 
+import {
+  cumulativeStudentReportHandler,
+  cumulativeClassReportHandler,
+} from "./cumulative-report.controller.js";
+
 const router = express.Router();
 router.use(protect);
 
@@ -28,6 +33,21 @@ router.get(
   asyncHandler(classReportSheetHandler)
 );
 
+/* =========================================
+   CUMULATIVE REPORTS
+========================================= */
+
+router.get(
+  "/student/:studentId/cumulative",
+  authorize("school_admin", "teacher", "parent"),
+  asyncHandler(cumulativeStudentReportHandler)
+);
+
+router.get(
+  "/class/:classId/cumulative",
+  authorize("school_admin", "teacher"),
+  asyncHandler(cumulativeClassReportHandler)
+);
 router.get(
   "/student/:studentId",
   authorize("school_admin", "teacher", "parent"),
