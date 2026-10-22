@@ -10,6 +10,7 @@ import { ClassModel } from "../classes/class.model.js";
 import { ensureParentOwnsStudent } from "../parents/parent.guard.js";
 import { ApiError } from "../../utils/apiError.js";
 import { getSchoolGradeBands } from "../results/grading-scale.service.js";
+
 /* =========================================
    HELPERS
 ========================================= */
@@ -20,7 +21,6 @@ function ordinal(n) {
 
   return `${n}${suffix[(v - 20) % 10] || suffix[v] || suffix[0]}`;
 }
-
 
 function gradeForAverage(value, bands = []) {
   // Preserve existing rules if the school has no saved scale.
@@ -100,8 +100,10 @@ export async function generateCumulativeStudentReport({
   const schoolId = new mongoose.Types.ObjectId(user.schoolId);
   const studentObjectId = new mongoose.Types.ObjectId(studentId);
   const sessionObjectId = new mongoose.Types.ObjectId(sessionId);
- const gradeBands = await getSchoolGradeBands(schoolId);
-   
+
+  // Load the grading scale configured by this school.
+  const gradeBands = await getSchoolGradeBands(schoolId);
+
   const [student, session] = await Promise.all([
     Student.findOne({
       _id: studentObjectId,
@@ -233,7 +235,10 @@ export async function generateCumulativeStudentReport({
           )
         : 0;
 
-      const { grade, remark } = gradeForAverage(average);
+      const { grade, remark } = gradeForAverage(
+        average,
+        gradeBands
+      );
 
       return {
         ...row,
@@ -264,7 +269,10 @@ export async function generateCumulativeStudentReport({
       ? Number((totalScore / scores.length).toFixed(1))
       : 0;
 
-    const grade = gradeForAverage(averageScore);
+    const grade = gradeForAverage(
+      averageScore,
+      gradeBands
+    );
 
     const attendance = summarizeAttendance(
       attendanceDocs.filter(
@@ -306,7 +314,10 @@ export async function generateCumulativeStudentReport({
       )
     : 0;
 
-  const cumulativeGrade = gradeForAverage(cumulativeAverage);
+  const cumulativeGrade = gradeForAverage(
+    cumulativeAverage,
+    gradeBands
+  );
 
   /* =========================================
      CLASS RANKING
