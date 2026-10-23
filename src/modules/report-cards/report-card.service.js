@@ -2,6 +2,7 @@
 import mongoose from "mongoose";
 import {
   calculateAverage,
+  calculateClassAverageStatistics,
   isValidScore,
   rankStudentsByAverage,
 } from "./report-card-calculations.js";
