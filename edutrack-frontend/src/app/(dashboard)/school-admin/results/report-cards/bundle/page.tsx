@@ -383,6 +383,9 @@ console.log(
                   schoolLogo={schoolProfile?.logoUrl}
                    schoolPhone={schoolProfile?.phone}
                    schoolEmail={schoolProfile?.email}
+                   schoolMotto={schoolProfile?.motto}
+                 principalSignature={schoolProfile?.principalSignature}
+                 schoolStamp={schoolProfile?.schoolStamp}
                   brandColor={
                     schoolProfile?.themeColor || "#06b6d4"
                   }
