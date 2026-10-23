@@ -1110,7 +1110,12 @@ export default function ReportCardTemplate({
 {/* FOOTER */}
 
 <div className="report-footer">
-  <ReportCardFooter />
+  <ReportCardFooter
+    branding={{
+      principalSignature,
+      schoolStamp,
+    }}
+  />
 </div>
           </div>
         </div>
