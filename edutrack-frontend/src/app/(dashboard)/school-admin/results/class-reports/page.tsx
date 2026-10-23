@@ -129,9 +129,14 @@ export default function ClassReportsPage() {
      TOP STUDENTS
   ========================================= */
 
-  const topStudents =
-    classReport.students.slice(0, 3);
-
+  const topStudents = classReport.students
+  .filter(
+    (student) =>
+      student.position !== null &&
+      student.position > 0 &&
+      student.averageScore !== null
+  )
+  .slice(0, 3);
   /* =========================================
      MAIN UI
   ========================================= */
