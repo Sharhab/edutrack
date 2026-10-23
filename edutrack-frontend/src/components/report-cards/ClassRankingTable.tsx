@@ -77,7 +77,7 @@ export default function ClassRankingTable({
 
                 {/* TOTAL */}
                 <td className="p-3 border border-white/10 font-semibold text-cyan-400">
-                  {{student.totalScore ?? "—"}}
+                  {student.totalScore ?? "—"}
                 </td>
 
                 {/* AVERAGE */}
