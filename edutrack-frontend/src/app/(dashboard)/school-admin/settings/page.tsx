@@ -14,6 +14,8 @@ import {
   getSchoolProfile,
   updateSchoolProfile,
   uploadSchoolLogo,
+  uploadPrincipalSignature,
+  uploadSchoolStamp,
 } from "../../../../lib/settings";
 
 import type { SchoolProfileFormValues } from "../../../../types/settings";
@@ -34,10 +36,15 @@ const initialForm: SchoolProfileFormValues = {
   phone: "",
   address: "",
   principalName: "",
+  motto: "",
+  principalSignature: "",
+  schoolStamp: "",
   currentSession: "",
   currentTerm: "",
   logoFile: undefined,
   logoUrl: "",
+  principalSignatureFile: undefined,
+  schoolStampFile: undefined,
   themeColor: "#06b6d4",
 };
 
