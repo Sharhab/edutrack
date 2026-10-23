@@ -1,20 +1,14 @@
-/* =========================================
-   CLASS STATISTICS (FOR CLASS PDF)
-========================================= */
 
-import { RankingStudent } from "../../types/report-card";
-
-/**
- * Calculate class-level performance stats
- */
+import { RankingStudent, AttendanceSummary } from "../../types/report-card";
 
 export function calculateClassStatistics(students: RankingStudent[]) {
   const validStudents = students.filter(
-  (student) =>
-    student.averageScore !== null &&
-    Number.isFinite(student.averageScore) &&
-    student.averageScore >= 0
-);
+    (student) =>
+      student.averageScore !== null &&
+      Number.isFinite(student.averageScore) &&
+      student.averageScore >= 0
+  );
+
   if (validStudents.length === 0) {
     return {
       highestAverage: null,
@@ -27,34 +21,31 @@ export function calculateClassStatistics(students: RankingStudent[]) {
   }
 
   const averages = validStudents
-  .map((student) => student.averageScore)
-  .filter((score): score is number => score !== null);
+    .map((student) => student.averageScore)
+    .filter((score): score is number => score !== null);
 
-const highestAverage = Math.max(...averages);
-const lowestAverage = Math.min(...averages);
+  const highestAverage = Math.max(...averages);
+  const lowestAverage = Math.min(...averages);
 
-const classAverage =
-  averages.reduce((sum, score) => sum + score, 0) /
-  averages.length;
+  const classAverage =
+    averages.reduce((sum, score) => sum + score, 0) /
+    averages.length;
+
   return {
     highestAverage: Number(highestAverage.toFixed(2)),
     lowestAverage: Number(lowestAverage.toFixed(2)),
     classAverage: Number(classAverage.toFixed(2)),
-  excellentCount: validStudents.filter(
-  (student) => student.averageScore !== null && student.averageScore >= 75
-).length,
-
-passCount: validStudents.filter(
-  (student) => student.averageScore !== null && student.averageScore >= 50
-).length,
-
-failCount: validStudents.filter(
-  (student) => student.averageScore !== null && student.averageScore < 50
-).length,
-
-/* =========================================
-   PERFORMANCE REMARK (FOR PDF)
-========================================= */
+    excellentCount: validStudents.filter(
+      (student) => student.averageScore !== null && student.averageScore >= 75
+    ).length,
+    passCount: validStudents.filter(
+      (student) => student.averageScore !== null && student.averageScore >= 50
+    ).length,
+    failCount: validStudents.filter(
+      (student) => student.averageScore !== null && student.averageScore < 50
+    ).length,
+  };
+}
 
 export function getPerformanceRemark(score: number) {
   if (score >= 75) return "Excellent";
@@ -63,12 +54,6 @@ export function getPerformanceRemark(score: number) {
   if (score >= 40) return "Fair";
   return "Needs Improvement";
 }
-
-import { AttendanceSummary } from "../../types/report-card";
-
-/* =========================================
-   ATTENDANCE CALCULATION (FIXED MISSING EXPORT)
-========================================= */
 
 export function calculateAttendancePercentage(
   attendance: AttendanceSummary
