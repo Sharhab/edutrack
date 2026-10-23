@@ -381,6 +381,8 @@ console.log(
                   schoolName={schoolProfile?.schoolName}
                   schoolAddress={schoolProfile?.address}
                   schoolLogo={schoolProfile?.logoUrl}
+                   schoolPhone={schoolProfile?.phone}
+                   schoolEmail={schoolProfile?.email}
                   brandColor={
                     schoolProfile?.themeColor || "#06b6d4"
                   }
