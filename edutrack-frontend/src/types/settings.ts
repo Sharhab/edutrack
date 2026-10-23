@@ -7,7 +7,9 @@ export interface SchoolProfile {
   address: string;
 
   principalName: string;
-
+  motto?: string;
+principalSignature?: string;
+schoolStamp?: string;
   currentSession: string;
   currentTerm: string;
 
