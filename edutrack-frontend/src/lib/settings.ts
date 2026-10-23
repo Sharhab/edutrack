@@ -99,7 +99,7 @@ export async function uploadPrincipalSignature(
   file: File
 ): Promise<{ principalSignature: string }> {
   const formData = new FormData();
-  formData.append("image", file);
+ formData.append("image", file);
 
   const { data } = await api.post(
     "/settings/school-profile/principal-signature",
