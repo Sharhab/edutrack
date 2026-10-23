@@ -19,6 +19,9 @@ type Props = {
   data: StudentReportCard;
   schoolName?: string;
   schoolAddress?: string;
+  schoolPhone?: string;
+  schoolEmail?: string;
+  schoolMotto?: string;
   schoolLogo?: string;
   brandColor?: string;
 };
@@ -39,6 +42,9 @@ export default function ReportCardTemplate({
   data,
   schoolName = "SCHOOL NAME",
   schoolAddress,
+  schoolPhone,
+  schoolEmail,
+  schoolMotto,
   schoolLogo,
   brandColor = "#0f766e",
 }: Props) {
@@ -110,7 +116,7 @@ export default function ReportCardTemplate({
           width: 100%;
           min-height: 34mm;
           display: grid;
-          grid-template-columns: 28mm minmax(0, 1fr) 28mm;
+          grid-template-columns: 28mm minmax(0, 1fr);
           align-items: center;
           box-sizing: border-box;
           padding: 3.5mm 4mm;
@@ -186,25 +192,25 @@ export default function ReportCardTemplate({
           color: #172033;
         }
 
-        .logo-area {
-          width: 23mm;
-          height: 23mm;
-          box-sizing: border-box;
-          justify-self: end;
-          border: 1px solid #94a3b8;
-          background: #fff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-        }
+     .logo-area {
+  width: 23mm;
+  height: 23mm;
+  box-sizing: border-box;
+  justify-self: start;
+  border: 1px solid #94a3b8;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
 
-        .logo-area img {
-          display: block;
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-        }
+.logo-area img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 
         .logo-placeholder {
           text-align: center;
@@ -796,7 +802,21 @@ export default function ReportCardTemplate({
     height: 5mm !important;
     margin-bottom: 0.8mm !important;
   }
+  .school-motto {
+  margin: 2px 0 0;
+  color: #475569;
+  font-size: 8px;
+  font-style: italic;
+  line-height: 1.2;
+}
 
+.school-contact {
+  margin: 2px 0 0;
+  color: #475569;
+  font-size: 7px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
   
 .report-footer {
   display: none !important;
@@ -831,49 +851,51 @@ export default function ReportCardTemplate({
         <div className="report-card-paper">
           {/* HEADER */}
 
-          <div className="report-card-header">
-            <div className="passport-area">
-              <div className="passport-placeholder">
-                <div>STUDENT</div>
-                <div>PASSPORT</div>
-              </div>
-            </div>
+         <div className="report-card-header">
+  <div className="logo-area">
+    {schoolLogo ? (
+      <img
+        src={resolveSchoolLogoUrl(schoolLogo)}
+        alt="School logo"
+      />
+    ) : (
+      <div className="logo-placeholder">
+        SCHOOL LOGO
+      </div>
+    )}
+  </div>
 
-            <div className="school-heading">
-              {schoolName && (
-                <h1 className="school-name">{schoolName}</h1>
-              )}
+  <div className="school-heading">
+    <h1 className="school-name">
+      {schoolName || "SCHOOL NAME"}
+    </h1>
 
-              {schoolAddress && (
-                <p className="school-address">{schoolAddress}</p>
-              )}
+    {schoolMotto && (
+      <p className="school-motto">{schoolMotto}</p>
+    )}
 
-              <h2 className="report-title">Student Report Card</h2>
+    {schoolAddress && (
+      <p className="school-address">{schoolAddress}</p>
+    )}
 
-              <div className="session-term">
-                <span>
-                  <strong>Session:</strong> {sessionName}
-                </span>
-                <span>
-                  <strong>Term:</strong> {termName}
-                </span>
-              </div>
-            </div>
+    {(schoolPhone || schoolEmail) && (
+      <p className="school-contact">
+        {[schoolPhone, schoolEmail].filter(Boolean).join(" | ")}
+      </p>
+    )}
 
-            <div className="logo-area">
-              {schoolLogo ? (
-                <img
-                  src={resolveSchoolLogoUrl(schoolLogo)}
-                  alt="School logo"
-                />
-              ) : (
-                <div className="logo-placeholder">
-                  <div>SCHOOL</div>
-                  <div>LOGO</div>
-                </div>
-              )}
-            </div>
-          </div>
+    <h2 className="report-title">Student Report Card</h2>
+
+    <div className="session-term">
+      <span>
+        <strong>Session:</strong> {sessionName}
+      </span>
+      <span>
+        <strong>Term:</strong> {termName}
+      </span>
+    </div>
+  </div>
+</div>
 
           <div className="report-content">
             {/* STUDENT INFORMATION */}
