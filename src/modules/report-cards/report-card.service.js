@@ -1,7 +1,11 @@
 // modules/report-card/report-card.service.js
 
 import mongoose from "mongoose";
-
+import {
+  calculateAverage,
+  isValidScore,
+  rankStudentsByAverage,
+} from "./report-card-calculations.js";
 import { Student } from "../students/student.model.js";
 import { Result } from "../results/result.model.js";
 import { Attendance } from "../attendance/attendance.model.js";
@@ -25,12 +29,35 @@ function ordinal(n) {
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
 }
 
-function calculateAverage(total, count) {
-  if (!count) return 0;
-
-  return Number((total / count).toFixed(2));
+function hasEnteredMarks(result) {
+  return [
+    result.ca1,
+    result.ca2,
+    result.assignment,
+    result.exam,
+  ].some(isValidScore);
 }
 
+function getRecordedScore(result) {
+  if (!hasEnteredMarks(result)) {
+    return null;
+  }
+
+  const total = Number(result.total);
+
+  return Number.isFinite(total) ? total : null;
+}
+
+function getRankableAverage(totalScore, subjectCount) {
+  if (!subjectCount) return null;
+
+  return calculateAverage(
+    Array.from(
+      { length: subjectCount },
+      () => totalScore / subjectCount
+    )
+  ).average;
+}
 /* =========================================================
    ACADEMIC PERIOD VALIDATION
    A term must belong to the selected session and school.
@@ -662,20 +689,15 @@ export async function generateStudentReportCard({
      RESULTS
   ------------------------------------------------------- */
 
-  const results =
-    await Result.find({
-      schoolId,
-      studentId: studentObjectId,
-      sessionId: sessionObjectId,
-      termId: termObjectId,
-    })
-      .populate(
-        "subjectId",
-        "name code"
-      )
-      .sort({
-        createdAt: 1,
-      });
+ const results = await Result.find({
+  schoolId,
+  studentId: studentObjectId,
+  classId: student.classId._id,
+  sessionId: sessionObjectId,
+  termId: termObjectId,
+})
+  .populate("subjectId", "name code")
+  .sort({ createdAt: 1 });
 
   /* -------------------------------------------------------
      ATTENDANCE
@@ -694,28 +716,24 @@ export async function generateStudentReportCard({
      SCORES
   ------------------------------------------------------- */
 
-  const totalScore =
-    results.reduce(
-      (sum, result) =>
-        sum + (result.total || 0),
-      0
-    );
+ const recordedResults = results.filter(hasEnteredMarks);
 
-  const averageScore =
-    calculateAverage(
-      totalScore,
-      results.length
-    );
+const recordedScores = recordedResults
+  .map(getRecordedScore)
+  .filter((score) => score !== null);
 
- const comments =
-  buildReportCardComments({
-    averageScore,
-    results,
-    attendance,
-    studentId: studentObjectId,
-    gradeBands,
-  });
+const scoreSummary = calculateAverage(recordedScores);
 
+const totalScore = scoreSummary.total;
+const averageScore = scoreSummary.average;
+
+const comments = buildReportCardComments({
+  averageScore,
+  results: recordedResults,
+  attendance,
+  studentId: studentObjectId,
+  gradeBands,
+});
   /* -------------------------------------------------------
      CLASSMATES
   ------------------------------------------------------- */
@@ -736,17 +754,51 @@ export async function generateStudentReportCard({
      CLASS RESULTS
   ------------------------------------------------------- */
 
-  const classResults =
-    await Result.find({
-      schoolId,
-      studentId: {
-        $in: classmateIds,
-      },
-      sessionId: sessionObjectId,
-      termId: termObjectId,
-    }).select(
-      "studentId total"
-    );
+ const classResults = await Result.find({
+  schoolId,
+  classId: student.classId._id,
+  studentId: { $in: classmateIds },
+  sessionId: sessionObjectId,
+  termId: termObjectId,
+}).select("studentId total ca1 ca2 assignment exam");
+
+const scoresByStudent = new Map();
+
+for (const result of classResults) {
+  if (!hasEnteredMarks(result)) continue;
+
+  const score = getRecordedScore(result);
+  if (score === null) continue;
+
+  const key = String(result.studentId);
+
+  if (!scoresByStudent.has(key)) {
+    scoresByStudent.set(key, []);
+  }
+
+  scoresByStudent.get(key).push(score);
+}
+
+const candidates = classmateIds.map((id) => {
+  const scores = scoresByStudent.get(String(id)) || [];
+  const averageScore = scores.length
+    ? calculateAverage(scores).average
+    : null;
+
+  return {
+    studentId: id,
+    averageScore,
+    eligible: averageScore !== null,
+  };
+});
+
+const ranked = rankStudentsByAverage(candidates);
+const studentRank = ranked.find(
+  (item) => String(item.studentId) === String(studentObjectId)
+);
+
+const position = studentRank?.position ?? null;
+const positionLabel = studentRank?.positionLabel || "Not ranked";
 
   /* -------------------------------------------------------
      RANKING MAP
@@ -841,42 +893,28 @@ export async function generateStudentReportCard({
           subjectCode:
             result.subjectId?.code ||
             "",
-
-          ca1:
-            result.ca1 || 0,
-
-          ca2:
-            result.ca2 || 0,
-
-          assignment:
-            result.assignment || 0,
-
-          exam:
-            result.exam || 0,
-
-          total:
-            result.total || 0,
-
-          grade:
-            result.grade || "",
-
-          remark:
-            result.remark || "",
+          ca1: isValidScore(result.ca1) ? Number(result.ca1) : null,
+ca2: isValidScore(result.ca2) ? Number(result.ca2) : null,
+assignment: isValidScore(result.assignment)
+  ? Number(result.assignment)
+  : null,
+exam: isValidScore(result.exam) ? Number(result.exam) : null,
+total: getRecordedScore(result),
+grade: result.grade || "",
+remark: result.remark || "",
+         
         })
       ),
 
       summary: {
-        subjectsCount:
-          results.length,
-
+       subjectsCount: recordedResults.length,
         totalScore,
 
         averageScore,
 
         position,
 
-        positionLabel:
-          ordinal(position),
+       positionLabel,
       },
 
       attendance,
