@@ -5,6 +5,8 @@ import {
   updateSchoolProfile,
   uploadSchoolLogo,
   getSchoolBranding,
+  uploadPrincipalSignature,
+  uploadSchoolStamp,
 } from "./school-profile.service.js";
 import { ApiError } from "../../utils/apiError.js";
 
@@ -76,6 +78,40 @@ export async function uploadSchoolLogoHandler(
     success: true,
     message:
       "School logo uploaded successfully",
+    data,
+  });
+}
+
+/* =========================================
+   UPLOAD PRINCIPAL SIGNATURE
+========================================= */
+export async function uploadPrincipalSignatureHandler(req, res) {
+  if (!req.file) {
+    throw new ApiError(400, "Signature image is required");
+  }
+
+  const data = await uploadPrincipalSignature(req.file, req.user);
+
+  res.status(201).json({
+    success: true,
+    message: "Principal signature uploaded successfully",
+    data,
+  });
+}
+
+/* =========================================
+   UPLOAD SCHOOL STAMP
+========================================= */
+export async function uploadSchoolStampHandler(req, res) {
+  if (!req.file) {
+    throw new ApiError(400, "School stamp image is required");
+  }
+
+  const data = await uploadSchoolStamp(req.file, req.user);
+
+  res.status(201).json({
+    success: true,
+    message: "School stamp uploaded successfully",
     data,
   });
 }
