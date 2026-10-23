@@ -10,11 +10,11 @@ import { RankingStudent } from "../../types/report-card";
 
 export function calculateClassStatistics(students: RankingStudent[]) {
   const validStudents = students.filter(
-    (student) =>
-      Number.isFinite(student.averageScore) &&
-      student.averageScore >= 0
-  );
-
+  (student) =>
+    student.averageScore !== null &&
+    Number.isFinite(student.averageScore) &&
+    student.averageScore >= 0
+);
   if (validStudents.length === 0) {
     return {
       highestAverage: null,
