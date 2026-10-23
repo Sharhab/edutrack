@@ -26,17 +26,16 @@ export function calculateClassStatistics(students: RankingStudent[]) {
     };
   }
 
-  const averages = validStudents.map(
-    (student) => student.averageScore
-  );
+  const averages = validStudents
+  .map((student) => student.averageScore)
+  .filter((score): score is number => score !== null);
 
-  const highestAverage = Math.max(...averages);
-  const lowestAverage = Math.min(...averages);
+const highestAverage = Math.max(...averages);
+const lowestAverage = Math.min(...averages);
 
-  const classAverage =
-    averages.reduce((sum, score) => sum + score, 0) /
-    averages.length;
-
+const classAverage =
+  averages.reduce((sum, score) => sum + score, 0) /
+  averages.length;
   return {
     highestAverage: Number(highestAverage.toFixed(2)),
     lowestAverage: Number(lowestAverage.toFixed(2)),
