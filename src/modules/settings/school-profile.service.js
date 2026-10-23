@@ -132,7 +132,9 @@ function mapProfile(school, currentSession, currentTerm) {
     address: school.address,
 
     principalName: school.principalName || "",
-
+    motto: school.motto || "",
+principalSignature: school.principalSignature || "",
+schoolStamp: school.schoolStamp || "",
     // Only report academic periods backed by real records.
     currentSession: currentSession?.name || "",
     currentTerm:
@@ -157,8 +159,8 @@ export async function getSchoolBranding(user) {
 
   const school = await School.findById(user.schoolId)
     .select(
-      "_id name slug domain fullDomain logo themeColor currentSession currentTerm"
-    )
+  "_id name slug domain fullDomain logo themeColor currentSession currentTerm motto principalSignature schoolStamp"
+)
     .lean();
 
   if (!school) {
@@ -182,6 +184,9 @@ export async function getSchoolBranding(user) {
     domain: school.domain || "",
     fullDomain: school.fullDomain || "",
     logoUrl,
+    motto: school.motto || "",
+principalSignature: school.principalSignature || "",
+schoolStamp: school.schoolStamp || "",
     themeColor: school.themeColor || "#06b6d4",
     currentSession: school.currentSession || "",
     currentTerm: school.currentTerm || "",
@@ -302,6 +307,10 @@ export async function updateSchoolProfile(payload, user) {
   if (payload.principalName !== undefined) {
     school.principalName = String(payload.principalName ?? "").trim();
   }
+  
+  if (payload.motto !== undefined) {
+  school.motto = String(payload.motto ?? "").trim();
+}
 
   if (payload.themeColor !== undefined) {
     school.themeColor = payload.themeColor;
@@ -434,6 +443,108 @@ export async function uploadSchoolLogo(file, user) {
   };
 }
 
+/**
+ * =========================================
+ * UPLOAD SCHOOL SIGNATURE OR STAMP
+ * =========================================
+ */
+
+async function uploadSchoolBrandingImage(file, user, type) {
+  const school = await School.findById(user.schoolId);
+
+  if (!school) {
+    throw new ApiError(404, "School profile not found");
+  }
+
+  if (!file?.buffer) {
+    throw new ApiError(400, "Image file is required");
+  }
+
+  const configs = {
+    signature: {
+      field: "principalSignature",
+      folder: "edutrack/school-signatures",
+      publicId: `school-${user.schoolId}-principal-signature`,
+      label: "Principal signature",
+    },
+    stamp: {
+      field: "schoolStamp",
+      folder: "edutrack/school-stamps",
+      publicId: `school-${user.schoolId}-stamp`,
+      label: "School stamp",
+    },
+  };
+
+  const config = configs[type];
+
+  if (!config) {
+    throw new ApiError(400, "Invalid branding image type");
+  }
+
+  if (!String(file.mimetype || "").startsWith("image/")) {
+    throw new ApiError(400, "Please upload an image file");
+  }
+
+  let result;
+
+  try {
+    result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: config.folder,
+          resource_type: "image",
+          public_id: config.publicId,
+          overwrite: true,
+          invalidate: true,
+        },
+        (error, uploaded) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve(uploaded);
+        }
+      );
+
+      stream.on("error", reject);
+      stream.end(file.buffer);
+    });
+  } catch (error) {
+    console.error(
+      `[SCHOOL ${type.toUpperCase()} UPLOAD]`,
+      error?.message || error
+    );
+
+    throw new ApiError(
+      500,
+      `Failed to upload ${config.label.toLowerCase()}`
+    );
+  }
+
+  if (!result?.secure_url) {
+    throw new ApiError(
+      500,
+      "Cloudinary did not return a secure URL"
+    );
+  }
+
+  school[config.field] = result.secure_url;
+  await school.save();
+
+  return {
+    [config.field]: result.secure_url,
+    profile: await getSchoolProfile(user),
+  };
+}
+
+export async function uploadPrincipalSignature(file, user) {
+  return uploadSchoolBrandingImage(file, user, "signature");
+}
+
+export async function uploadSchoolStamp(file, user) {
+  return uploadSchoolBrandingImage(file, user, "stamp");
+}
 /**
  * =========================================
  * DELETE SCHOOL LOGO
