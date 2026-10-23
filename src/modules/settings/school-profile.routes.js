@@ -10,6 +10,8 @@ import {
   updateSchoolProfileHandler,
   uploadSchoolLogoHandler,
   getSchoolBrandingHandler,
+  uploadPrincipalSignatureHandler,
+uploadSchoolStampHandler,
 } from "./school-profile.controller.js";
 
 const router = express.Router();
@@ -59,6 +61,27 @@ router.post(
   asyncHandler(uploadSchoolLogoHandler)
 );
 
+/*
+=========================================
+UPLOAD PRINCIPAL SIGNATURE
+=========================================
+*/
+router.post(
+  "/principal-signature",
+  uploadLogo.single("image"),
+  asyncHandler(uploadPrincipalSignatureHandler)
+);
+
+/*
+=========================================
+UPLOAD SCHOOL STAMP
+=========================================
+*/
+router.post(
+  "/stamp",
+  uploadLogo.single("image"),
+  asyncHandler(uploadSchoolStampHandler)
+);
 /*
 =========================================
 DELETE LOGO
