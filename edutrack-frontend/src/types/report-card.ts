@@ -35,14 +35,17 @@ export type ReportCardSubject = {
    SUMMARY
 ========================================= */
 
+
 export type ReportCardSummary = {
   subjectsCount: number;
-
-  totalScore: number;
-  averageScore: number;
-
+  totalScore: number | null;
+  averageScore: number | null;
   position: number | null;
   positionLabel: string;
+  classAverage?: number | null;
+  highestInClass?: number | null;
+  lowestInClass?: number | null;
+  rankedStudents?: number;
 };
 
 /* =========================================
