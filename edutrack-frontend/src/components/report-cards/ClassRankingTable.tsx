@@ -45,8 +45,9 @@ export default function ClassRankingTable({
         {/* BODY */}
         <tbody>
           {students.map((student) => {
-            const isTop3 = student.position <= 3;
-
+           const isTop3 =
+  student.position !== null &&
+  student.position <= 3;
             return (
               <tr
                 key={student.studentId}
