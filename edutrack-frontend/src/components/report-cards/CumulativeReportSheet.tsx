@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from "react";
@@ -17,6 +18,37 @@ type AttendanceSummary = {
   percentage: number;
 };
 
+type SubjectTermScore = {
+  score: number | null;
+  grade: string;
+  remark: string;
+  hasResult?: boolean;
+};
+
+type ReportSubject = {
+  subjectId: string;
+  subjectName: string;
+  subjectCode?: string;
+  terms: Record<string, SubjectTermScore | undefined>;
+  cumulativeTotal: number;
+  average: number | null;
+  cumulativeGrade: string;
+  cumulativeRemark: string;
+  termsWithResults?: number;
+};
+
+type TermSummary = {
+  termId: string;
+  termName: string;
+  order?: number;
+  totalScore: number | null;
+  averageScore: number | null;
+  grade: string;
+  remark: string;
+  subjectsCount?: number;
+  attendance: AttendanceSummary;
+};
+
 type Report = {
   student: {
     firstName: string;
@@ -33,40 +65,22 @@ type Report = {
     name: string;
   };
   terms: Term[];
-  subjects: Array<{
-    subjectId: string;
-    subjectName: string;
-    subjectCode?: string;
-    terms: Record<
-      string,
-      {
-        score: number;
-        grade: string;
-        remark: string;
-      }
-    >;
-    cumulativeTotal: number;
-    average: number;
-    cumulativeGrade: string;
-    cumulativeRemark: string;
-  }>;
-  termSummaries: Array<{
-    termId: string;
-    termName: string;
-    totalScore: number;
-    averageScore: number;
-    grade: string;
-    remark: string;
-    attendance: AttendanceSummary;
-  }>;
+  subjects: ReportSubject[];
+  termSummaries: TermSummary[];
   summary: {
-    totalScore: number;
-    averageScore: number;
+    totalScore: number | null;
+    averageScore: number | null;
     grade: string;
     remark: string;
+    position: number | null;
     positionLabel: string;
     classSize: number;
     subjectsCount: number;
+    highestAverage?: number | null;
+    lowestAverage?: number | null;
+    classAverage?: number | null;
+    eligibleStudents?: number;
+    completeForRanking?: boolean;
   };
   attendance: AttendanceSummary;
 };
@@ -76,12 +90,36 @@ type Props = {
   schoolProfile?: SchoolProfile | null;
 };
 
+function formatScore(value: number | null | undefined): string {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" as unknown ||
+    !Number.isFinite(Number(value))
+  ) {
+    return "—";
+  }
+
+  return Number(value).toLocaleString("en-NG", {
+    maximumFractionDigits: 1,
+  });
+}
+
+function formatPercentage(
+  value: number | null | undefined
+): string {
+  return value === null || value === undefined
+    ? "—"
+    : `${formatScore(value)}%`;
+}
+
 export default function CumulativeReportSheet({
   report,
   schoolProfile,
 }: Props) {
   const brandColor = schoolProfile?.themeColor || "#06b6d4";
-  const schoolName = schoolProfile?.schoolName?.trim() || "School";
+  const schoolName =
+    schoolProfile?.schoolName?.trim() || "School";
 
   const schoolContact = [
     schoolProfile?.address,
@@ -99,47 +137,38 @@ export default function CumulativeReportSheet({
     .filter(Boolean)
     .join(" ");
 
-  const formatScore = (value: number | null | undefined) =>
-    Number(value || 0).toLocaleString("en-NG", {
-      maximumFractionDigits: 1,
-    });
+  const isComplete = report.summary.completeForRanking;
 
   return (
     <>
       <style jsx global>{`
         .cumulative-sheet {
-          width: 8.5in;
-          min-height: 11in;
+          width: 210mm;
+          min-height: 297mm;
           margin: 0 auto;
-          padding: 0.28in;
+          padding: 8mm;
+          box-sizing: border-box;
           background: #fff;
           color: #172033;
-          box-sizing: border-box;
           font-family: Arial, Helvetica, sans-serif;
+          font-size: 9px;
         }
 
         .cum-head {
           display: grid;
-          grid-template-columns: 0.8in 1fr 0.8in;
-          gap: 0.12in;
+          grid-template-columns: 20mm minmax(0, 1fr);
+          gap: 4mm;
           align-items: center;
           border-bottom: 3px solid ${brandColor};
-          padding-bottom: 0.12in;
+          padding-bottom: 3mm;
         }
 
-        .cum-photo,
         .cum-logo {
-          width: 0.72in;
-          height: 0.72in;
-          border: 1px solid #94a3b8;
+          width: 19mm;
+          height: 19mm;
           display: flex;
           align-items: center;
           justify-content: center;
-          text-align: center;
-          font-size: 7px;
-          color: #64748b;
-          padding: 4px;
-          box-sizing: border-box;
           overflow: hidden;
         }
 
@@ -158,47 +187,47 @@ export default function CumulativeReportSheet({
 
         .cum-school h1 {
           margin: 0;
-          font-size: 19px;
+          font-size: 18px;
           font-weight: 800;
           text-transform: uppercase;
         }
 
         .cum-school p {
           margin: 3px 0;
-          font-size: 9px;
+          font-size: 8px;
           color: #475569;
         }
 
         .cum-school h2 {
-          margin: 7px 0 3px;
-          font-size: 14px;
-          letter-spacing: 0.4px;
+          margin: 5px 0 2px;
+          font-size: 13px;
         }
 
         .cum-section {
-          margin-top: 0.12in;
+          margin-top: 3mm;
+          break-inside: avoid;
         }
 
         .cum-section-title {
           background: #eff6fa;
-          border-left: 4px solid ${brandColor};
-          padding: 5px 7px;
+          border-left: 3px solid ${brandColor};
+          padding: 5px 6px;
           margin: 0 0 5px;
-          font-size: 10px;
+          font-size: 9px;
           text-transform: uppercase;
           font-weight: 800;
         }
 
         .cum-student {
           display: grid;
-          grid-template-columns: 1.5fr 1fr 0.7fr 0.7fr 1fr;
+          grid-template-columns: 1.5fr 1fr 0.9fr 0.7fr 1fr;
           border: 1px solid #cbd5e1;
         }
 
-        .cum-student div {
+        .cum-student > div {
           padding: 5px;
           border-right: 1px solid #cbd5e1;
-          font-size: 9px;
+          font-size: 8px;
           min-width: 0;
           overflow-wrap: anywhere;
         }
@@ -212,11 +241,15 @@ export default function CumulativeReportSheet({
           margin-bottom: 3px;
         }
 
+        .cum-table-wrap {
+          width: 100%;
+        }
+
         .cum-table {
           width: 100%;
           border-collapse: collapse;
-          table-layout: fixed;
-          font-size: 8px;
+          table-layout: auto;
+          font-size: 7px;
         }
 
         .cum-table th,
@@ -235,6 +268,7 @@ export default function CumulativeReportSheet({
 
         .cum-table td.subject {
           text-align: left;
+          min-width: 25mm;
         }
 
         .cum-table .cum-grade {
@@ -245,23 +279,24 @@ export default function CumulativeReportSheet({
 
         .cum-summary {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 6px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 5px;
         }
 
         .cum-card {
           border: 1px solid #cbd5e1;
-          border-radius: 5px;
+          border-radius: 3px;
           overflow: hidden;
           min-width: 0;
+          break-inside: avoid;
         }
 
         .cum-card h4 {
           margin: 0;
           background: ${brandColor};
           color: #fff;
-          padding: 6px;
-          font-size: 9px;
+          padding: 5px;
+          font-size: 8px;
           text-transform: uppercase;
         }
 
@@ -270,7 +305,7 @@ export default function CumulativeReportSheet({
           justify-content: space-between;
           gap: 5px;
           margin: 0;
-          padding: 6px;
+          padding: 5px;
           border-bottom: 1px solid #e2e8f0;
           font-size: 8px;
         }
@@ -279,25 +314,30 @@ export default function CumulativeReportSheet({
           border-bottom: 0;
         }
 
+        .cum-card p span {
+          color: #475569;
+        }
+
         .cum-bottom {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 10px;
+          gap: 8px;
         }
 
         .cum-comment {
           border: 1px solid #cbd5e1;
-          min-height: 0.55in;
-          padding: 8px;
-          font-size: 9px;
+          min-height: 15mm;
+          padding: 7px;
+          font-size: 8px;
           line-height: 1.45;
+          overflow-wrap: anywhere;
         }
 
         .cum-signatures {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 25px;
-          padding: 14px 10px 4px;
+          gap: 15px;
+          padding: 18px 5px 4px;
           text-align: center;
           font-size: 8px;
         }
@@ -307,8 +347,17 @@ export default function CumulativeReportSheet({
           padding-top: 5px;
         }
 
+        .cum-footer {
+          margin-top: 5mm;
+          border-top: 1px solid #cbd5e1;
+          padding-top: 5px;
+          font-size: 7px;
+          color: #64748b;
+          text-align: center;
+        }
+
         @page {
-          size: letter portrait;
+          size: A4 portrait;
           margin: 0;
         }
 
@@ -333,22 +382,15 @@ export default function CumulativeReportSheet({
             position: absolute;
             left: 0;
             top: 0;
-            width: 8.5in;
-            min-height: 11in;
+            width: 210mm;
+            min-height: 0;
             margin: 0;
-            padding: 0.28in;
+            padding: 8mm;
             box-shadow: none;
           }
 
           .no-print {
             display: none !important;
-          }
-
-          .cum-section,
-          .cum-card,
-          .cum-comment,
-          .cum-signatures {
-            break-inside: avoid;
           }
 
           * {
@@ -366,10 +408,9 @@ export default function CumulativeReportSheet({
           }
 
           .cum-head {
-            grid-template-columns: 48px minmax(0, 1fr) 48px;
+            grid-template-columns: 48px minmax(0, 1fr);
           }
 
-          .cum-photo,
           .cum-logo {
             width: 44px;
             height: 44px;
@@ -392,7 +433,7 @@ export default function CumulativeReportSheet({
           }
 
           .cum-table {
-            min-width: 640px;
+            min-width: 650px;
           }
 
           .cum-table-wrap {
@@ -413,10 +454,15 @@ export default function CumulativeReportSheet({
 
       <article className="cumulative-sheet">
         <header className="cum-head">
-          <div className="cum-photo">
-            STUDENT
-            <br />
-            PHOTO
+          <div className="cum-logo">
+            {schoolProfile?.logoUrl ? (
+              <img
+                src={schoolProfile.logoUrl}
+                alt={`${schoolName} logo`}
+              />
+            ) : (
+              <span>School Logo</span>
+            )}
           </div>
 
           <div className="cum-school">
@@ -430,17 +476,6 @@ export default function CumulativeReportSheet({
               Academic Session:{" "}
               <strong>{report.session.name}</strong>
             </p>
-          </div>
-
-          <div className="cum-logo">
-            {schoolProfile?.logoUrl ? (
-              <img
-                src={schoolProfile.logoUrl}
-                alt={`${schoolName} logo`}
-              />
-            ) : (
-              <span>School Logo</span>
-            )}
           </div>
         </header>
 
@@ -488,13 +523,8 @@ export default function CumulativeReportSheet({
             <table className="cum-table">
               <thead>
                 <tr>
-                  <th rowSpan={2} style={{ width: "4%" }}>
-                    S/N
-                  </th>
-
-                  <th rowSpan={2} style={{ width: "18%" }}>
-                    Subject
-                  </th>
+                  <th rowSpan={2}>S/N</th>
+                  <th rowSpan={2}>Subject</th>
 
                   {report.terms.map((term) => (
                     <th key={term._id} colSpan={2}>
@@ -502,7 +532,7 @@ export default function CumulativeReportSheet({
                     </th>
                   ))}
 
-                  <th colSpan={2}>Cumulative</th>
+                  <th colSpan={2}>Annual</th>
                   <th rowSpan={2}>Remark</th>
                 </tr>
 
@@ -523,10 +553,7 @@ export default function CumulativeReportSheet({
                 {report.subjects.map((subject, index) => (
                   <tr key={subject.subjectId}>
                     <td>{index + 1}</td>
-
-                    <td className="subject">
-                      {subject.subjectName}
-                    </td>
+                    <td className="subject">{subject.subjectName}</td>
 
                     {report.terms.map((term) => {
                       const score = subject.terms[term._id];
@@ -534,29 +561,33 @@ export default function CumulativeReportSheet({
                       return (
                         <React.Fragment key={term._id}>
                           <td>
-                            {score ? formatScore(score.score) : "—"}
+                            {score?.hasResult === false || !score
+                              ? "—"
+                              : formatScore(score.score)}
                           </td>
                           <td>{score?.grade || "—"}</td>
                         </React.Fragment>
                       );
                     })}
 
-                    <td>
-                      <strong>
-                        {formatScore(subject.cumulativeTotal)}
-                      </strong>
-                    </td>
-
+                    <td>{formatScore(subject.cumulativeTotal)}</td>
                     <td className="cum-grade">
                       {subject.cumulativeGrade || "—"}
                     </td>
-
                     <td>{subject.cumulativeRemark || "—"}</td>
                   </tr>
                 ))}
 
+                {report.subjects.length === 0 && (
+                  <tr>
+                    <td colSpan={report.terms.length * 2 + 5}>
+                      No subject results are available for this session.
+                    </td>
+                  </tr>
+                )}
+
                 <tr>
-                  <th colSpan={2}>TOTAL SCORE</th>
+                  <th colSpan={2}>TERM TOTALS</th>
 
                   {report.terms.map((term) => {
                     const summary = report.termSummaries.find(
@@ -593,11 +624,9 @@ export default function CumulativeReportSheet({
                   })}
 
                   <th>{formatScore(report.summary.averageScore)}</th>
-
                   <th className="cum-grade">
                     {report.summary.grade || "—"}
                   </th>
-
                   <th>{report.summary.remark || "—"}</th>
                 </tr>
               </tbody>
@@ -607,7 +636,7 @@ export default function CumulativeReportSheet({
 
         <section className="cum-section">
           <h3 className="cum-section-title">
-            3. Term Summaries
+            3. Term and Annual Summary
           </h3>
 
           <div className="cum-summary">
@@ -616,7 +645,7 @@ export default function CumulativeReportSheet({
                 <h4>{term.termName}</h4>
 
                 <p>
-                  <span>Total Score</span>
+                  <span>Total</span>
                   <strong>{formatScore(term.totalScore)}</strong>
                 </p>
 
@@ -632,18 +661,15 @@ export default function CumulativeReportSheet({
 
                 <p>
                   <span>Attendance</span>
-                  <strong>{term.attendance?.percentage ?? 0}%</strong>
+                  <strong>
+                    {formatPercentage(term.attendance?.percentage)}
+                  </strong>
                 </p>
               </div>
             ))}
 
             <div className="cum-card">
-              <h4>Cumulative Result</h4>
-
-              <p>
-                <span>Total Score</span>
-                <strong>{formatScore(report.summary.totalScore)}</strong>
-              </p>
+              <h4>Annual Result</h4>
 
               <p>
                 <span>Average</span>
@@ -656,14 +682,53 @@ export default function CumulativeReportSheet({
               </p>
 
               <p>
-                <span>Class Position</span>
+                <span>Position</span>
                 <strong>
-                  {report.summary.positionLabel || "—"} /{" "}
-                  {report.summary.classSize ?? "—"}
+                  {report.summary.positionLabel || "Not ranked"}
+                  {report.summary.classSize
+                    ? ` / ${report.summary.classSize}`
+                    : ""}
+                </strong>
+              </p>
+
+              <p>
+                <span>Highest Average</span>
+                <strong>
+                  {formatScore(report.summary.highestAverage)}
+                </strong>
+              </p>
+
+              <p>
+                <span>Lowest Average</span>
+                <strong>
+                  {formatScore(report.summary.lowestAverage)}
+                </strong>
+              </p>
+
+              <p>
+                <span>Class Average</span>
+                <strong>
+                  {formatScore(report.summary.classAverage)}
                 </strong>
               </p>
             </div>
           </div>
+
+          {isComplete === false && (
+            <p
+              style={{
+                marginTop: 6,
+                padding: 6,
+                border: "1px solid #d97706",
+                color: "#92400e",
+                fontSize: 8,
+              }}
+            >
+              Annual results are incomplete for ranking purposes.
+              The displayed annual average is based on available
+              results and should not be interpreted as a final rank.
+            </p>
+          )}
         </section>
 
         <section className="cum-section cum-bottom">
@@ -676,29 +741,32 @@ export default function CumulativeReportSheet({
               Total days recorded:{" "}
               <strong>{report.attendance?.total ?? 0}</strong>
               <br />
-
               Present: <strong>{report.attendance?.present ?? 0}</strong>
               {" · "}
               Absent: <strong>{report.attendance?.absent ?? 0}</strong>
               {" · "}
               Late: <strong>{report.attendance?.late ?? 0}</strong>
               <br />
-
-              Attendance percentage:{" "}
-              <strong>{report.attendance?.percentage ?? 0}%</strong>
+              Attendance:{" "}
+              <strong>
+                {formatPercentage(report.attendance?.percentage)}
+              </strong>
             </div>
           </div>
 
           <div>
             <h3 className="cum-section-title">
-              5. Teacher&apos;s Comment
+              5. Academic Comment
             </h3>
 
             <div className="cum-comment">
-              The student&apos;s cumulative average is{" "}
-              {formatScore(report.summary.averageScore)}% (
-              {report.summary.remark || "—"}). Continue to build on
-              strengths and address subjects requiring improvement.
+              {report.summary.averageScore == null
+                ? "An annual academic average is not available because no valid subject scores were recorded."
+                : `The student's annual average is ${formatScore(
+                    report.summary.averageScore
+                  )}%, with the grade ${
+                    report.summary.grade || "not assigned"
+                  }. Continued effort and attention to areas requiring improvement are encouraged.`}
             </div>
           </div>
         </section>
@@ -710,9 +778,10 @@ export default function CumulativeReportSheet({
             </h3>
 
             <div className="cum-comment">
-              Academic performance for {report.session.name} has
-              been reviewed. We encourage consistent effort and
-              progress in the next academic session.
+              The cumulative academic record for {report.session.name}
+              {" "}is presented for school review. Promotion or retention
+              should follow the school&apos;s approved policy and
+              authorized decision.
             </div>
           </div>
 
@@ -728,18 +797,10 @@ export default function CumulativeReportSheet({
           </div>
         </section>
 
-        <footer
-          style={{
-            marginTop: 10,
-            borderTop: "1px solid #cbd5e1",
-            paddingTop: 6,
-            fontSize: 7,
-            color: "#64748b",
-            textAlign: "center",
-          }}
-        >
-          Generated by EduTrack · Cumulative scores are calculated
-          from results saved for this session.
+        <footer className="cum-footer">
+          Generated by EduTrack · Missing scores are shown as unavailable,
+          not as zero. Annual ranking depends on the completeness rules
+          configured by the school.
         </footer>
       </article>
     </>
