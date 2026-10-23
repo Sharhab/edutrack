@@ -791,279 +791,146 @@ export async function generateClassReportSheet({
   sessionId,
   termId,
 }) {
-  /* -------------------------------------------------------
-     AUTH
-  ------------------------------------------------------- */
-
-  if (
-    ![
-      "school_admin",
-      "teacher",
-    ].includes(user.role)
-  ) {
-    throw new ApiError(
-      403,
-      "Unauthorized access"
-    );
-  }
-
-  /* -------------------------------------------------------
-     VALIDATE IDS
-  ------------------------------------------------------- */
-
-  if (
-    !mongoose.Types.ObjectId.isValid(
-      classId
-    )
-  ) {
-    throw new ApiError(
-      400,
-      "classId is invalid"
-    );
+  if (!["school_admin", "teacher"].includes(user.role)) {
+    throw new ApiError(403, "Unauthorized access");
   }
 
   if (
-    !mongoose.Types.ObjectId.isValid(
-      sessionId
-    )
+    !mongoose.Types.ObjectId.isValid(classId) ||
+    !mongoose.Types.ObjectId.isValid(sessionId) ||
+    !mongoose.Types.ObjectId.isValid(termId)
   ) {
-    throw new ApiError(
-      400,
-      "sessionId is invalid"
-    );
+    throw new ApiError(400, "Invalid class/session/term ID");
   }
 
-  if (
-    !mongoose.Types.ObjectId.isValid(
-      termId
-    )
-  ) {
-    throw new ApiError(
-      400,
-      "termId is invalid"
-    );
-  }
+  const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+  const classObjectId = new mongoose.Types.ObjectId(classId);
+  const sessionObjectId = new mongoose.Types.ObjectId(sessionId);
+  const termObjectId = new mongoose.Types.ObjectId(termId);
 
-  const schoolId =
-    new mongoose.Types.ObjectId(
-      user.schoolId
-    );
-
-  const classObjectId =
-    new mongoose.Types.ObjectId(
-      classId
-    );
-
-  const sessionObjectId =
-    new mongoose.Types.ObjectId(
-      sessionId
-    );
-
-  const termObjectId =
-    new mongoose.Types.ObjectId(
-      termId
-    );
-
-  /* -------------------------------------------------------
-     CLASS
-  ------------------------------------------------------- */
-
-  const classDoc =
-    await ClassModel.findOne({
-      _id: classObjectId,
-      schoolId,
-    });
+  const classDoc = await ClassModel.findOne({
+    _id: classObjectId,
+    schoolId,
+  });
 
   if (!classDoc) {
-    throw new ApiError(
-      404,
-      "Class not found"
-    );
+    throw new ApiError(404, "Class not found");
   }
 
-  /* -------------------------------------------------------
-     SESSION + TERM
-  ------------------------------------------------------- */
+  const { session, term } = await getValidatedAcademicPeriod({
+    schoolId,
+    sessionId: sessionObjectId,
+    termId: termObjectId,
+  });
 
-  const { session, term } =
-    await getValidatedAcademicPeriod({
-      schoolId,
-      sessionId: sessionObjectId,
-      termId: termObjectId,
+  const students = await Student.find({
+    schoolId,
+    classId: classObjectId,
+    status: "active",
+  }).select("_id firstName lastName admissionNumber");
+
+  const studentIds = students.map((student) => student._id);
+
+  const results = studentIds.length
+    ? await Result.find({
+        schoolId,
+        classId: classObjectId,
+        sessionId: sessionObjectId,
+        termId: termObjectId,
+        studentId: { $in: studentIds },
+      })
+        .populate("subjectId", "name code")
+        .sort({ createdAt: 1 })
+    : [];
+
+  const rows = new Map();
+
+  for (const student of students) {
+    rows.set(String(student._id), {
+      studentId: student._id,
+      admissionNumber: student.admissionNumber || "",
+      firstName: student.firstName || "",
+      lastName: student.lastName || "",
+      subjects: [],
+      totalScore: 0,
+      subjectCount: 0,
+      averageScore: null,
+      position: null,
+      positionLabel: "Not ranked",
+    });
+  }
+
+  for (const result of results) {
+    const row = rows.get(String(result.studentId));
+
+    if (!row) {
+      continue;
+    }
+
+    const recorded = hasEnteredMarks(result);
+    const score = recorded ? getRecordedScore(result) : null;
+
+    row.subjects.push({
+      subjectName: result.subjectId?.name || "",
+      subjectCode: result.subjectId?.code || "",
+      ca1: isValidScore(result.ca1) ? Number(result.ca1) : null,
+      ca2: isValidScore(result.ca2) ? Number(result.ca2) : null,
+      assignment: isValidScore(result.assignment)
+        ? Number(result.assignment)
+        : null,
+      exam: isValidScore(result.exam) ? Number(result.exam) : null,
+      total: score,
+      grade: result.grade || "",
+      remark: result.remark || "",
     });
 
-  /* -------------------------------------------------------
-     STUDENTS
-  ------------------------------------------------------- */
-
-  const students =
-    await Student.find({
-      schoolId,
-      classId: classObjectId,
-      status: "active",
-    }).select(
-      "_id firstName lastName admissionNumber"
-    );
-
-  const studentIds =
-    students.map(
-      (student) => student._id
-    );
-
-  /* -------------------------------------------------------
-     RESULTS
-  ------------------------------------------------------- */
-
-  const results =
-    await Result.find({
-      schoolId,
-      classId: classObjectId,
-      sessionId: sessionObjectId,
-      termId: termObjectId,
-      studentId: {
-        $in: studentIds,
-      },
-    }).populate(
-      "subjectId",
-      "name code"
-    );
-
-  /* -------------------------------------------------------
-     MAP STUDENTS
-  ------------------------------------------------------- */
-
-  const map = new Map();
-
-  students.forEach(
-    (student) => {
-      map.set(
-        String(student._id),
-        {
-          studentId:
-            student._id,
-
-          admissionNumber:
-            student.admissionNumber,
-
-          firstName:
-            student.firstName,
-
-          lastName:
-            student.lastName,
-
-          subjects: [],
-
-          totalScore: 0,
-
-          subjectCount: 0,
-
-          averageScore: 0,
-
-          position: 0,
-
-          positionLabel: "",
-        }
-      );
-    }
-  );
-
-  /* -------------------------------------------------------
-     GROUP RESULTS
-  ------------------------------------------------------- */
-
-  results.forEach(
-    (result) => {
-      const row =
-        map.get(
-          String(
-            result.studentId
-          )
-        );
-
-      if (!row) return;
-
-      row.subjects.push({
-        subjectName:
-          result.subjectId?.name ||
-          "",
-
-        subjectCode:
-          result.subjectId?.code ||
-          "",
-
-        ca1:
-          result.ca1 || 0,
-
-        ca2:
-          result.ca2 || 0,
-
-        assignment:
-          result.assignment || 0,
-
-        exam:
-          result.exam || 0,
-
-        total:
-          result.total || 0,
-
-        grade:
-          result.grade || "",
-
-        remark:
-          result.remark || "",
-      });
-
-      row.totalScore +=
-        result.total || 0;
-
+    if (score !== null) {
+      row.totalScore += score;
       row.subjectCount += 1;
     }
+  }
+
+  const candidates = Array.from(rows.values()).map((row) => ({
+    studentId: row.studentId,
+    studentName: `${row.firstName} ${row.lastName}`.trim(),
+    averageScore:
+      row.subjectCount > 0
+        ? calculateAverage(
+            row.subjects
+              .map((subject) => subject.total)
+              .filter((score) => score !== null)
+          ).average
+        : null,
+    eligible: row.subjectCount > 0,
+  }));
+
+  const ranked = rankStudentsByAverage(candidates);
+  const rankedById = new Map(
+    ranked.map((item) => [String(item.studentId), item])
   );
 
-  /* -------------------------------------------------------
-     AVERAGE
-  ------------------------------------------------------- */
+  const finalStudents = Array.from(rows.values()).map((row) => {
+    const ranking = rankedById.get(String(row.studentId));
 
-  map.forEach(
-    (row) => {
-      row.averageScore =
-        row.subjectCount > 0
-          ? Number(
-              (
-                row.totalScore /
-                row.subjectCount
-              ).toFixed(2)
-            )
-          : 0;
+    return {
+      ...row,
+      averageScore: ranking?.averageScore ?? null,
+      position: ranking?.position ?? null,
+      positionLabel: ranking?.positionLabel || "Not ranked",
+    };
+  });
+
+  finalStudents.sort((a, b) => {
+    if (a.position === null && b.position !== null) return 1;
+    if (a.position !== null && b.position === null) return -1;
+    if (a.position !== b.position) {
+      return (a.position ?? Infinity) - (b.position ?? Infinity);
     }
-  );
 
-  /* -------------------------------------------------------
-     RANKING
-  ------------------------------------------------------- */
-
-  const ranked =
-    Array.from(
-      map.values()
-    ).sort(
-      (a, b) =>
-        b.totalScore -
-        a.totalScore
+    return `${a.lastName} ${a.firstName}`.localeCompare(
+      `${b.lastName} ${b.firstName}`
     );
-
-  ranked.forEach(
-    (student, index) => {
-      student.position =
-        index + 1;
-
-      student.positionLabel =
-        ordinal(index + 1);
-    }
-  );
-
-  /* -------------------------------------------------------
-     RESPONSE
-  ------------------------------------------------------- */
+  });
 
   return {
     classReport: {
@@ -1072,21 +939,16 @@ export async function generateClassReportSheet({
         name: classDoc.name,
         level: classDoc.level,
       },
-
       session: {
         _id: session._id,
         name: session.name,
       },
-
       term: {
         _id: term._id,
         name: term.name,
       },
-
-      totalStudents:
-        ranked.length,
-
-      students: ranked,
+      totalStudents: finalStudents.length,
+      students: finalStudents,
     },
   };
 }
@@ -1270,32 +1132,6 @@ export async function generateClassReportCardsBundle({
   /* -------------------------------------------------------
      CLASS RANKING SUMMARY
   ------------------------------------------------------- */
-
-  const ranked =
-    reports
-      .filter(
-        (report) =>
-          !report.error
-      )
-      .sort(
-        (a, b) =>
-          (b.summary?.totalScore ||
-            0) -
-          (a.summary?.totalScore ||
-            0)
-      );
-
-  ranked.forEach(
-    (report, index) => {
-      if (report.summary) {
-        report.summary.position =
-          index + 1;
-
-        report.summary.positionLabel =
-          ordinal(index + 1);
-      }
-    }
-  );
 
   /* -------------------------------------------------------
      RESPONSE
