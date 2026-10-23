@@ -232,6 +232,49 @@ function pickComment(comments, seed = 0) {
   return comments[Math.abs(seed) % comments.length];
 }
 
+function getSubjectPerformanceCategory(score, gradeBands = []) {
+  if (!Array.isArray(gradeBands) || gradeBands.length === 0) {
+    if (score >= 80) return "strong";
+    if (score < 50) return "weak";
+    return "average";
+  }
+
+  const sortedBands = [...gradeBands].sort(
+    (a, b) => a.minScore - b.minScore
+  );
+
+  const matchingBand = sortedBands.find(
+    (band, index) =>
+      score >= band.minScore &&
+      (
+        score < band.maxScore ||
+        (
+          index === sortedBands.length - 1 &&
+          score <= band.maxScore
+        )
+      )
+  );
+
+  if (!matchingBand) return "average";
+
+  const remark = String(matchingBand.remark || "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    ["excellent", "outstanding", "very good", "good", "credit"].includes(remark)
+  ) {
+    return "strong";
+  }
+
+  if (
+    ["fail", "needs improvement", "poor", "needs support"].includes(remark)
+  ) {
+    return "weak";
+  }
+
+  return "average";
+}
 /* =========================================================
    BUILD PERFORMANCE COMMENT
 ========================================================= */
@@ -277,26 +320,26 @@ function buildReportCardComments({
   ===================================================== */
 
   const strongSubjects = results
-    .filter(
-      (result) =>
-        Number(result.total || 0) >= 80
-    )
-    .map(
-      (result) =>
-        result.subjectId?.name
-    )
-    .filter(Boolean);
+  .filter(
+    (result) =>
+      getSubjectPerformanceCategory(
+        Number(result.total || 0),
+        gradeBands
+      ) === "strong"
+  )
+  .map((result) => result.subjectId?.name)
+  .filter(Boolean);
 
-  const weakSubjects = results
-    .filter(
-      (result) =>
-        Number(result.total || 0) < 50
-    )
-    .map(
-      (result) =>
-        result.subjectId?.name
-    )
-    .filter(Boolean);
+const weakSubjects = results
+  .filter(
+    (result) =>
+      getSubjectPerformanceCategory(
+        Number(result.total || 0),
+        gradeBands
+      ) === "weak"
+  )
+  .map((result) => result.subjectId?.name)
+  .filter(Boolean);
 
   /* =====================================================
      ATTENDANCE
