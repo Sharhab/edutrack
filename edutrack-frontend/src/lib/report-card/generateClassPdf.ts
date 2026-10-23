@@ -281,8 +281,9 @@ function renderStudentsTable({
 
         student.averageScore,
 
-        getPerformanceRemark(
-          student.averageScore
+        student.averageScore === null
+  ? "Not ranked"
+  : getPerformanceRemark(student.averageScore),
         ),
       ]
     );
