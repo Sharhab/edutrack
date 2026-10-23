@@ -40,18 +40,17 @@ const classAverage =
     highestAverage: Number(highestAverage.toFixed(2)),
     lowestAverage: Number(lowestAverage.toFixed(2)),
     classAverage: Number(classAverage.toFixed(2)),
-    excellentCount: validStudents.filter(
-      (student) => student.averageScore >= 75
-    ).length,
-    passCount: validStudents.filter(
-      (student) => student.averageScore >= 50
-    ).length,
-    failCount: validStudents.filter(
-      (student) => student.averageScore < 50
-    ).length,
-  };
-}
+  excellentCount: validStudents.filter(
+  (student) => student.averageScore !== null && student.averageScore >= 75
+).length,
 
+passCount: validStudents.filter(
+  (student) => student.averageScore !== null && student.averageScore >= 50
+).length,
+
+failCount: validStudents.filter(
+  (student) => student.averageScore !== null && student.averageScore < 50
+).length,
 
 /* =========================================
    PERFORMANCE REMARK (FOR PDF)
