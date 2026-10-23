@@ -20,13 +20,11 @@ export type ReportCardSubject = {
   subjectName: string;
   subjectCode: string;
 
-  ca1: number;
-  ca2: number;
-  assignment: number;
-  exam: number;
-
-  total: number;
-
+  ca1: number | null;
+ca2: number | null;
+assignment: number | null;
+exam: number | null;
+total: number | null;
   grade: string;
   remark: string;
 };
