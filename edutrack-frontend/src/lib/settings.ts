@@ -93,3 +93,43 @@ export async function uploadSchoolLogo(
 
   return data.data;
 }
+
+
+export async function uploadPrincipalSignature(
+  file: File
+): Promise<{ principalSignature: string }> {
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const { data } = await api.post(
+    "/settings/school-profile/principal-signature",
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+
+  return data.data;
+}
+
+export async function uploadSchoolStamp(
+  file: File
+): Promise<{ schoolStamp: string }> {
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const { data } = await api.post(
+    "/settings/school-profile/stamp",
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+
+  return data.data;
+}
+
