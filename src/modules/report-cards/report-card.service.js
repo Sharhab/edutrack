@@ -295,7 +295,6 @@ function getSubjectPerformanceCategory(score, gradeBands = []) {
 /* =========================================================
    BUILD PERFORMANCE COMMENT
 ========================================================= */
-
 function buildReportCardComments({
   averageScore = 0,
   results = [],
@@ -323,6 +322,7 @@ function buildReportCardComments({
   // seed, teacherComment, principalComment,
   // subject performance, attendance, and final return.
 }
+
   // Keep the rest of the existing function unchanged.
 
   /*
