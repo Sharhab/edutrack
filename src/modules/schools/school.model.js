@@ -70,7 +70,17 @@ const schoolSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    principalSignature: {
+  type: String,
+  default: "",
+  trim: true,
+},
 
+schoolStamp: {
+  type: String,
+  default: "",
+  trim: true,
+},
     fullDomain: {
       type: String,
       default: "",
