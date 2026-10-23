@@ -24,6 +24,8 @@ type Props = {
   schoolMotto?: string;
   schoolLogo?: string;
   brandColor?: string;
+  principalSignature?: string;
+schoolStamp?: string;
 };
 
 const BACKEND_URL = "https://edutrack-dpui.onrender.com";
@@ -46,6 +48,8 @@ export default function ReportCardTemplate({
   schoolEmail,
   schoolMotto,
   schoolLogo,
+  principalSignature,
+  schoolStamp,
   brandColor = "#0f766e",
 }: Props) {
   const {
