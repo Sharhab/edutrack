@@ -1,3 +1,4 @@
+
 export interface SchoolProfile {
   _id?: string;
 
@@ -5,18 +6,18 @@ export interface SchoolProfile {
   email: string;
   phone: string;
   address: string;
-
   principalName: string;
+
   motto?: string;
-principalSignature?: string;
-schoolStamp?: string;
+  principalSignature?: string;
+  schoolStamp?: string;
+
   currentSession: string;
   currentTerm: string;
 
   logoUrl?: string;
   themeColor?: string;
 
-  // Branding / tenant fields
   domain?: string;
   slug?: string;
   fullDomain?: string;
@@ -35,8 +36,11 @@ export interface SchoolProfileFormValues {
   email: string;
   phone: string;
   address: string;
-
   principalName: string;
+
+  motto: string;
+  principalSignature?: string;
+  schoolStamp?: string;
 
   currentSession: string;
   currentTerm: string;
@@ -44,7 +48,9 @@ export interface SchoolProfileFormValues {
   logoFile?: File;
   logoUrl?: string;
 
-  themeColor: string;
+  principalSignatureFile?: File;
+  schoolStampFile?: File;
 
+  themeColor: string;
   domain?: string;
 }
