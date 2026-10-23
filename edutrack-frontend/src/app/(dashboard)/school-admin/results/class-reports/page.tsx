@@ -286,8 +286,7 @@ export default function ClassReportsPage() {
           </p>
 
           <h2 className="mt-1 text-xl font-bold text-white">
-            {topStudents?.[0]
-              ?.averageScore || 0}
+            {topStudents[0]?.averageScore ?? "—"}
           </h2>
         </div>
       </div>
