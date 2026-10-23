@@ -318,17 +318,6 @@ function buildReportCardComments({
   const comments =
     performanceComments[performanceLevel];
 
-  // Keep the rest of your existing function here:
-  // seed, teacherComment, principalComment,
-  // subject performance, attendance, and final return.
-}
-
-  // Keep the rest of the existing function unchanged.
-
-  /*
-   * Use the student ID to consistently select
-   * different comments for different students.
-   */
   const seed = String(studentId)
     .split("")
     .reduce(
