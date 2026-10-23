@@ -1,5 +1,4 @@
 // modules/report-card/report-card.service.js
-
 import mongoose from "mongoose";
 import {
   calculateAverage,
@@ -48,16 +47,7 @@ function getRecordedScore(result) {
   return Number.isFinite(total) ? total : null;
 }
 
-function getRankableAverage(totalScore, subjectCount) {
-  if (!subjectCount) return null;
 
-  return calculateAverage(
-    Array.from(
-      { length: subjectCount },
-      () => totalScore / subjectCount
-    )
-  ).average;
-}
 /* =========================================================
    ACADEMIC PERIOD VALIDATION
    A term must belong to the selected session and school.
@@ -316,9 +306,23 @@ function buildReportCardComments({
   const performanceLevel =
     getPerformanceLevel(averageScore, gradeBands);
 
+  if (!results.length) {
+    return {
+      performanceLevel: "Not Available",
+      classTeacher:
+        "Academic performance is not yet available.",
+      principal:
+        "A report comment will be provided when results are available.",
+    };
+  }
+
   const comments =
     performanceComments[performanceLevel];
 
+  // Keep the rest of your existing function here:
+  // seed, teacherComment, principalComment,
+  // subject performance, attendance, and final return.
+}
   // Keep the rest of the existing function unchanged.
 
   /*
@@ -803,42 +807,6 @@ const positionLabel = studentRank?.positionLabel || "Not ranked";
   /* -------------------------------------------------------
      RANKING MAP
   ------------------------------------------------------- */
-
-  const scoreMap = new Map();
-
-  classResults.forEach(
-    (result) => {
-      const key =
-        String(result.studentId);
-
-      scoreMap.set(
-        key,
-        (scoreMap.get(key) || 0) +
-          (result.total || 0)
-      );
-    }
-  );
-
-  const ranked =
-    classmateIds
-      .map((id) => ({
-        studentId: id,
-        total:
-          scoreMap.get(
-            String(id)
-          ) || 0,
-      }))
-      .sort(
-        (a, b) =>
-          b.total - a.total
-      );
-
-  const position =
-    computePosition(
-      ranked,
-      studentObjectId
-    );
-
   /* -------------------------------------------------------
      FINAL RESPONSE
   ------------------------------------------------------- */
