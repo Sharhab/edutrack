@@ -264,30 +264,19 @@ function renderStudentsTable({
   classReport,
   primaryColor,
 }: any) {
-  const body =
-    classReport.students.map(
-      (
-        student: RankingStudent
-      ) => [
-        student.position,
-
-        student.admissionNumber,
-
-        `${student.firstName} ${student.lastName}`,
-
-        student.subjects.length,
-
-        student.totalScore,
-
-        student.averageScore,
-
-        student.averageScore === null
-  ? "Not ranked"
-  : getPerformanceRemark(student.averageScore),
-        ),
-      ]
-    );
-
+ const body = classReport.students.map(
+  (student: RankingStudent) => [
+    student.positionLabel,
+    student.admissionNumber,
+    `${student.firstName} ${student.lastName}`,
+    student.subjects.length,
+    student.totalScore ?? "—",
+    student.averageScore ?? "—",
+    student.averageScore === null
+      ? "Not ranked"
+      : getPerformanceRemark(student.averageScore),
+  ]
+);
   autoTable(pdf, {
     startY: 82,
 
