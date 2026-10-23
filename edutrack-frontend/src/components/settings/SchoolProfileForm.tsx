@@ -45,7 +45,8 @@ export default function SchoolProfileForm({
   submitting = false,
 }: SchoolProfileFormProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
+ const signatureInputRef = useRef<HTMLInputElement | null>(null);
+const stampInputRef = useRef<HTMLInputElement | null>(null);
   const [sessions, setSessions] = useState<SessionOption[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState("");
@@ -55,7 +56,8 @@ export default function SchoolProfileForm({
   const [termsError, setTermsError] = useState("");
 
   const [previewUrl, setPreviewUrl] = useState("");
-
+  const [signaturePreview, setSignaturePreview] = useState("");
+const [stampPreview, setStampPreview] = useState("");
   // Load academic sessions.
   async function loadSessions() {
     try {
@@ -179,6 +181,30 @@ export default function SchoolProfileForm({
     };
   }, [values.logoFile, values.logoUrl]);
 
+  useEffect(() => {
+  if (!values.principalSignatureFile) {
+    setSignaturePreview(values.principalSignature || "");
+    return;
+  }
+
+  const url = URL.createObjectURL(values.principalSignatureFile);
+  setSignaturePreview(url);
+
+  return () => URL.revokeObjectURL(url);
+}, [values.principalSignatureFile, values.principalSignature]);
+
+useEffect(() => {
+  if (!values.schoolStampFile) {
+    setStampPreview(values.schoolStamp || "");
+    return;
+  }
+
+  const url = URL.createObjectURL(values.schoolStampFile);
+  setStampPreview(url);
+
+  return () => URL.revokeObjectURL(url);
+}, [values.schoolStampFile, values.schoolStamp]);
+
   function handleLogoChange(file?: File) {
     if (!file) return;
 
@@ -285,6 +311,15 @@ export default function SchoolProfileForm({
             onChange={(value) => onChange("address", value)}
           />
         </div>
+        <div className="mt-4">
+  <FormInput
+    label="School Motto"
+    name="motto"
+    value={values.motto || ""}
+    placeholder="Enter your school's motto"
+    onChange={(value) => onChange("motto", value)}
+  />
+</div>
       </div>
 
       {/* ACADEMIC DEFAULTS */}
@@ -442,6 +477,97 @@ export default function SchoolProfileForm({
             </button>
           ) : null}
         </div>
+
+        
+{/* PRINCIPAL SIGNATURE */}
+<div className="mb-6">
+  <label className="mb-3 block text-sm text-slate-300">
+    Principal's Signature
+  </label>
+
+  <div className="flex flex-wrap items-center gap-4">
+    {signaturePreview ? (
+      <img
+        src={signaturePreview}
+        alt="Principal signature preview"
+        className="h-20 w-40 rounded-xl border border-white/10 bg-white p-2 object-contain"
+      />
+    ) : (
+      <div className="flex h-20 w-40 items-center justify-center rounded-xl border border-dashed border-white/20 text-sm text-slate-500">
+        No signature
+      </div>
+    )}
+
+    <button
+      type="button"
+      onClick={() => signatureInputRef.current?.click()}
+      className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+    >
+      Upload Signature
+    </button>
+  </div>
+
+  <input
+    ref={signatureInputRef}
+    type="file"
+    accept="image/png,image/jpeg,image/webp"
+    hidden
+    onChange={(event) => {
+      const file = event.target.files?.[0];
+      if (file) onChange("principalSignatureFile", file);
+      event.currentTarget.value = "";
+    }}
+  />
+
+  <p className="mt-2 text-xs text-slate-400">
+    Upload a clear image of the principal's signature.
+  </p>
+</div>
+
+{/* SCHOOL STAMP */}
+<div className="mb-6">
+  <label className="mb-3 block text-sm text-slate-300">
+    Official School Stamp
+  </label>
+
+  <div className="flex flex-wrap items-center gap-4">
+    {stampPreview ? (
+      <img
+        src={stampPreview}
+        alt="School stamp preview"
+        className="h-24 w-24 rounded-xl border border-white/10 bg-white p-2 object-contain"
+      />
+    ) : (
+      <div className="flex h-24 w-24 items-center justify-center rounded-xl border border-dashed border-white/20 text-center text-xs text-slate-500">
+        No stamp
+      </div>
+    )}
+
+    <button
+      type="button"
+      onClick={() => stampInputRef.current?.click()}
+      className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+    >
+      Upload Stamp
+    </button>
+  </div>
+
+  <input
+    ref={stampInputRef}
+    type="file"
+    accept="image/png,image/jpeg,image/webp"
+    hidden
+    onChange={(event) => {
+      const file = event.target.files?.[0];
+      if (file) onChange("schoolStampFile", file);
+      event.currentTarget.value = "";
+    }}
+  />
+
+  <p className="mt-2 text-xs text-slate-400">
+    Upload your school's official stamp image.
+  </p>
+</div>
 
         {/* THEME COLORS */}
         <div>
