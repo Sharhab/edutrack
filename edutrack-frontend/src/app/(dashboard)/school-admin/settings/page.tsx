@@ -95,6 +95,11 @@ export default function SchoolAdminSettingsPage() {
         logoUrl: profile.logoUrl || "",
         logoFile: undefined,
         themeColor: profile.themeColor || "#06b6d4",
+        motto: profile.motto || "",
+       principalSignature: profile.principalSignature || "",
+       schoolStamp: profile.schoolStamp || "",
+       principalSignatureFile: undefined,
+       schoolStampFile: undefined,
       });
 
       patchTenant(mapSchoolProfileToTenantPatch(profile));
@@ -353,13 +358,22 @@ export default function SchoolAdminSettingsPage() {
         logoUrl: form.logoUrl,
         logoFile: undefined,
         themeColor: form.themeColor,
+        motto: form.motto,
       };
 
       let updated = await updateSchoolProfile(profilePayload);
 
       if (form.logoFile instanceof File) {
         const logoResult = await uploadSchoolLogo(form.logoFile);
+      if (form.principalSignatureFile instanceof File) {
+  await uploadPrincipalSignature(form.principalSignatureFile);
+}
 
+if (form.schoolStampFile instanceof File) {
+  await uploadSchoolStamp(form.schoolStampFile);
+}
+
+// Fetch the final saved profile after all uploads.
         updated = await getSchoolProfile();
 
         if (!updated.logoUrl && logoResult?.logoUrl) {
@@ -381,6 +395,11 @@ export default function SchoolAdminSettingsPage() {
         logoUrl: updated.logoUrl || "",
         logoFile: undefined,
         themeColor: updated.themeColor || "#06b6d4",
+        motto: updated.motto || "",
+principalSignature: updated.principalSignature || "",
+schoolStamp: updated.schoolStamp || "",
+principalSignatureFile: undefined,
+schoolStampFile: undefined,
       };
 
       setForm(nextForm);
