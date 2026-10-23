@@ -10,4 +10,5 @@ export const updateSchoolProfileSchema = z.object({
   currentTerm: z.string().optional(),
   themeColor: z.string().optional(),
   domain: z.string().optional(),
+  motto: z.string().max(200).optional(),
 });
