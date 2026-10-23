@@ -123,18 +123,13 @@ export type StudentReportCardResponse = {
 
 export type RankingStudent = {
   studentId: string;
-
   admissionNumber: string;
-
   firstName: string;
   lastName: string;
-
   totalScore: number;
-  averageScore: number;
-
-  position: number;
+  averageScore: number | null;
+  position: number | null;
   positionLabel: string;
-
   subjects: ReportCardSubject[];
 };
 
