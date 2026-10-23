@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 import { Student } from "../students/student.model.js";
@@ -10,35 +11,63 @@ import { ClassModel } from "../classes/class.model.js";
 import { ensureParentOwnsStudent } from "../parents/parent.guard.js";
 import { ApiError } from "../../utils/apiError.js";
 import { getSchoolGradeBands } from "../results/grading-scale.service.js";
+
 import {
   calculateAverage,
   calculateClassAverageStatistics,
   isValidScore,
   rankStudentsByAverage,
 } from "./report-card-calculations.js";
+
 /* =========================================
    HELPERS
 ========================================= */
 
-function ordinal(n) {
-  const suffix = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-
-  return `${n}${suffix[(v - 20) % 10] || suffix[v] || suffix[0]}`;
+/**
+ * Determine whether an assessment result has any entered marks.
+ * Explicit zero is a valid mark; blank/null is not.
+ */
+function hasEnteredMarks(result = {}) {
+  return [
+    result.ca1,
+    result.ca2,
+    result.assignment,
+    result.exam,
+  ].some(isValidScore);
 }
 
-function hasEnteredMarks(result) {
-  return [result.ca1, result.ca2, result.assignment, result.exam]
-    .some(isValidScore);
+/**
+ * Determine whether the annual record has at least one valid
+ * result in every configured term.
+ *
+ * This is a minimum completeness check, not a substitute for
+ * verifying every required subject against the school's curriculum.
+ */
+function hasResultsForEveryTerm(studentTermScores, terms) {
+  if (!terms.length) return false;
+
+  return terms.every((term) => {
+    const scores = studentTermScores.get(String(term._id));
+
+    return Array.isArray(scores) && scores.length > 0;
+  });
 }
 
+/**
+ * Use the school's grading scale where configured.
+ * The fallback retains this service's previous thresholds.
+ */
 function gradeForAverage(value, bands = []) {
-  // Preserve existing rules if the school has no saved scale.
+  if (!isValidScore(value)) {
+    return { grade: "", remark: "" };
+  }
+
   if (!Array.isArray(bands) || bands.length === 0) {
     if (value >= 75) return { grade: "A", remark: "Excellent" };
     if (value >= 60) return { grade: "B", remark: "Good" };
     if (value >= 50) return { grade: "C", remark: "Fair" };
     if (value >= 40) return { grade: "D", remark: "Pass" };
+
     return { grade: "F", remark: "Fail" };
   }
 
@@ -68,9 +97,18 @@ function gradeForAverage(value, bands = []) {
 }
 
 function summarizeAttendance(records = []) {
-  const present = records.filter((x) => x.status === "present").length;
-  const absent = records.filter((x) => x.status === "absent").length;
-  const late = records.filter((x) => x.status === "late").length;
+  const present = records.filter(
+    (record) => record.status === "present"
+  ).length;
+
+  const absent = records.filter(
+    (record) => record.status === "absent"
+  ).length;
+
+  const late = records.filter(
+    (record) => record.status === "late"
+  ).length;
+
   const total = records.length;
 
   return {
@@ -78,7 +116,73 @@ function summarizeAttendance(records = []) {
     present,
     absent,
     late,
-    percentage: total ? Math.round((present / total) * 100) : 0,
+    percentage: total
+      ? Math.round((present / total) * 100)
+      : 0,
+  };
+}
+
+/**
+ * Convert a student's subject/term records into a comparable
+ * annual average.
+ *
+ * Each subject's average is calculated across its available terms.
+ * The student's annual average is then the average of those
+ * subject averages, so a term with more recorded subjects does
+ * not automatically receive extra weight.
+ */
+function calculateStudentAnnualPerformance(resultDocs, terms) {
+  const subjectScores = new Map();
+  const termScores = new Map();
+
+  for (const term of terms) {
+    termScores.set(String(term._id), []);
+  }
+
+  for (const result of resultDocs) {
+    if (!hasEnteredMarks(result)) continue;
+
+    const subjectId = String(
+      result.subjectId?._id || result.subjectId
+    );
+
+    const termId = String(result.termId);
+    const score = Number(result.total);
+
+    if (!subjectScores.has(subjectId)) {
+      subjectScores.set(subjectId, new Map());
+    }
+
+    subjectScores.get(subjectId).set(termId, score);
+
+    if (termScores.has(termId)) {
+      termScores.get(termId).push(score);
+    }
+  }
+
+  const subjectAverages = [];
+
+  for (const scoresByTerm of subjectScores.values()) {
+    const average = calculateAverage(
+      [...scoresByTerm.values()]
+    );
+
+    if (average.average !== null) {
+      subjectAverages.push(average.average);
+    }
+  }
+
+  const annualAverage = calculateAverage(subjectAverages);
+
+  return {
+    averageScore: annualAverage.average,
+    subjectsCount: subjectAverages.length,
+    subjectAverages,
+    termScores,
+    completeForRanking: hasResultsForEveryTerm(
+      termScores,
+      terms
+    ),
   };
 }
 
@@ -111,7 +215,6 @@ export async function generateCumulativeStudentReport({
   const studentObjectId = new mongoose.Types.ObjectId(studentId);
   const sessionObjectId = new mongoose.Types.ObjectId(sessionId);
 
-  // Load the grading scale configured by this school.
   const gradeBands = await getSchoolGradeBands(schoolId);
 
   const [student, session] = await Promise.all([
@@ -139,7 +242,7 @@ export async function generateCumulativeStudentReport({
   }
 
   /* =========================================
-     GET ALL TERMS IN THE SELECTED SESSION
+     LOAD TERMS IN THE SELECTED SESSION
   ========================================= */
 
   const terms = await Term.find({
@@ -163,7 +266,7 @@ export async function generateCumulativeStudentReport({
   const termIds = terms.map((term) => term._id);
 
   /* =========================================
-     GET RESULTS AND ATTENDANCE
+     LOAD STUDENT RESULTS AND ATTENDANCE
   ========================================= */
 
   const [resultDocs, attendanceDocs] = await Promise.all([
@@ -212,41 +315,38 @@ export async function generateCumulativeStudentReport({
 
     const row = resultBySubject.get(subjectId);
     const termKey = String(doc.termId);
+    const validResult = hasEnteredMarks(doc);
 
-   const validResult = hasEnteredMarks(doc);
+    row.terms[termKey] = {
+      score: validResult ? Number(doc.total) : null,
+      grade: validResult ? doc.grade || "" : "",
+      remark: validResult ? doc.remark || "" : "",
+      hasResult: validResult,
+    };
 
-row.terms[termKey] = {
-  score: validResult ? Number(doc.total) : null,
-  grade: validResult ? doc.grade || "" : "",
-  remark: validResult ? doc.remark || "" : "",
-  hasResult: validResult,
-};
-
-if (validResult) {
-  row.cumulativeTotal += Number(doc.total);
-  row.termsWithResults += 1;
-}
+    if (validResult) {
+      row.cumulativeTotal += Number(doc.total);
+      row.termsWithResults += 1;
+    }
+  }
 
   /* =========================================
-     CUMULATIVE SUBJECT AVERAGES
+     CALCULATE ANNUAL SUBJECT AVERAGES
   ========================================= */
 
   const subjects = [...resultBySubject.values()]
-    .sort((a, b) => a.subjectName.localeCompare(b.subjectName))
+    .sort((a, b) =>
+      a.subjectName.localeCompare(b.subjectName)
+    )
     .map((row) => {
       const availableScores = terms
         .map((term) => row.terms[String(term._id)]?.score)
-        .filter((score) => typeof score === "number");
+        .filter(isValidScore);
 
       const averageResult = calculateAverage(availableScores);
-const average = averageResult.average;
+      const average = averageResult.average;
 
-const { grade, remark } =
-  average === null
-    ? { grade: "", remark: "" }
-    : gradeForAverage(average, gradeBands);
-
-      const { grade, remark } = gradeForAverage(
+      const gradeResult = gradeForAverage(
         average,
         gradeBands
       );
@@ -254,8 +354,8 @@ const { grade, remark } =
       return {
         ...row,
         average,
-        cumulativeGrade: grade,
-        cumulativeRemark: remark,
+        cumulativeGrade: gradeResult.grade,
+        cumulativeRemark: gradeResult.remark,
       };
     });
 
@@ -265,26 +365,19 @@ const { grade, remark } =
 
   const termSummaries = terms.map((term) => {
     const scores = subjects
-      .map(
-        (subject) =>
-          subject.terms[String(term._id)]?.score
+      .map((subject) =>
+        subject.terms[String(term._id)]?.score
       )
-      .filter((score) => typeof score === "number");
+      .filter(isValidScore);
 
-   const averageResult = calculateAverage(scores);
+    const averageResult = calculateAverage(scores);
+    const totalScore = averageResult.count
+      ? averageResult.total
+      : null;
 
-const totalScore = averageResult.count
-  ? averageResult.total
-  : null;
+    const averageScore = averageResult.average;
 
-const averageScore = averageResult.average;
-
-const grade =
-  averageScore === null
-    ? { grade: "", remark: "" }
-    : gradeForAverage(averageScore, gradeBands);
-
-    const grade = gradeForAverage(
+    const gradeResult = gradeForAverage(
       averageScore,
       gradeBands
     );
@@ -302,110 +395,115 @@ const grade =
       order: term.order,
       totalScore,
       averageScore,
-      grade: grade.grade,
-      remark: grade.remark,
-      subjectsCount: scores.length,
+      grade: gradeResult.grade,
+      remark: gradeResult.remark,
+      subjectsCount: averageResult.count,
       attendance,
     };
   });
 
   /* =========================================
-     OVERALL CUMULATIVE SUMMARY
+     ANNUAL SUMMARY
   ========================================= */
 
- const annualScores = subjects
-  .map((subject) => subject.average)
-  .filter(isValidScore);
+  const annualSubjectAverages = subjects
+    .map((subject) => subject.average)
+    .filter(isValidScore);
 
-const annualAverageResult = calculateAverage(annualScores);
+  const annualAverageResult = calculateAverage(
+    annualSubjectAverages
+  );
 
-const cumulativeAverage = annualAverageResult.average;
+  const cumulativeAverage = annualAverageResult.average;
+  const cumulativeScores = annualAverageResult.count
+    ? annualAverageResult.total
+    : null;
 
-const cumulativeScores = annualAverageResult.count
-  ? annualAverageResult.total
-  : null;
+  const cumulativeGrade = gradeForAverage(
+    cumulativeAverage,
+    gradeBands
+  );
 
-const cumulativeGrade =
-  cumulativeAverage === null
-    ? { grade: "", remark: "" }
-    : gradeForAverage(cumulativeAverage, gradeBands);
+  const currentStudentPerformance =
+    calculateStudentAnnualPerformance(resultDocs, terms);
 
   /* =========================================
-     CLASS RANKING
+     LOAD CLASSMATES AND THEIR ANNUAL RESULTS
   ========================================= */
 
   const classmates = await Student.find({
-  schoolId,
-  classId: student.classId._id,
-  status: "active",
-})
-  .select("_id firstName lastName admissionNumber")
-  .lean();
+    schoolId,
+    classId: student.classId._id,
+    status: "active",
+  })
+    .select("_id firstName lastName admissionNumber")
+    .lean();
 
-const classStudentIds = classmates.map(
-  (item) => item._id
-);
+  const classStudentIds = classmates.map(
+    (classmate) => classmate._id
+  );
 
-const classResultDocs = await Result.find({
-  schoolId,
-  classId: student.classId._id,
-  sessionId: sessionObjectId,
-  termId: { $in: termIds },
-  studentId: { $in: classStudentIds },
-})
-  .select(
-    "studentId subjectId total termId ca1 ca2 assignment exam"
-  )
-  .lean();
+  const classResultDocs = await Result.find({
+    schoolId,
+    classId: student.classId._id,
+    sessionId: sessionObjectId,
+    termId: { $in: termIds },
+    studentId: { $in: classStudentIds },
+  })
+    .populate("subjectId", "name code")
+    .lean();
 
-const scoresByStudent = new Map();
+  const resultsByStudent = new Map();
 
-for (const result of classResultDocs) {
-  // Skip records with no entered assessment marks.
-  // Explicit zero marks remain valid.
-  if (!hasEnteredMarks(result)) continue;
+  for (const result of classResultDocs) {
+    const key = String(result.studentId);
 
-  const key = String(result.studentId);
+    if (!resultsByStudent.has(key)) {
+      resultsByStudent.set(key, []);
+    }
 
-  if (!scoresByStudent.has(key)) {
-    scoresByStudent.set(key, []);
+    resultsByStudent.get(key).push(result);
   }
 
-  scoresByStudent.get(key).push(Number(result.total));
-}
+  const rankingCandidates = classmates.map((classmate) => {
+    const studentResults =
+      resultsByStudent.get(String(classmate._id)) || [];
 
-const rankingCandidates = classmates.map((classmate) => {
-  const scores =
-    scoresByStudent.get(String(classmate._id)) || [];
+    const performance = calculateStudentAnnualPerformance(
+      studentResults,
+      terms
+    );
 
-  const averageResult = calculateAverage(scores);
+    return {
+      studentId: String(classmate._id),
+      studentName:
+        `${classmate.firstName || ""} ${classmate.lastName || ""}`.trim(),
+      averageScore: performance.averageScore,
+      subjectsCount: performance.subjectsCount,
+      eligible: performance.completeForRanking &&
+        performance.averageScore !== null,
+    };
+  });
 
-  return {
-    studentId: String(classmate._id),
-    studentName:
-      `${classmate.firstName || ""} ${classmate.lastName || ""}`.trim(),
-    averageScore: averageResult.average,
-    eligible: averageResult.average !== null,
-  };
-});
+  const ranked = rankStudentsByAverage(rankingCandidates);
 
-const ranked = rankStudentsByAverage(rankingCandidates);
+  const currentStudentRanking = ranked.find(
+    (item) =>
+      item.studentId === String(studentObjectId)
+  );
 
-const currentStudentRanking = ranked.find(
-  (item) =>
-    item.studentId === String(studentObjectId)
-);
+  const position = currentStudentRanking?.position ?? null;
+  const positionLabel =
+    currentStudentRanking?.positionLabel || "Not ranked";
 
-const position = currentStudentRanking?.position ?? null;
+  const classStatistics = calculateClassAverageStatistics(
+    rankingCandidates.filter((candidate) => candidate.eligible)
+  );
 
-const classStatistics =
-  calculateClassAverageStatistics(rankingCandidates);
+  /* =========================================
+     FINAL REPORT RESPONSE
+  ========================================= */
 
-const attendance = summarizeAttendance(attendanceDocs);
-
-/* =========================================
-   FINAL REPORT RESPONSE
-========================================= */
   return {
     report: {
       student: {
@@ -414,7 +512,6 @@ const attendance = summarizeAttendance(attendanceDocs);
         firstName: student.firstName || "",
         lastName: student.lastName || "",
         gender: student.gender || "",
-        photo: student.photo || "",
         className: student.classId.name || "",
         classLevel: student.classId.level || "",
       },
@@ -445,12 +542,20 @@ const attendance = summarizeAttendance(attendanceDocs);
         grade: cumulativeGrade.grade,
         remark: cumulativeGrade.remark,
         position,
-        positionLabel: position ? ordinal(position) : "—",
+        positionLabel,
         classSize: classmates.length,
-        subjectsCount: subjects.length,
+        subjectsCount: subjects.filter(
+          (subject) => subject.termsWithResults > 0
+        ).length,
+        highestAverage: classStatistics.highestAverage,
+        lowestAverage: classStatistics.lowestAverage,
+        classAverage: classStatistics.classAverage,
+        eligibleStudents: classStatistics.eligibleStudents,
+        completeForRanking:
+          currentStudentPerformance.completeForRanking,
       },
 
-      attendance,
+      attendance: summarizeAttendance(attendanceDocs),
       generatedAt: new Date().toISOString(),
     },
   };
@@ -480,19 +585,21 @@ export async function generateCumulativeClassReport({
   const classObjectId = new mongoose.Types.ObjectId(classId);
   const sessionObjectId = new mongoose.Types.ObjectId(sessionId);
 
-  const classDoc = await ClassModel.findOne({
-    _id: classObjectId,
-    schoolId,
-  });
+  const [classDoc, session] = await Promise.all([
+    ClassModel.findOne({
+      _id: classObjectId,
+      schoolId,
+    }),
+
+    Session.findOne({
+      _id: sessionObjectId,
+      schoolId,
+    }),
+  ]);
 
   if (!classDoc) {
     throw new ApiError(404, "Class not found");
   }
-
-  const session = await Session.findOne({
-    _id: sessionObjectId,
-    schoolId,
-  });
 
   if (!session) {
     throw new ApiError(404, "Session not found");
@@ -510,17 +617,20 @@ export async function generateCumulativeClassReport({
 
   for (const student of students) {
     try {
-      const item = await generateCumulativeStudentReport({
+      const result = await generateCumulativeStudentReport({
         user,
         studentId: String(student._id),
         sessionId: String(sessionObjectId),
       });
 
-      reports.push(item.report);
+      reports.push(result.report);
     } catch (error) {
       reports.push({
         student: {
-          ...student,
+          _id: String(student._id),
+          firstName: student.firstName || "",
+          lastName: student.lastName || "",
+          admissionNumber: student.admissionNumber || "",
           className: classDoc.name,
         },
         error: true,
@@ -531,17 +641,20 @@ export async function generateCumulativeClassReport({
     }
   }
 
-  const ranked = reports
-    .filter((item) => !item.error)
-    .sort(
-      (a, b) =>
-        (b.summary?.totalScore || 0) -
-        (a.summary?.totalScore || 0)
-    );
+  // Do not re-rank here: each individual report already uses
+  // the same class-wide annual averages and tie policy.
+  reports.sort((a, b) => {
+    if (a.error && !b.error) return 1;
+    if (!a.error && b.error) return -1;
 
-  ranked.forEach((report, index) => {
-    report.summary.position = index + 1;
-    report.summary.positionLabel = ordinal(index + 1);
+    const positionA = a.summary?.position;
+    const positionB = b.summary?.position;
+
+    if (positionA == null && positionB == null) return 0;
+    if (positionA == null) return 1;
+    if (positionB == null) return -1;
+
+    return positionA - positionB;
   });
 
   return {
