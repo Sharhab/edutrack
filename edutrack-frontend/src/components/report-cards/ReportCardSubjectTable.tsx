@@ -1,22 +1,16 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { ReportCardSubject } from "../../types/report-card";
+import type { ReportCardSubject } from "../../types/report-card";
 
 type Props = {
   subjects?: ReportCardSubject[];
   brandColor?: string;
 };
 
-const safeSubjects = useMemo(() => {
-  return subjects.map((sub) => ({
-    ...sub,
-    grade: sub.grade || "—",
-    remark: sub.remark || "—",
-  }));
-}, [subjects]);
-
-const formatMark = (value: number | null | undefined) => {
+const formatMark = (
+  value: number | string | null | undefined
+): number | string => {
   if (value === null || value === undefined || value === "") {
     return "—";
   }
@@ -24,16 +18,25 @@ const formatMark = (value: number | null | undefined) => {
   return value;
 };
 
+export default function ReportCardSubjectTable({
+  subjects = [],
+  brandColor = "#06b6d4",
+}: Props) {
+  const safeSubjects = useMemo(() => {
+    return (subjects ?? []).map((sub) => ({
+      ...sub,
+      grade: sub.grade || "—",
+      remark: sub.remark || "—",
+    }));
+  }, [subjects]);
+
   return (
     <div className="w-full overflow-x-auto border rounded-md print:border-black">
-  <table className="w-full text-sm border-collapse report-subject-table">
-        {/* ================= HEADER ================= */}
+      <table className="w-full text-sm border-collapse report-subject-table">
         <thead
-  className="text-white"
-  style={{
-    backgroundColor: brandColor,
-  }}
->
+          className="text-white"
+          style={{ backgroundColor: brandColor }}
+        >
           <tr>
             <th className="p-2 border">Subject</th>
             <th className="p-2 border text-center">CA1</th>
@@ -46,7 +49,6 @@ const formatMark = (value: number | null | undefined) => {
           </tr>
         </thead>
 
-        {/* ================= BODY ================= */}
         <tbody>
           {safeSubjects.length > 0 ? (
             safeSubjects.map((sub, index) => (
@@ -54,7 +56,6 @@ const formatMark = (value: number | null | undefined) => {
                 key={sub._id || index}
                 className="border-b hover:bg-gray-50 print:hover:bg-transparent"
               >
-                {/* SUBJECT */}
                 <td className="p-2 border">
                   <div className="font-medium">
                     {sub.subjectName}
@@ -67,51 +68,44 @@ const formatMark = (value: number | null | undefined) => {
                   )}
                 </td>
 
-                {/* CA1 */}
                 <td className="p-2 border text-center">
-                  {sub.ca1}
+                  {formatMark(sub.ca1)}
                 </td>
 
-                {/* CA2 */}
                 <td className="p-2 border text-center">
-                  {sub.ca2}
+                  {formatMark(sub.ca2)}
                 </td>
 
-                {/* ASSIGNMENT */}
                 <td className="p-2 border text-center">
-                  {sub.assignment}
+                  {formatMark(sub.assignment)}
                 </td>
 
-                {/* EXAM */}
                 <td className="p-2 border text-center font-semibold">
-                  {sub.exam}
+                  {formatMark(sub.exam)}
                 </td>
 
-                {/* TOTAL */}
                 <td className="p-2 border text-center font-bold">
-                  {sub.total}
+                  {formatMark(sub.total)}
                 </td>
 
-                {/* GRADE */}
                 <td className="p-2 border text-center">
                   <span
                     className={`px-2 py-1 rounded text-xs font-semibold ${
                       sub.grade === "A"
                         ? "bg-green-200"
                         : sub.grade === "B"
-                        ? "bg-blue-200"
-                        : sub.grade === "C"
-                        ? "bg-yellow-200"
-                        : sub.grade === "F"
-                        ? "bg-red-200"
-                        : "bg-gray-200"
+                          ? "bg-blue-200"
+                          : sub.grade === "C"
+                            ? "bg-yellow-200"
+                            : sub.grade === "F"
+                              ? "bg-red-200"
+                              : "bg-gray-200"
                     }`}
                   >
                     {sub.grade}
                   </span>
                 </td>
 
-                {/* REMARK */}
                 <td className="p-2 border text-sm">
                   {sub.remark}
                 </td>
@@ -128,7 +122,6 @@ const formatMark = (value: number | null | undefined) => {
             </tr>
           )}
         </tbody>
-
       </table>
     </div>
   );
