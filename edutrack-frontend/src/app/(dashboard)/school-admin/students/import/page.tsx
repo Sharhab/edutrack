@@ -56,7 +56,7 @@ export default function StudentImportPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await api.post("/students/preview", formData);
+   const res = await api.post("/students/import/preview", formData);
 
       setPreview(res.data?.data || []);
     } catch (err: any) {
@@ -79,9 +79,9 @@ export default function StudentImportPage() {
       setImporting(true);
       setError("");
 
-      const res = await api.post("/students/import", {
-        students: preview,
-      });
+      const res = await api.post("/students/import/execute", {
+  students: preview,
+});
 
       const stats = res.data?.data;
 
@@ -126,13 +126,17 @@ export default function StudentImportPage() {
           <span className="text-sm text-slate-400 mt-1">
             admissionNumber, firstName, lastName, gender, className (NOT classId)
           </span>
-
-          <input
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-          />
+       <input
+  type="file"
+  accept=".xlsx,.xls,.csv"
+  className="hidden"
+  onChange={(e) => {
+    setFile(e.target.files?.[0] || null);
+    setPreview([]);
+    setError("");
+  }}
+/>
+         
         </label>
 
         {file && (
