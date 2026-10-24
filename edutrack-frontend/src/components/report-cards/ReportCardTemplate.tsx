@@ -534,6 +534,52 @@ export default function ReportCardTemplate({
           margin-bottom: 1.5mm;
         }
 
+        .principal-signature-space {
+  position: relative;
+  height: 9mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #64748b;
+  margin-bottom: 1.5mm;
+  overflow: visible;
+}
+
+.principal-signature-image {
+  display: block;
+  max-width: 28mm;
+  max-height: 7mm;
+  object-fit: contain;
+}
+
+.principal-stamp-image {
+  position: absolute;
+  right: 0;
+  top: -2mm;
+  width: 10mm;
+  height: 10mm;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+@media print {
+  .principal-signature-space {
+    height: 5mm !important;
+    margin-bottom: 0.8mm !important;
+  }
+
+  .principal-signature-image {
+    max-width: 22mm !important;
+    max-height: 4mm !important;
+  }
+
+  .principal-stamp-image {
+    width: 8mm !important;
+    height: 8mm !important;
+    top: -1mm !important;
+  }
+}
+
         .signature-label {
           color: #475569;
           font-size: 5.8px;
