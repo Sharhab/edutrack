@@ -39,7 +39,7 @@ import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
 import schoolProfileRoutes from "../modules/settings/school-profile.routes.js";
 import schoolPaymentRoutes from "../modules/settings/school-payment.routes.js";
 import optionsRoutes from "../modules/options/options.routes.js";
-
+import traitAssessmentRoutes from "../modules/trait-assessments/trait-assessment.routes.js";
 // Super Admin and billing
 import superAdminRoutes from "../modules/super-admin/super-admin.routes.js";
 import billingRoutes from "../modules/billing/billing.routes.js";
@@ -182,7 +182,7 @@ router.use("/activity", activityRoutes);
  */
 router.use("/exports", exportRoutes);
 router.use("/report-cards", reportCardRoutes);
-
+router.use("/trait-assessments", traitAssessmentRoutes);
 /**
  * FEES AND PAYMENTS
  */
