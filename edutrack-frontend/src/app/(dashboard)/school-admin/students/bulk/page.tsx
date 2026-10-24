@@ -135,7 +135,6 @@ function normalizeHeader(value: string): string {
     .trim()
     .replace(/[^a-z0-9]/g, "");
 }
-
 function pasteStudents() {
   setPasteMessage("");
   setError("");
@@ -143,70 +142,80 @@ function pasteStudents() {
   const text = pasteText.trim();
 
   if (!text) {
-    setPasteMessage("Copy student rows from Excel and paste them here first.");
+    setPasteMessage("Please paste student data from Excel first.");
     return;
   }
 
   const matrix = text
     .split(/\r?\n/)
-    .filter((line) => line.trim() !== "")
-    .map((line) => line.split("\t").map((cell) => cell.trim()));
+    .map((line) => line.split("\t").map((cell) => cell.trim()))
+    .filter((cells) => cells.some(Boolean));
 
   if (!matrix.length) {
-    setPasteMessage("No student rows found.");
+    setPasteMessage("No student data found.");
     return;
   }
 
   const aliases: Record<string, keyof StudentRow> = {
     firstname: "firstName",
+    first: "firstName",
     givenname: "firstName",
     middlename: "middleName",
+    middle: "middleName",
     lastname: "lastName",
     surname: "lastName",
+    familyname: "lastName",
     admissionno: "admissionNumber",
     admissionnumber: "admissionNumber",
+    admissionid: "admissionNumber",
     studentid: "admissionNumber",
     gender: "gender",
     sex: "gender",
-    dateofbirth: "dateOfBirth",
     dob: "dateOfBirth",
+    dateofbirth: "dateOfBirth",
     class: "classId",
     classname: "classId",
     entry: "entryType",
     entrytype: "entryType",
     phone: "phone",
+    mobile: "phone",
     phonenumber: "phone",
     status: "status",
   };
 
-  const firstRowHeaders = matrix[0].map(normalizeHeader);
-  const hasHeaders = firstRowHeaders.some(
-    (header) => aliases[header] !== undefined
-  );
+  const normalize = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  const headers = hasHeaders
-    ? firstRowHeaders
-    : [
-        "firstname",
-        "middlename",
-        "lastname",
-        "admissionnumber",
-        "gender",
-        "dateofbirth",
-        "class",
-        "entrytype",
-        "phone",
-        "status",
-      ];
+  const firstRow = matrix[0].map(normalize);
+  const hasHeaders = firstRow.some((value) => aliases[value]);
 
-  const dataRows = hasHeaders ? matrix.slice(1) : matrix;
+  let headers: (keyof StudentRow | undefined)[];
+
+  let dataRows: string[][];
+
+  if (hasHeaders) {
+    headers = firstRow.map((value) => aliases[value]);
+    dataRows = matrix.slice(1);
+  } else {
+    // Without headers, use the common two-column layout:
+    // First Name | Last Name
+    if (matrix.some((row) => row.length > 2)) {
+      setPasteMessage(
+        "Please include column headers when copying more than two columns from Excel."
+      );
+      return;
+    }
+
+    headers = ["firstName", "lastName"];
+    dataRows = matrix;
+  }
 
   const classMap = new Map(
     classes.map((c) => [c.name.trim().toLowerCase(), c._id])
   );
 
   const imported: StudentRow[] = dataRows
-    .filter((cells) => cells.some((cell) => cell !== ""))
+    .filter((cells) => cells.some(Boolean))
     .map((cells) => {
       const row: StudentRow = {
         firstName: "",
@@ -221,105 +230,78 @@ function pasteStudents() {
         status: "active",
       };
 
-      headers.forEach((header, index) => {
-        const field = aliases[header];
+      headers.forEach((field, index) => {
         if (!field) return;
 
         const value = cells[index] || "";
 
         if (field === "classId") {
-          // Accept either an actual class ID or the class name.
-          const matchingClass = classes.find(
-            (c) => c._id === value
-          );
-
           row.classId =
-            matchingClass?._id ||
+            classes.find((c) => c._id === value)?._id ||
             classMap.get(value.toLowerCase()) ||
             "";
-
-          return;
-        }
-
-        if (field === "dateOfBirth") {
+        } else if (field === "dateOfBirth") {
           row.dateOfBirth = normalizeDate(value);
-          return;
-        }
-
-        if (field === "gender") {
+        } else if (field === "gender") {
           const gender = value.toLowerCase();
-
           row.gender =
             gender === "female" || gender === "f"
               ? "female"
               : "male";
-
-          return;
-        }
-
-        if (field === "entryType") {
+        } else if (field === "entryType") {
           const entry = value.toLowerCase();
-
-          const validEntries = [
+          row.entryType = [
             "new",
             "transfer",
             "promotion",
             "reentry",
-          ];
-
-          row.entryType = validEntries.includes(entry)
+          ].includes(entry)
             ? entry
             : "new";
-
-          return;
-        }
-
-        if (field === "status") {
+        } else if (field === "status") {
           const status = value.toLowerCase();
-
-          const validStatuses = [
+          row.status = [
             "active",
             "inactive",
             "suspended",
             "graduated",
-          ];
-
-          row.status = validStatuses.includes(status)
+          ].includes(status)
             ? status
             : "active";
-
-          return;
+        } else {
+          row[field] = value;
         }
-
-        row[field] = value;
       });
 
       return row;
     });
 
   if (!imported.length) {
-    setPasteMessage("No student records were found in the pasted data.");
+    setPasteMessage("No student records were found.");
     return;
   }
 
-  // Append imported rows to the existing table.
-  setRows((previous) => [
-    ...previous.filter(
-      (row) =>
-        row.firstName.trim() ||
-        row.lastName.trim() ||
-        row.admissionNumber.trim()
-    ),
-    ...imported,
-  ]);
+  const invalidRows = imported.filter(
+    (row) => !row.firstName || !row.lastName
+  );
+
+  if (invalidRows.length) {
+    setPasteMessage(
+      `${invalidRows.length} row(s) are missing first or last names. Check the Excel column headers and order.`
+    );
+    return;
+  }
+
+  // Replace the initial empty row and avoid duplicate blank rows.
+  setRows(imported);
 
   setPasteMessage(
-    `${imported.length} student row(s) added. Review the table and select any missing classes.`
+    `${imported.length} student(s) imported into the table. Review and complete the required fields before saving.`
   );
 
   setPasteText("");
 }
-  
+
   async function saveAll() {
     const err = validate();
     if (err) {
