@@ -120,12 +120,15 @@ export default function ClassesPage() {
     return "";
   }
 
- function toPayload(form: ClassFormValues): ClassPayload {
+ 
+function toPayload(form: ClassFormValues): ClassPayload {
   return {
     name: form.name.trim(),
-    level: form.level?.trim() || undefined,
-    arm: undefined, // removed from backend
-    capacity: form.capacity ? Number(form.capacity) : undefined,
+    level: form.level.trim() || undefined,
+    code: form.arm.trim() || undefined,
+    capacity: form.capacity
+      ? Number(form.capacity)
+      : 40,
     isActive: form.isActive === "true",
   };
 }
