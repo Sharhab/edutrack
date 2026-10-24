@@ -20,7 +20,7 @@ export interface ClassItem {
   name: string;
   slug?: string;
   level?: string;
-  arm?: string; // optional (not from backend yet)
+ code?: string;
   capacity?: number;
   isActive?: boolean;
   sessionId?: PopulatedSession | null;
@@ -32,7 +32,7 @@ export interface ClassItem {
 export interface ClassFormValues {
   name: string;
   level: string;
-  arm: string;
+ code?: string;
   capacity: string;
   isActive: string;
 }
