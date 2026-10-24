@@ -135,6 +135,7 @@ function normalizeHeader(value: string): string {
     .trim()
     .replace(/[^a-z0-9]/g, "");
 }
+
 function pasteStudents() {
   setPasteMessage("");
   setError("");
@@ -147,24 +148,23 @@ function pasteStudents() {
   }
 
   const matrix = text
-  .trim()
-  .split(/\r?\n/)
-  .filter((line) => line.trim().length > 0)
-  .map((line) =>
-    line.split("\t").map((cell) => cell.trim())
-  )
-  .filter((row) => row.some((cell) => cell !== ""));
+    .split(/\r?\n/)
+    .map((line) => line.split("\t").map((cell) => cell.trim()))
+    .filter((cells) => cells.some((cell) => cell !== ""));
+
   if (!matrix.length) {
     setPasteMessage("No student data found.");
     return;
   }
 
+  const normalize = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
   const aliases: Record<string, keyof StudentRow> = {
     firstname: "firstName",
-    first: "firstName",
     givenname: "firstName",
+    first: "firstName",
     middlename: "middleName",
-    middle: "middleName",
     lastname: "lastName",
     surname: "lastName",
     familyname: "lastName",
@@ -186,31 +186,32 @@ function pasteStudents() {
     status: "status",
   };
 
-  const normalize = (value: string) =>
-    value.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-  const firstRow = matrix[0].map(normalize);
-  const hasHeaders = firstRow.some((value) => aliases[value]);
+  // Find a header row by requiring both name columns.
+  const headerIndex = matrix.findIndex((cells) => {
+    const normalized = cells.map(normalize);
+    return (
+      normalized.some((value) =>
+        ["firstname", "givenname", "first"].includes(value)
+      ) &&
+      normalized.some((value) =>
+        ["lastname", "surname", "familyname"].includes(value)
+      )
+    );
+  });
 
   let headers: (keyof StudentRow | undefined)[];
-
   let dataRows: string[][];
 
-  if (hasHeaders) {
-    headers = firstRow.map((value) => aliases[value]);
-    dataRows = matrix.slice(1);
+  if (headerIndex >= 0) {
+    headers = matrix[headerIndex].map(
+      (value) => aliases[normalize(value)]
+    );
+    dataRows = matrix.slice(headerIndex + 1);
   } else {
-    // Without headers, use the common two-column layout:
-    // First Name | Last Name
-    if (matrix.some((row) => row.length > 2)) {
-      setPasteMessage(
-        "Please include column headers when copying more than two columns from Excel."
-      );
-      return;
-    }
-
-    headers = ["firstName", "lastName"];
-    dataRows = matrix;
+    setPasteMessage(
+      "Could not find a header row containing First Name and Last Name. Copy the column headers together with the student records."
+    );
+    return;
   }
 
   const classMap = new Map(
@@ -218,7 +219,7 @@ function pasteStudents() {
   );
 
   const imported: StudentRow[] = dataRows
-    .filter((cells) => cells.some(Boolean))
+    .filter((cells) => cells.some((cell) => cell !== ""))
     .map((cells) => {
       const row: StudentRow = {
         firstName: "",
@@ -280,31 +281,37 @@ function pasteStudents() {
     });
 
   if (!imported.length) {
-    setPasteMessage("No student records were found.");
+    setPasteMessage("No student records were found below the header.");
     return;
   }
 
-  const invalidRows = imported.filter(
-    (row) => !row.firstName || !row.lastName
-  );
+  const invalidRows = imported
+    .map((row, index) => ({
+      row,
+      rowNumber: index + 1,
+    }))
+    .filter(({ row }) => !row.firstName || !row.lastName);
 
   if (invalidRows.length) {
+    const examples = invalidRows
+      .slice(0, 5)
+      .map(({ rowNumber }) => rowNumber)
+      .join(", ");
+
     setPasteMessage(
-      `${invalidRows.length} row(s) are missing first or last names. Check the Excel column headers and order.`
+      `${invalidRows.length} row(s) have missing first or last names. Imported data rows: ${examples}${invalidRows.length > 5 ? ", ..." : ""}. Check the Excel column headers and copied columns.`
     );
     return;
   }
 
-  // Replace the initial empty row and avoid duplicate blank rows.
   setRows(imported);
 
   setPasteMessage(
-    `${imported.length} student(s) imported into the table. Review and complete the required fields before saving.`
+    `${imported.length} student(s) imported into the table. Review class selections and required fields before saving.`
   );
 
   setPasteText("");
 }
-
   async function saveAll() {
     const err = validate();
     if (err) {
