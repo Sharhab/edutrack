@@ -271,11 +271,13 @@ function toPayload(form: ClassFormValues): ClassPayload {
                   <p className="font-semibold text-white">
                     {item.name}
                   </p>
-                  <p className="text-sm text-slate-400">
-                    {item.level || "No level"} •{" "}
-                    {item.arm || "No arm"} •{" "}
-                    {item.capacity || 0} capacity
-                  </p>
+                 
+<p className="text-sm text-slate-400">
+  {item.level || "No level"} •{" "}
+  {item.code || "No code"} •{" "}
+  {item.capacity ?? 40} capacity •{" "}
+  {item.isActive === false ? "Inactive" : "Active"}
+</p>
                 </div>
 
                 <div className="flex items-center gap-2">
