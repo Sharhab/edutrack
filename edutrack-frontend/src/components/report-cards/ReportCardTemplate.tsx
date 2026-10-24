@@ -1145,14 +1145,16 @@ export default function ReportCardTemplate({
                   <tr key={trait.traitKey}>
                     <td>{trait.traitName}</td>
                     <td>
-                      {trait.rating} -{" "}
-                      ({
-                        5: "Excellent",
-                        4: "Very Good",
-                        3: "Good",
-                        2: "Fair",
-                        1: "Needs Improvement",
-                      } as Record<number, string>)[trait.rating] ?? "—"}
+                    {trait.rating} -{" "}
+{(
+  {
+    5: "Excellent",
+    4: "Very Good",
+    3: "Good",
+    2: "Fair",
+    1: "Needs Improvement",
+  } as Record<number, string>
+)[trait.rating] ?? "—"}
                     </td>
                   </tr>
                 ))}
