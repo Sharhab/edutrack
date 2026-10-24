@@ -15,6 +15,14 @@ import {
   publishResults,
 } from "../../../../../lib/results";
 
+
+import {
+  getClassTraitAssessments,
+  saveStudentTraitAssessment,
+  type TraitRating,
+  type ClassStudentTraitAssessment,
+} from "../../../../../lib/trait-assessments";
+
 import {
   Save,
   Search,
@@ -33,6 +41,46 @@ const SCORE_LIMITS = {
 } as const;
 
 type ScoreField = keyof typeof SCORE_LIMITS;
+
+const PSYCHOMOTOR_TRAITS = [
+  { key: "handwriting", name: "Handwriting" },
+  { key: "creativity", name: "Drawing and creativity" },
+  { key: "coordination", name: "Hand-eye coordination" },
+  { key: "practicalSkills", name: "Practical skills" },
+  { key: "sports", name: "Sports and physical activities" },
+] as const;
+
+const AFFECTIVE_TRAITS = [
+  { key: "punctuality", name: "Punctuality" },
+  { key: "honesty", name: "Honesty" },
+  { key: "cooperation", name: "Cooperation" },
+  { key: "respect", name: "Respect for others" },
+  { key: "responsibility", name: "Responsibility" },
+  { key: "selfControl", name: "Self-control" },
+  { key: "initiative", name: "Initiative" },
+] as const;
+
+const TRAIT_RATINGS = [
+  { value: 5, label: "5 - Excellent" },
+  { value: 4, label: "4 - Very Good" },
+  { value: 3, label: "3 - Good" },
+  { value: 2, label: "2 - Fair" },
+  { value: 1, label: "1 - Needs Improvement" },
+];
+
+type StudentTraitDraft = {
+  psychomotor: TraitRating[];
+  affective: TraitRating[];
+  teacherComment: string;
+};
+
+function emptyTraitDraft(): StudentTraitDraft {
+  return {
+    psychomotor: [],
+    affective: [],
+    teacherComment: "",
+  };
+}
 
 /* =========================================
    STUDENT TYPE
@@ -167,7 +215,20 @@ export default function ResultEntryPage() {
 
   const [pageError, setPageError] =
     useState("");
+  const [traitAssessments, setTraitAssessments] =
+  useState<Record<string, StudentTraitDraft>>({});
 
+const [traitsLoading, setTraitsLoading] =
+  useState(false);
+
+const [savingTraitStudent, setSavingTraitStudent] =
+  useState<string | null>(null);
+
+const [traitError, setTraitError] =
+  useState("");
+
+const [traitMessage, setTraitMessage] =
+  useState("");
   const autosaveTimer =
     useRef<NodeJS.Timeout | null>(null);
 
@@ -230,6 +291,7 @@ export default function ResultEntryPage() {
 
     loadContext();
   }, []);
+  
 
   /* =========================================
      LOAD STUDENTS
@@ -301,6 +363,173 @@ export default function ResultEntryPage() {
 
     loadStudents();
   }, [classId]);
+
+  /* =========================================
+   LOAD PSYCHOMOTOR & AFFECTIVE ASSESSMENTS
+========================================= */
+
+useEffect(() => {
+  if (!classId || !sessionId || !termId) {
+    setTraitAssessments({});
+    return;
+  }
+
+  let cancelled = false;
+
+  async function loadTraitAssessments() {
+    try {
+      setTraitsLoading(true);
+      setTraitError("");
+      setTraitMessage("");
+
+      const records = await getClassTraitAssessments({
+        classId,
+        sessionId,
+        termId,
+      });
+
+      if (cancelled) return;
+
+      const mapped: Record<string, StudentTraitDraft> = {};
+
+      records.forEach(
+        (record: ClassStudentTraitAssessment) => {
+          if (!record.student?._id) return;
+
+          mapped[record.student._id] = {
+            psychomotor:
+              record.assessment?.psychomotor ?? [],
+            affective:
+              record.assessment?.affective ?? [],
+            teacherComment:
+              record.assessment?.teacherComment ?? "",
+          };
+        }
+      );
+
+      setTraitAssessments(mapped);
+    } catch (err) {
+      if (cancelled) return;
+
+      setTraitError(
+        axios.isAxiosError(err)
+          ? err.response?.data?.message ||
+              "Unable to load trait assessments."
+          : "Unable to load trait assessments."
+      );
+    } finally {
+      if (!cancelled) {
+        setTraitsLoading(false);
+      }
+    }
+  }
+
+  loadTraitAssessments();
+
+  return () => {
+    cancelled = true;
+  };
+}, [classId, sessionId, termId]);
+
+  /* =========================================
+   UPDATE TRAIT RATINGS
+========================================= */
+
+function updateTrait(
+  studentId: string,
+  group: "psychomotor" | "affective",
+  traitKey: string,
+  traitName: string,
+  rating: number | null
+) {
+  setTraitAssessments((previous) => {
+    const current =
+      previous[studentId] ?? emptyTraitDraft();
+
+    const updatedGroup = current[group].filter(
+      (trait) => trait.traitKey !== traitKey
+    );
+
+    if (rating !== null) {
+      updatedGroup.push({
+        traitKey,
+        traitName,
+        rating,
+      });
+    }
+
+    return {
+      ...previous,
+      [studentId]: {
+        ...current,
+        [group]: updatedGroup,
+      },
+    };
+  });
+
+  setTraitError("");
+  setTraitMessage("");
+}
+
+function updateTraitComment(
+  studentId: string,
+  teacherComment: string
+) {
+  setTraitAssessments((previous) => ({
+    ...previous,
+    [studentId]: {
+      ...(previous[studentId] ?? emptyTraitDraft()),
+      teacherComment,
+    },
+  }));
+
+  setTraitError("");
+  setTraitMessage("");
+}
+
+/* =========================================
+   SAVE ONE STUDENT'S TRAITS
+========================================= */
+
+async function saveTraits(studentId: string) {
+  if (!classId || !sessionId || !termId) {
+    setTraitError(
+      "Select a class, session, and term first."
+    );
+    return;
+  }
+
+  const draft =
+    traitAssessments[studentId] ?? emptyTraitDraft();
+
+  try {
+    setSavingTraitStudent(studentId);
+    setTraitError("");
+    setTraitMessage("");
+
+    await saveStudentTraitAssessment(studentId, {
+      classId,
+      sessionId,
+      termId,
+      psychomotor: draft.psychomotor,
+      affective: draft.affective,
+      teacherComment: draft.teacherComment,
+    });
+
+    setTraitMessage(
+      "Trait assessment saved successfully."
+    );
+  } catch (err) {
+    setTraitError(
+      axios.isAxiosError(err)
+        ? err.response?.data?.message ||
+            "Failed to save trait assessment."
+        : "Failed to save trait assessment."
+    );
+  } finally {
+    setSavingTraitStudent(null);
+  }
+}
 
   /* =========================================
      FILTER STUDENTS
@@ -385,88 +614,155 @@ export default function ResultEntryPage() {
   /* =========================================
      AUTOSAVE
   ========================================= */
+ /* =========================================
+   AUTOSAVE AND MANUAL SAVE
+========================================= */
 
-  function triggerAutosave() {
-    if (autosaveTimer.current) {
-      clearTimeout(
-        autosaveTimer.current
-      );
-    }
-
-    autosaveTimer.current =
-      setTimeout(() => {
-        saveDraft();
-      }, 1200);
+function clearScoreInputs() {
+  if (autosaveTimer.current) {
+    clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = null;
   }
 
-  async function saveDraft() {
-    if (savingLock.current) {
-      return;
-    }
+  const cleared = studentsRef.current.map((student) => ({
+    ...student,
+    ca1: null,
+    ca2: null,
+    assignment: null,
+    exam: null,
+    total: 0,
+    grade: "",
+    remark: "",
+  }));
 
-    if (
-      !classId ||
-      !subjectId ||
-      !sessionId ||
-      !termId
-    ) {
-      return;
-    }
+  // Update the ref immediately to prevent stale scores
+  // from being used by another save.
+  studentsRef.current = cleared;
+  setStudents(cleared);
+  setPublished(false);
+}
 
-    savingLock.current = true;
-    setSaving(true);
-
-    try {
-      await bulkUpsertResults({
-        classId,
-        subjectId,
-        sessionId,
-        termId,
-        results:
-          studentsRef.current,
-      });
-    } catch (err) {
-      console.error(
-        "bulk-upsert failed:",
-        err
-      );
-    } finally {
-      savingLock.current = false;
-      setSaving(false);
-    }
+function triggerAutosave() {
+  if (autosaveTimer.current) {
+    clearTimeout(autosaveTimer.current);
   }
 
-  /* =========================================
+  autosaveTimer.current = setTimeout(() => {
+    void saveDraft(false);
+  }, 1200);
+}
+
+async function saveDraft(clearAfterSave = false) {
+  if (savingLock.current) {
+    return;
+  }
+
+  if (!classId || !subjectId || !sessionId || !termId) {
+    setPageError(
+      "Select a class, subject, session, and term first."
+    );
+    return;
+  }
+
+  // Save a snapshot so the request uses the scores
+  // present when the save began.
+  const resultsToSave = studentsRef.current.map(
+    (student) => ({ ...student })
+  );
+
+  savingLock.current = true;
+  setSaving(true);
+  setPageError("");
+
+  try {
+    await bulkUpsertResults({
+      classId,
+      subjectId,
+      sessionId,
+      termId,
+      results: resultsToSave,
+    });
+
+    if (clearAfterSave) {
+      clearScoreInputs();
+    }
+  } catch (err) {
+    setPageError(
+      axios.isAxiosError(err)
+        ? err.response?.data?.message ||
+            "Failed to save results."
+        : "Failed to save results."
+    );
+
+    console.error("bulk-upsert failed:", err);
+  } finally {
+    savingLock.current = false;
+    setSaving(false);
+  }
+}
+    /* =========================================
      PUBLISH
   ========================================= */
 
-  async function handlePublish() {
-    if (
-      !classId ||
-      !subjectId ||
-      !sessionId ||
-      !termId
-    ) {
-      return;
-    }
+ /* =========================================
+   PUBLISH
+========================================= */
 
-    try {
-      setSaving(true);
-
-      await publishResults({
-        classId,
-        subjectId,
-        sessionId,
-        termId,
-      });
-
-      setPublished(true);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
+async function handlePublish() {
+  if (!classId || !subjectId || !sessionId || !termId) {
+    setPageError(
+      "Select a class, subject, session, and term first."
+    );
+    return;
   }
+
+  if (savingLock.current) {
+    return;
+  }
+
+  if (autosaveTimer.current) {
+    clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = null;
+  }
+
+  savingLock.current = true;
+  setSaving(true);
+  setPageError("");
+
+  try {
+    await bulkUpsertResults({
+      classId,
+      subjectId,
+      sessionId,
+      termId,
+      results: studentsRef.current.map(
+        (student) => ({ ...student })
+      ),
+    });
+
+    await publishResults({
+      classId,
+      subjectId,
+      sessionId,
+      termId,
+    });
+
+    clearScoreInputs();
+    setPublished(true);
+  } catch (err) {
+    setPageError(
+      axios.isAxiosError(err)
+        ? err.response?.data?.message ||
+            "Failed to publish results."
+        : "Failed to publish results."
+    );
+
+    console.error("Publish results failed:", err);
+  } finally {
+    savingLock.current = false;
+    setSaving(false);
+  }
+}
 
   /* =========================================
      STATES
@@ -732,6 +1028,207 @@ export default function ResultEntryPage() {
               />
             </div>
           </div>
+          {/* =====================================
+    PSYCHOMOTOR & AFFECTIVE TRAITS
+===================================== */}
+
+<SectionCard
+  title="Psychomotor & Affective Traits"
+  subtitle="Assess each student for the selected academic period"
+>
+  {!classId || !sessionId || !termId ? (
+    <EmptyState
+      title="Select the academic period"
+      description="Choose a class, session, and term to assess students."
+    />
+  ) : traitsLoading ? (
+    <PageLoader />
+  ) : students.length === 0 ? (
+    <EmptyState
+      title="No students available"
+      description="Load the class students before entering trait assessments."
+    />
+  ) : (
+    <div className="space-y-4">
+      {traitError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+        >
+          {traitError}
+        </div>
+      )}
+
+      {traitMessage && (
+        <div
+          role="status"
+          className="rounded-xl border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-300"
+        >
+          {traitMessage}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-3 text-sm text-slate-300">
+        Ratings: 5 = Excellent, 4 = Very Good, 3 = Good,
+        2 = Fair, 1 = Needs Improvement.
+      </div>
+
+      {students.map((student) => {
+        const draft =
+          traitAssessments[student.studentId] ??
+          emptyTraitDraft();
+
+        function renderTraitGroup(
+          title: string,
+          group: "psychomotor" | "affective",
+          traits: readonly { key: string; name: string }[]
+        ) {
+          return (
+            <div className="space-y-3">
+              <h4 className="font-semibold text-white">
+                {title}
+              </h4>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                {traits.map((trait) => {
+                  const selected = draft[group].find(
+                    (item) => item.traitKey === trait.key
+                  );
+
+                  return (
+                    <div
+                      key={trait.key}
+                      className="rounded-xl border border-white/10 bg-slate-950/50 p-3"
+                    >
+                      <label
+                        htmlFor={`${student.studentId}-${trait.key}`}
+                        className="mb-2 block text-sm text-slate-300"
+                      >
+                        {trait.name}
+                      </label>
+
+                      <select
+                        id={`${student.studentId}-${trait.key}`}
+                        value={selected?.rating ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value;
+
+                          updateTrait(
+                            student.studentId,
+                            group,
+                            trait.key,
+                            trait.name,
+                            value === "" ? null : Number(value)
+                          );
+                        }}
+                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white outline-none focus:border-cyan-500"
+                      >
+                        <option value="">
+                          Select rating
+                        </option>
+
+                        {TRAIT_RATINGS.map((rating) => (
+                          <option
+                            key={rating.value}
+                            value={rating.value}
+                          >
+                            {rating.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <details
+            key={student.studentId}
+            className="group rounded-2xl border border-white/10 bg-slate-950/40"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4">
+              <div>
+                <div className="font-semibold text-white">
+                  {student.fullName}
+                </div>
+
+                <div className="mt-1 text-xs text-slate-400">
+                  {student.admissionNumber || "No admission number"}
+                </div>
+              </div>
+
+              <span className="text-sm text-cyan-300">
+                Assess traits
+              </span>
+            </summary>
+
+            <div className="space-y-6 border-t border-white/10 p-4">
+              {renderTraitGroup(
+                "Psychomotor Traits",
+                "psychomotor",
+                PSYCHOMOTOR_TRAITS
+              )}
+
+              {renderTraitGroup(
+                "Affective Traits",
+                "affective",
+                AFFECTIVE_TRAITS
+              )}
+
+              <div>
+                <label
+                  htmlFor={`${student.studentId}-teacher-comment`}
+                  className="mb-2 block text-sm text-slate-300"
+                >
+                  Teacher's Comment
+                </label>
+
+                <textarea
+                  id={`${student.studentId}-teacher-comment`}
+                  value={draft.teacherComment}
+                  onChange={(event) =>
+                    updateTraitComment(
+                      student.studentId,
+                      event.target.value
+                    )
+                  }
+                  rows={3}
+                  placeholder="Enter an optional comment about the student's conduct and development..."
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveTraits(student.studentId)
+                  }
+                  disabled={
+                    savingTraitStudent === student.studentId
+                  }
+                  className="rounded-xl bg-cyan-600 px-5 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Save
+                    size={16}
+                    className="mr-2 inline"
+                  />
+
+                  {savingTraitStudent === student.studentId
+                    ? "Saving Assessment..."
+                    : "Save Trait Assessment"}
+                </button>
+              </div>
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  )}
+</SectionCard>
         </div>
 
         {/* TABLE */}
@@ -918,7 +1415,7 @@ export default function ResultEntryPage() {
 
               <button
                 type="button"
-                onClick={saveDraft}
+                onClick={() => void saveDraft(true)}
                 disabled={saving}
                 className="rounded-2xl bg-slate-700 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-600 disabled:opacity-60"
               >
