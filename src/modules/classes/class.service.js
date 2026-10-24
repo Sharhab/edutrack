@@ -112,43 +112,69 @@ async function validateClassTeacher(classTeacherId, schoolId) {
 /**
  * CREATE CLASS
  */
-export async function createClass(payload, schoolId) {
+/**
+
+* CREATE CLASS
+  */
+  export async function createClass(payload, schoolId) {
   const name = String(payload.name || "").trim();
 
-  if (!name) {
-    throw new ApiError(400, "Class name is required");
-  }
+if (!schoolId) {
+throw new ApiError(400, "School context is required");
+}
 
-  const exists = await ClassModel.findOne({
-    schoolId,
-    name,
-  });
+if (name.length < 2) {
+throw new ApiError(
+400,
+"Class name must contain at least 2 characters"
+);
+}
 
-  if (exists) {
-    throw new ApiError(
-      400,
-      "Class already exists for this school"
-    );
-  }
+// Prevent duplicate class names within this school.
+const normalizedName = name.toLowerCase();
 
-  await validateClassTeacher(payload.classTeacherId, schoolId);
+const existingClasses = await ClassModel.find({
+schoolId,
+}).select("_id name");
 
-  const { currentSession, currentTerm } =
-    await getCurrentAcademicContext(schoolId);
+const duplicate = existingClasses.some(
+(item) => item.name.trim().toLowerCase() === normalizedName
+);
 
-  const data = await ClassModel.create({
-    schoolId,
-    sessionId: currentSession?._id || null,
-    termId: currentTerm?._id || null,
-    name,
-    slug: generateSlug(name),
-    level: payload.level || "primary",
-    classTeacherId: payload.classTeacherId || null,
-    capacity: payload.capacity ?? 40,
-    isActive: true,
-  });
+if (duplicate) {
+throw new ApiError(
+409,
+"A class with this name already exists in your school"
+);
+}
 
-  return data;
+const classTeacherId = payload.classTeacherId || null;
+
+if (classTeacherId) {
+await validateClassTeacher(classTeacherId, schoolId);
+}
+
+const { currentSession, currentTerm } =
+await getCurrentAcademicContext(schoolId);
+
+const data = await ClassModel.create({
+schoolId,
+sessionId: currentSession?._id || null,
+termId: currentTerm?._id || null,
+
+
+name,
+slug: generateSlug(name),
+level: payload.level || "",
+code: payload.code || "",
+classTeacherId,
+capacity: payload.capacity ?? 40,
+isActive: payload.isActive ?? true,
+
+
+});
+
+return data;
 }
 
 /**
