@@ -187,17 +187,31 @@ function pasteStudents() {
   };
 
   // Find a header row by requiring both name columns.
-  const headerIndex = matrix.findIndex((cells) => {
-    const normalized = cells.map(normalize);
-    return (
-      normalized.some((value) =>
-        ["firstname", "givenname", "first"].includes(value)
-      ) &&
-      normalized.some((value) =>
-        ["lastname", "surname", "familyname"].includes(value)
-      )
-    );
-  });
+  
+const firstNameHeaders = [
+  "firstname",
+  "givenname",
+  "first",
+  "studentfirstname",
+  "studentfirst",
+];
+
+const lastNameHeaders = [
+  "lastname",
+  "surname",
+  "familyname",
+  "studentlastname",
+  "studentlast",
+];
+
+const headerIndex = matrix.slice(0, 10).findIndex((cells) => {
+  const normalized = cells.map(normalize);
+
+  return (
+    normalized.some((value) => firstNameHeaders.includes(value)) &&
+    normalized.some((value) => lastNameHeaders.includes(value))
+  );
+});
 
   let headers: (keyof StudentRow | undefined)[];
   let dataRows: string[][];
