@@ -59,6 +59,7 @@ export default function ReportCardTemplate({
     summary,
     attendance,
     comments,
+    traitAssessment,
   } = data;
 
   const studentName =
@@ -882,6 +883,100 @@ export default function ReportCardTemplate({
     page-break-inside: avoid !important;
   }
 
+  .trait-assessment-section {
+  width: 100%;
+  margin-bottom: 2mm;
+  color: #172033;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.trait-assessment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5mm;
+}
+
+.trait-assessment-box {
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  overflow: hidden;
+}
+
+.trait-assessment-heading {
+  margin: 0;
+  padding: 1.5mm;
+  background: #f8fafc;
+  border-bottom: 1px solid #cbd5e1;
+  color: #0f766e;
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.trait-assessment-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.trait-assessment-table th,
+.trait-assessment-table td {
+  padding: 1mm 1.2mm;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  font-size: 6.5px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.trait-assessment-table th:last-child,
+.trait-assessment-table td:last-child {
+  width: 42%;
+}
+
+.trait-empty {
+  margin: 0;
+  padding: 1.5mm;
+  color: #64748b;
+  font-size: 6.5px;
+}
+
+.trait-teacher-comment {
+  margin-top: 1.5mm;
+  padding: 1.5mm;
+  border: 1px solid #cbd5e1;
+  font-size: 7px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 700px) {
+  .trait-assessment-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media print {
+  .trait-assessment-section {
+    margin-bottom: 1mm !important;
+  }
+
+  .trait-assessment-table th,
+  .trait-assessment-table td {
+    padding: 0.7mm 1mm !important;
+    font-size: 5.5px !important;
+  }
+
+  .trait-assessment-heading {
+    padding: 1mm !important;
+    font-size: 6px !important;
+  }
+
+  .trait-teacher-comment {
+    padding: 1mm !important;
+    font-size: 6px !important;
+  }
+}
   img {
     max-width: 100% !important;
     -webkit-print-color-adjust: exact !important;
@@ -1005,6 +1100,82 @@ export default function ReportCardTemplate({
                 />
               </div>
             </div>
+            
+{/* PSYCHOMOTOR & AFFECTIVE TRAITS */}
+
+{traitAssessment && (
+  <div className="trait-assessment-section">
+    <div className="section-title">
+      <span className="section-title-bar" />
+      <h3 className="section-title-text">
+        Psychomotor & Affective Development
+      </h3>
+    </div>
+
+    <div className="trait-assessment-grid">
+      {[
+        {
+          title: "Psychomotor Skills",
+          traits: traitAssessment.psychomotor ?? [],
+        },
+        {
+          title: "Affective Traits",
+          traits: traitAssessment.affective ?? [],
+        },
+      ].map((group) => (
+        <div
+          key={group.title}
+          className="trait-assessment-box"
+        >
+          <h4 className="trait-assessment-heading">
+            {group.title}
+          </h4>
+
+          {group.traits.length > 0 ? (
+            <table className="trait-assessment-table">
+              <thead>
+                <tr>
+                  <th>Trait</th>
+                  <th>Rating</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {group.traits.map((trait) => (
+                  <tr key={trait.traitKey}>
+                    <td>{trait.traitName}</td>
+                    <td>
+                      {trait.rating} -{" "}
+                      ({
+                        5: "Excellent",
+                        4: "Very Good",
+                        3: "Good",
+                        2: "Fair",
+                        1: "Needs Improvement",
+                      } as Record<number, string>)[trait.rating] ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="trait-empty">
+              No assessment recorded.
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+
+    {traitAssessment.teacherComment?.trim() && (
+      <div className="trait-teacher-comment">
+        <strong>Class Teacher&apos;s Trait Comment:</strong>{" "}
+        {traitAssessment.teacherComment}
+      </div>
+    )}
+  </div>
+)}
+
 
             {/* PERFORMANCE SUMMARY + ATTENDANCE */}
 
