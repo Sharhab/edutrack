@@ -15,7 +15,7 @@ import { ClassModel } from "../classes/class.model.js";
 import { getSchoolGradeBands } from "../results/grading-scale.service.js";
 import { ensureParentOwnsStudent } from "../parents/parent.guard.js";
 import { ApiError } from "../../utils/apiError.js";
-
+import { TraitAssessment } from "../trait-assessments/trait-assessment.model.js";
 /* =========================================================
    HELPERS
 ========================================================= */
@@ -629,6 +629,22 @@ export async function generateStudentReportCard({
     termId: termObjectId,
   });
 
+    const traitRecord = await TraitAssessment.findOne({
+    schoolId,
+    studentId: studentObjectId,
+    classId: student.classId._id,
+    sessionId: sessionObjectId,
+    termId: termObjectId,
+  }).lean();
+
+  const traitAssessment = traitRecord
+    ? {
+        psychomotor: traitRecord.psychomotor || [],
+        affective: traitRecord.affective || [],
+        teacherComment: traitRecord.teacherComment || "",
+      }
+    : null;
+  
   const recordedResults = results.filter(hasEnteredMarks);
 
   const recordedScores = recordedResults
@@ -958,6 +974,7 @@ export async function generateClassReportSheet({
    ALL CLASS REPORT CARDS
 ========================================================= */
 
+
 export async function generateClassReportCardsBundle({
   user,
   classId,
@@ -968,16 +985,8 @@ export async function generateClassReportCardsBundle({
      AUTH
   ------------------------------------------------------- */
 
-  if (
-    ![
-      "school_admin",
-      "teacher",
-    ].includes(user.role)
-  ) {
-    throw new ApiError(
-      403,
-      "Unauthorized access"
-    );
+  if (!["school_admin", "teacher"].includes(user.role)) {
+    throw new ApiError(403, "Unauthorized access");
   }
 
   /* -------------------------------------------------------
@@ -985,15 +994,9 @@ export async function generateClassReportCardsBundle({
   ------------------------------------------------------- */
 
   if (
-    !mongoose.Types.ObjectId.isValid(
-      classId
-    ) ||
-    !mongoose.Types.ObjectId.isValid(
-      sessionId
-    ) ||
-    !mongoose.Types.ObjectId.isValid(
-      termId
-    )
+    !mongoose.Types.ObjectId.isValid(classId) ||
+    !mongoose.Types.ObjectId.isValid(sessionId) ||
+    !mongoose.Types.ObjectId.isValid(termId)
   ) {
     throw new ApiError(
       400,
@@ -1001,52 +1004,49 @@ export async function generateClassReportCardsBundle({
     );
   }
 
-  const schoolId =
-    new mongoose.Types.ObjectId(
-      user.schoolId
-    );
-
-  const classObjectId =
-    new mongoose.Types.ObjectId(
-      classId
-    );
+  const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+  const classObjectId = new mongoose.Types.ObjectId(classId);
+  const sessionObjectId = new mongoose.Types.ObjectId(sessionId);
+  const termObjectId = new mongoose.Types.ObjectId(termId);
 
   /* -------------------------------------------------------
      CLASS
   ------------------------------------------------------- */
 
-  const classDoc =
-    await ClassModel.findOne({
-      _id: classObjectId,
-      schoolId,
-    });
+  const classDoc = await ClassModel.findOne({
+    _id: classObjectId,
+    schoolId,
+  });
 
   if (!classDoc) {
-    throw new ApiError(
-      404,
-      "Class not found"
-    );
+    throw new ApiError(404, "Class not found");
   }
 
-  // Validate the academic period even when the class has no active students.
+  /* -------------------------------------------------------
+     VALIDATE ACADEMIC PERIOD
+     A term must belong to the selected session and school.
+  ------------------------------------------------------- */
+
   await getValidatedAcademicPeriod({
     schoolId,
-    sessionId: new mongoose.Types.ObjectId(sessionId),
-    termId: new mongoose.Types.ObjectId(termId),
+    sessionId: sessionObjectId,
+    termId: termObjectId,
   });
 
   /* -------------------------------------------------------
      STUDENTS
   ------------------------------------------------------- */
 
-  const students =
-    await Student.find({
-      schoolId,
-      classId: classObjectId,
-      status: "active",
-    }).select(
-      "_id firstName lastName admissionNumber"
-    );
+  const students = await Student.find({
+    schoolId,
+    classId: classObjectId,
+    status: "active",
+  })
+    .select("_id firstName lastName admissionNumber")
+    .sort({
+      firstName: 1,
+      lastName: 1,
+    });
 
   if (!students.length) {
     return {
@@ -1060,79 +1060,74 @@ export async function generateClassReportCardsBundle({
       termId,
 
       totalStudents: 0,
-
       reports: [],
     };
   }
 
   /* -------------------------------------------------------
-     GENERATE REPORTS
+     GENERATE REPORT CARDS
+     Each successful report includes the reportCard object,
+     including traitAssessment when available.
   ------------------------------------------------------- */
 
   const reports = [];
 
   for (const student of students) {
     try {
-      const report =
-        await generateStudentReportCard({
-          user,
-
-          studentId:
-            student._id,
-
-          sessionId,
-
-          termId,
-        });
+      const report = await generateStudentReportCard({
+        user,
+        studentId: student._id,
+        sessionId,
+        termId,
+      });
 
       /*
-       * IMPORTANT:
-       *
-       * generateStudentReportCard()
-       * returns:
+       * generateStudentReportCard() returns:
        *
        * {
-       *   reportCard: {...}
+       *   reportCard: {
+       *     student,
+       *     session,
+       *     term,
+       *     results,
+       *     summary,
+       *     attendance,
+       *     comments,
+       *     traitAssessment
+       *   }
        * }
        *
-       * So we push report.reportCard,
-       * not the wrapper itself.
+       * Keep the existing bundle structure by pushing
+       * report.reportCard rather than the wrapper.
        */
 
-      reports.push(
-        report.reportCard
-      );
+      reports.push(report.reportCard);
     } catch (err) {
       console.error(
         `Failed report for student ${student._id}`,
         err.message
       );
 
+      /*
+       * Preserve the existing per-student error handling.
+       * One failed report must not stop the entire class.
+       */
+
       reports.push({
         student: {
           _id: student._id,
-
-          firstName:
-            student.firstName,
-
-          lastName:
-            student.lastName,
-
-          admissionNumber:
-            student.admissionNumber,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          admissionNumber: student.admissionNumber,
         },
 
-        error: true,
+        traitAssessment: null,
 
-        message:
-          "Failed to generate report card",
+        error: true,
+        message: "Failed to generate report card",
       });
     }
   }
-
-  /* -------------------------------------------------------
-     CLASS RANKING SUMMARY
-  ------------------------------------------------------- */
 
   /* -------------------------------------------------------
      RESPONSE
@@ -1146,14 +1141,11 @@ export async function generateClassReportCardsBundle({
     },
 
     sessionId,
-
     termId,
 
-    totalStudents:
-      students.length,
+    totalStudents: students.length,
 
-    generatedAt:
-      new Date(),
+    generatedAt: new Date(),
 
     reports,
   };
