@@ -1077,25 +1077,46 @@ export default function ReportCardTemplate({
                 </div>
               </div>
 
-              <div className="report-box">
-                <div className="report-box-title">Approval</div>
+           <div className="report-box">
+  <div className="report-box-title">Approval</div>
 
-                <div className="approval-area">
-                  <div className="signature-block">
-                    <div className="signature-space" />
-                    <div className="signature-label">Class Teacher</div>
-                  </div>
+  <div className="approval-area">
+    {/* Class Teacher */}
+    <div className="signature-block">
+      <div className="signature-space" />
+      <div className="signature-label">Class Teacher</div>
+    </div>
 
-                  <div className="signature-block">
-                    <div className="signature-space" />
-                    <div className="signature-label">Principal</div>
-                  </div>
+    {/* Principal signature and school stamp */}
+    <div className="signature-block principal-approval">
+      <div className="principal-signature-space">
+        {principalSignature && (
+          <img
+            src={principalSignature}
+            alt="Principal signature"
+            className="principal-signature-image"
+          />
+        )}
 
-                  <div className="approval-date">
-                    Date: ____________________
-                  </div>
-                </div>
-              </div>
+        {schoolStamp && (
+          <img
+            src={schoolStamp}
+            alt="Official school stamp"
+            className="principal-stamp-image"
+          />
+        )}
+      </div>
+
+      <div className="signature-label">Principal</div>
+    </div>
+
+    {/* Approval date */}
+    <div className="approval-date">
+      Date: ____________________
+    </div>
+  </div>
+</div>   
+              
             </div>
 
            {/* NEXT TERM RESUMPTION */}
