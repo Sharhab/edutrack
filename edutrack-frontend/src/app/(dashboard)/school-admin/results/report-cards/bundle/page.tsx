@@ -16,7 +16,14 @@ import PrintButton from "../../../../../../components/report-cards/PrintButton";
    TYPES
 ========================================= */
 
-type ReportCard = StudentReportCard;
+type BundleReportItem =
+  | StudentReportCard
+  | {
+      reportCard?: StudentReportCard;
+      error?: boolean;
+      message?: string;
+    };
+
 type ClassBundle = {
   class: {
     _id: string;
@@ -26,13 +33,10 @@ type ClassBundle = {
   totalStudents: number;
   sessionId: string;
   termId: string;
-  generatedAt: string;
-  reports: Array<{
-    reportCard?: ReportCard;
-    error?: boolean;
-    message?: string;
-  }>;
+  generatedAt?: string;
+  reports: BundleReportItem[];
 };
+
 const isValidObjectId = (id: string | null): boolean =>
   Boolean(id && /^[0-9a-fA-F]{24}$/.test(id));
 
@@ -208,9 +212,30 @@ console.log(
     );
   }
 
-  const reports = bundle.reports.filter(
-    (item) => Boolean(item?.reportCard)
+
+const reports = bundle.reports
+  .map((item) => {
+    // Support the older nested API response.
+    if ("reportCard" in item && item.reportCard) {
+      return { reportCard: item.reportCard };
+    }
+
+    // Support the current backend response, where
+    // each successful report is returned directly.
+    if ("student" in item && !("error" in item && item.error)) {
+      return { reportCard: item as StudentReportCard };
+    }
+
+    // Keep failed reports out of the printable bundle.
+    return null;
+  })
+  .filter(
+    (
+      item
+    ): item is { reportCard: StudentReportCard } =>
+      item !== null
   );
+
 
   /* =========================================
      MAIN UI
