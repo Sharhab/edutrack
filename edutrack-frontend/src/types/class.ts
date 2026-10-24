@@ -37,10 +37,12 @@ export interface ClassFormValues {
   isActive: string;
 }
 
+
 export interface ClassPayload {
   name: string;
   level?: string;
-  arm?: string;
+  code?: string;
+  classTeacherId?: string | null;
   capacity?: number;
-  isActive: boolean;
+  isActive?: boolean;
 }
