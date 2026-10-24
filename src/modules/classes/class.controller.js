@@ -1,4 +1,9 @@
-import { createClassSchema, updateClassSchema } from "./class.validation.js";
+
+import {
+  createClassSchema,
+  updateClassSchema,
+  bulkUpsertClassSchema,
+} from "./class.validation.js";
 import {
   createClass,
   deleteClass,
@@ -65,27 +70,19 @@ export async function deleteClassHandler(req, res) {
   });
 }
 
-export async function bulkUpsertClassesHandler(
-  req,
-  res,
-  next
-) {
+export async function bulkUpsertClassesHandler(req, res, next) {
   try {
-    const schoolId =
-      req.user.schoolId;
+    const parsed = bulkUpsertClassSchema.parse(req.body);
+    const schoolId = req.user.schoolId;
 
-    const { classes } = req.body;
-
-    const result =
-      await bulkUpsertClasses(
-        classes,
-        schoolId
-      );
+    const result = await bulkUpsertClasses(
+      parsed.classes,
+      schoolId
+    );
 
     return res.status(200).json({
       success: true,
-      message:
-        "Classes processed successfully",
+      message: "Classes processed successfully",
       data: result,
     });
   } catch (error) {
