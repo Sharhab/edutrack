@@ -147,10 +147,13 @@ function pasteStudents() {
   }
 
   const matrix = text
-    .split(/\r?\n/)
-    .map((line) => line.split("\t").map((cell) => cell.trim()))
-    .filter((cells) => cells.some(Boolean));
-
+  .trim()
+  .split(/\r?\n/)
+  .filter((line) => line.trim().length > 0)
+  .map((line) =>
+    line.split("\t").map((cell) => cell.trim())
+  )
+  .filter((row) => row.some((cell) => cell !== ""));
   if (!matrix.length) {
     setPasteMessage("No student data found.");
     return;
