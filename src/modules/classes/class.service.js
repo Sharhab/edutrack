@@ -4,6 +4,7 @@ import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
 import { ApiError } from "../../utils/apiError.js";
 
+
 /**
  * Generate a URL-friendly class slug.
  */
@@ -262,7 +263,14 @@ export async function updateClass(id, payload, schoolId) {
   if (payload.capacity !== undefined) {
     data.capacity = payload.capacity;
   }
+ 
+  if (payload.code !== undefined) {
+    data.code = payload.code;
+  }
 
+  if (payload.isActive !== undefined) {
+    data.isActive = payload.isActive;
+  }
   await data.save();
 
   return data;
