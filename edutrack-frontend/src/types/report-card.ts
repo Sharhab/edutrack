@@ -88,6 +88,20 @@ export type TermInfo = {
   nextTermResumptionDate?: string | null;
 };
 
+
+
+export type TraitRating = {
+  traitKey: string;
+  traitName: string;
+  rating: number;
+};
+
+export type TraitAssessmentSummary = {
+  psychomotor: TraitRating[];
+  affective: TraitRating[];
+  teacherComment?: string;
+};
+
 /* =========================================
    FULL STUDENT REPORT CARD
 ========================================= */
@@ -107,6 +121,8 @@ export type StudentReportCard = {
   attendance: AttendanceSummary;
 
   comments?: ReportCardComments;
+ traitAssessment?: TraitAssessmentSummary | null;
+ 
 
 };
 /* =========================================
