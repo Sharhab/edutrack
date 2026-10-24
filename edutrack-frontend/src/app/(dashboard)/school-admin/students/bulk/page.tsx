@@ -44,7 +44,8 @@ const [rows, setRows] = useState<StudentRow[]>([
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [error, setError] = useState("");
-
+  const [pasteText, setPasteText] = useState("");
+const [pasteMessage, setPasteMessage] = useState("");
   /**
    * LOAD CLASSES (SYNCED WITH SYSTEM)
    */
@@ -109,7 +110,216 @@ const [rows, setRows] = useState<StudentRow[]>([
     }
     return "";
   }
+function normalizeDate(value: string): string {
+  const v = value.trim();
 
+  if (!v) return "";
+
+  // Already in YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+
+  // Convert DD/MM/YYYY or DD-MM-YYYY
+  const match = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+
+  if (match) {
+    const [, day, month, year] = match;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  return "";
+}
+
+function normalizeHeader(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function pasteStudents() {
+  setPasteMessage("");
+  setError("");
+
+  const text = pasteText.trim();
+
+  if (!text) {
+    setPasteMessage("Copy student rows from Excel and paste them here first.");
+    return;
+  }
+
+  const matrix = text
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .map((line) => line.split("\t").map((cell) => cell.trim()));
+
+  if (!matrix.length) {
+    setPasteMessage("No student rows found.");
+    return;
+  }
+
+  const aliases: Record<string, keyof StudentRow> = {
+    firstname: "firstName",
+    givenname: "firstName",
+    middlename: "middleName",
+    lastname: "lastName",
+    surname: "lastName",
+    admissionno: "admissionNumber",
+    admissionnumber: "admissionNumber",
+    studentid: "admissionNumber",
+    gender: "gender",
+    sex: "gender",
+    dateofbirth: "dateOfBirth",
+    dob: "dateOfBirth",
+    class: "classId",
+    classname: "classId",
+    entry: "entryType",
+    entrytype: "entryType",
+    phone: "phone",
+    phonenumber: "phone",
+    status: "status",
+  };
+
+  const firstRowHeaders = matrix[0].map(normalizeHeader);
+  const hasHeaders = firstRowHeaders.some(
+    (header) => aliases[header] !== undefined
+  );
+
+  const headers = hasHeaders
+    ? firstRowHeaders
+    : [
+        "firstname",
+        "middlename",
+        "lastname",
+        "admissionnumber",
+        "gender",
+        "dateofbirth",
+        "class",
+        "entrytype",
+        "phone",
+        "status",
+      ];
+
+  const dataRows = hasHeaders ? matrix.slice(1) : matrix;
+
+  const classMap = new Map(
+    classes.map((c) => [c.name.trim().toLowerCase(), c._id])
+  );
+
+  const imported: StudentRow[] = dataRows
+    .filter((cells) => cells.some((cell) => cell !== ""))
+    .map((cells) => {
+      const row: StudentRow = {
+        firstName: "",
+        middleName: "",
+        lastName: "",
+        admissionNumber: "",
+        gender: "male",
+        dateOfBirth: "",
+        classId: "",
+        entryType: "new",
+        phone: "",
+        status: "active",
+      };
+
+      headers.forEach((header, index) => {
+        const field = aliases[header];
+        if (!field) return;
+
+        const value = cells[index] || "";
+
+        if (field === "classId") {
+          // Accept either an actual class ID or the class name.
+          const matchingClass = classes.find(
+            (c) => c._id === value
+          );
+
+          row.classId =
+            matchingClass?._id ||
+            classMap.get(value.toLowerCase()) ||
+            "";
+
+          return;
+        }
+
+        if (field === "dateOfBirth") {
+          row.dateOfBirth = normalizeDate(value);
+          return;
+        }
+
+        if (field === "gender") {
+          const gender = value.toLowerCase();
+
+          row.gender =
+            gender === "female" || gender === "f"
+              ? "female"
+              : "male";
+
+          return;
+        }
+
+        if (field === "entryType") {
+          const entry = value.toLowerCase();
+
+          const validEntries = [
+            "new",
+            "transfer",
+            "promotion",
+            "reentry",
+          ];
+
+          row.entryType = validEntries.includes(entry)
+            ? entry
+            : "new";
+
+          return;
+        }
+
+        if (field === "status") {
+          const status = value.toLowerCase();
+
+          const validStatuses = [
+            "active",
+            "inactive",
+            "suspended",
+            "graduated",
+          ];
+
+          row.status = validStatuses.includes(status)
+            ? status
+            : "active";
+
+          return;
+        }
+
+        row[field] = value;
+      });
+
+      return row;
+    });
+
+  if (!imported.length) {
+    setPasteMessage("No student records were found in the pasted data.");
+    return;
+  }
+
+  // Append imported rows to the existing table.
+  setRows((previous) => [
+    ...previous.filter(
+      (row) =>
+        row.firstName.trim() ||
+        row.lastName.trim() ||
+        row.admissionNumber.trim()
+    ),
+    ...imported,
+  ]);
+
+  setPasteMessage(
+    `${imported.length} student row(s) added. Review the table and select any missing classes.`
+  );
+
+  setPasteText("");
+}
+  
   async function saveAll() {
     const err = validate();
     if (err) {
@@ -182,7 +392,48 @@ const [rows, setRows] = useState<StudentRow[]>([
           {error}
         </div>
       )}
+     {/* EXCEL COPY AND PASTE */}
+<div className="rounded-2xl border border-cyan-400/20 bg-slate-900/60 p-4 space-y-3">
+  <div>
+    <h2 className="text-lg font-semibold text-white">
+      Import from Excel
+    </h2>
 
+    <p className="text-sm text-slate-400">
+      Copy student rows from Excel, including the column headers,
+      and paste them below.
+    </p>
+  </div>
+
+  <textarea
+    value={pasteText}
+    onChange={(e) => setPasteText(e.target.value)}
+    placeholder={`First Name\tMiddle Name\tLast Name\tAdmission No\tGender\tDate of Birth\tClass\tEntry\tPhone\tStatus`}
+    rows={5}
+    className="w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+  />
+
+  {pasteMessage && (
+    <p className="text-sm text-cyan-300" role="status">
+      {pasteMessage}
+    </p>
+  )}
+
+  <button
+    type="button"
+    onClick={pasteStudents}
+    disabled={loadingOptions || !pasteText.trim()}
+    className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    Add Pasted Students to Table
+  </button>
+
+  <p className="text-xs text-slate-400">
+    Existing table rows are preserved. Review imported information
+    before saving.
+  </p>
+</div>
+      
       {/* TABLE */}
       <div className="rounded-2xl border border-white/10 overflow-x-auto">
         <table className="w-full text-sm">
