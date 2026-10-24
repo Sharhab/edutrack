@@ -10,7 +10,6 @@ import { StudentReportCard } from "../../types/report-card";
 import ReportCardSummary from "./ReportCardSummary";
 import ReportCardSubjectTable from "./ReportCardSubjectTable";
 import ReportCardAttendance from "./ReportCardAttendance";
-import ReportCardFooter from "./ReportCardFooter";
 
 import { defaultComments } from "../../lib/report-card/pdfTheme";
 import { getPerformanceRemark } from "../../lib/report-card/reportCardCalculations";
@@ -1176,14 +1175,6 @@ export default function ReportCardTemplate({
 
 {/* FOOTER */}
 
-<div className="report-footer">
-  <ReportCardFooter
-    branding={{
-      principalSignature,
-      schoolStamp,
-    }}
-  />
-</div>
           </div>
         </div>
       </div>
