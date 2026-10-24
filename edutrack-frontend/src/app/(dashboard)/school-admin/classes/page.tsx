@@ -73,11 +73,13 @@ export default function ClassesPage() {
   const filtered = useMemo(() => {
     if (!search.trim()) return items;
     const q = search.toLowerCase();
+     
+    
+return items.filter((item) =>
+  `${item.name} ${item.level || ""} ${item.code || ""}`
+    .toLowerCase()
+    .includes(q)
 
-    return items.filter((item) =>
-      `${item.name} ${item.level || ""} ${item.arm || ""}`
-        .toLowerCase()
-        .includes(q)
     );
   }, [items, search]);
 
@@ -102,7 +104,7 @@ export default function ClassesPage() {
     setForm({
       name: item.name || "",
       level: item.level || "",
-      arm: item.arm || "",
+      arm: item.code || "",
       capacity: item.capacity ? String(item.capacity) : "",
       isActive: String(item.isActive ?? true),
     });
