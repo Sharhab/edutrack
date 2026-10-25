@@ -107,6 +107,18 @@ export async function publishResults(payload: any) {
   return data.data;
 }
 
+/* =========================================
+   GENERATE RESULTS BEFORE PUBLISHING
+========================================= */
+export async function generateResults(payload: {
+  classId: string;
+  sessionId: string;
+  termId: string;
+  subjectId?: string;
+}) {
+  const { data } = await api.post("/results/admin/generate", payload);
+  return data.data;
+}
 
 export async function getClassAssessmentScheme(
   classId: string
