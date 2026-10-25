@@ -4,7 +4,7 @@ import {
   saveResultScheme,
   listResultSchemes,
 } from "./result-scheme.service.js";
-
+import { Teacher } from "../teachers/teacher.model.js";
 import { ApiError } from "../../utils/apiError.js";
 
 function getRequestUser(req) {
@@ -23,9 +23,55 @@ function getRequestUser(req) {
  *   ?classId=<classId>
  *   ?level=<level>
  */
+
+
+// Replace the existing getResultSchemeController with this.
 export async function getResultSchemeController(req, res, next) {
   try {
     const user = getRequestUser(req);
+
+    // Administrators may read schemes using the existing behavior.
+    if (user.role !== "school_admin") {
+      if (user.role !== "teacher") {
+        throw new ApiError(403, "You are not allowed to view assessment schemes.");
+      }
+
+      const { classId } = req.query;
+
+      if (!classId) {
+        throw new ApiError(
+          400,
+          "A classId is required to view an assessment scheme."
+        );
+      }
+
+      const teacher = await Teacher.findOne({
+        userId: user._id,
+        schoolId: user.schoolId,
+        isActive: true,
+        status: "active",
+      }).select("classIds assignments");
+
+      if (!teacher) {
+        throw new ApiError(403, "Teacher profile not found or inactive.");
+      }
+
+      const assignedThroughClasses = (teacher.classIds || []).some(
+        (id) => String(id) === String(classId)
+      );
+
+      const assignedThroughSubjects = (teacher.assignments || []).some(
+        (assignment) =>
+          String(assignment.classId) === String(classId)
+      );
+
+      if (!assignedThroughClasses && !assignedThroughSubjects) {
+        throw new ApiError(
+          403,
+          "You are not assigned to this class."
+        );
+      }
+    }
 
     const result = await getResultScheme(user, {
       classId: req.query.classId,
