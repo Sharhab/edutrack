@@ -93,7 +93,7 @@ const navByRole: Record<
   { label: "Results", href: "/school-admin/results", icon: BookOpen },
    {
   label: "Results Scheme",
-  href: "/school-admin/results/result-scheme",
+  href: "/school-admin/result-scheme",
   icon: ClipboardList,
 },
    {
