@@ -10,7 +10,7 @@ import gradingScaleRoutes from "../modules/results/grading-scale.routes.js";
 import authRoutes from "../modules/auth/auth.routes.js";
 import onboardingRoutes from "../modules/onboarding/onboarding.routes.js";
 import tenantResolverRoutes from "../modules/tenant-resolver/tenant-resolver.routes.js";
-
+import resultSchemeRoutes from "../modules/results/result-scheme.routes.js";
 // Core modules
 import userRoutes from "../modules/users/user.routes.js";
 import schoolRoutes from "../modules/schools/school.routes.js";
@@ -157,6 +157,7 @@ router.use("/students", studentRoutes);
 router.use("/attendance", attendanceRoutes);
 router.use("/results", resultRoutes);
 router.use("/grading-scale", gradingScaleRoutes);
+router.use("/result-scheme", resultSchemeRoutes);
 router.use("/announcements", announcementRoutes);
 
 /**
