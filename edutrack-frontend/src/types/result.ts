@@ -1,3 +1,4 @@
+
 /* =========================================
    STUDENT (BASIC)
 ========================================= */
@@ -8,6 +9,24 @@ export interface ResultStudent {
   admissionNumber?: string;
 }
 
+/* =========================================
+   ASSESSMENT SCHEME
+========================================= */
+export interface ResultAssessmentComponent {
+  key: string;
+  label: string;
+  maxScore: number;
+}
+
+export interface ResultAssessmentScheme {
+  version: number;
+  totalMax: number;
+  components: ResultAssessmentComponent[];
+}
+
+/* =========================================
+   RESULT FORM VALUES (LEGACY COMPATIBILITY)
+========================================= */
 export interface ResultFormValues {
   studentId: string;
   classId: string;
@@ -22,8 +41,9 @@ export interface ResultFormValues {
 
   remark?: string;
 }
+
 /* =========================================
-   BULK ENTRY PAYLOAD (v2 - TEACHER ENTRY ENGINE)
+   BULK ENTRY PAYLOAD
 ========================================= */
 export interface CreateResultPayload {
   classId: string;
@@ -34,10 +54,14 @@ export interface CreateResultPayload {
   results: {
     studentId: string;
 
-    ca1?: number;
-    ca2?: number;
-    assignment?: number;
-    exam?: number;
+    // Dynamic assessment components.
+    scores?: Record<string, number | null>;
+
+    // Legacy fields retained for compatibility.
+    ca1?: number | null;
+    ca2?: number | null;
+    assignment?: number | null;
+    exam?: number | null;
   }[];
 }
 
@@ -49,55 +73,78 @@ export interface ResultEntryRow {
   studentName: string;
   admissionNumber?: string;
 
-  ca1: number;
-  ca2: number;
-  assignment: number;
-  exam: number;
+  scores?: Record<string, number | null>;
 
-  total: number;
+  ca1: number | null;
+  ca2: number | null;
+  assignment: number | null;
+  exam: number | null;
+
+  total: number | null;
   grade: string;
   remark?: string;
 }
 
 /* =========================================
-   RESULT RESPONSE (BACKEND NORMALIZED)
+   RESPONSE RELATION TYPES
+   Supports populated and normalized API values.
+========================================= */
+export type ResultRelation<T> = string | T;
+
+export interface ResultClass {
+  _id: string;
+  name: string;
+}
+
+export interface ResultSubject {
+  _id: string;
+  name: string;
+  code?: string;
+}
+
+export interface ResultAcademicPeriod {
+  _id: string;
+  name: string;
+}
+
+/* =========================================
+   RESULT RESPONSE
 ========================================= */
 export interface ResultRecord {
   _id: string;
 
-  studentId: ResultStudent;
+  studentId: ResultRelation<ResultStudent>;
+  studentName?: string;
+  admissionNumber?: string;
 
-  classId: {
-    _id: string;
-    name: string;
-  };
+  classId: ResultRelation<ResultClass>;
+  className?: string;
 
-  subjectId: {
-    _id: string;
-    name: string;
-    code?: string;
-  };
+  subjectId: ResultRelation<ResultSubject>;
+  subjectName?: string;
+  subjectCode?: string;
 
-  sessionId: {
-    _id: string;
-    name: string;
-  };
+  sessionId: ResultRelation<ResultAcademicPeriod>;
+  sessionName?: string;
 
-  termId: {
-    _id: string;
-    name: string;
-  };
+  termId: ResultRelation<ResultAcademicPeriod>;
+  termName?: string;
 
-  ca1: number;
-  ca2: number;
-  assignment: number;
-  exam: number;
+  // Dynamic scoring.
+  scores?: Record<string, number | null>;
+  assessmentScheme?: ResultAssessmentScheme | null;
 
-  total: number;
+  // Legacy scoring fields.
+  ca1: number | null;
+  ca2: number | null;
+  assignment: number | null;
+  exam: number | null;
+
+  total: number | null;
   grade: string;
   remark: string;
 
-  status: "draft" | "published";
+  status: "draft" | "generated" | "published" | "locked";
   published?: boolean;
   locked?: boolean;
 
@@ -106,7 +153,7 @@ export interface ResultRecord {
 }
 
 /* =========================================
-   TEACHER RESULT FILTERS (OPTIONAL UI)
+   TEACHER RESULT FILTERS
 ========================================= */
 export interface ResultQueryParams {
   classId?: string;
@@ -114,5 +161,5 @@ export interface ResultQueryParams {
   subjectId?: string;
   sessionId?: string;
   termId?: string;
-  status?: "draft" | "published";
+  status?: "draft" | "generated" | "published" | "locked";
 }
