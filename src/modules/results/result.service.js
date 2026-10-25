@@ -673,6 +673,7 @@ export async function generateClassResults({
   classId,
   sessionId,
   termId,
+  subjectId,
 }) {
   console.log("GENERATE START", {
     schoolId,
@@ -710,18 +711,23 @@ export async function generateClassResults({
      LOAD RESULTS
   ========================================= */
 
-  const results =
-    await Result.find({
-      schoolId,
-      classId,
-      sessionId,
-      termId,
-    });
+const resultFilter = {
+  schoolId,
+  classId,
+  sessionId,
+  termId,
+  status: { $in: ["draft", "generated"] },
+};
 
-  console.log(
-    "RESULTS FOUND:",
-    results.length
-  );
+if (subjectId) {
+  if (!mongoose.Types.ObjectId.isValid(subjectId)) {
+    throw new ApiError(400, "Invalid subjectId.");
+  }
+
+  resultFilter.subjectId = subjectId;
+}
+
+const results = await Result.find(resultFilter);
 
   
 let updated = 0;
