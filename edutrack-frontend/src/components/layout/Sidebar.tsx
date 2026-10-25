@@ -19,6 +19,7 @@ import {
   CalendarDays,
   Sparkles,
   ClipboardCheck,
+  ClipboardList,
 } from "lucide-react";
 import clsx from "clsx";
 import { UserRole } from "../../types/auth";
@@ -90,6 +91,11 @@ const navByRole: Record<
   },
 
   { label: "Results", href: "/school-admin/results", icon: BookOpen },
+   {
+  label: "Results Scheme",
+  href: "/school-admin/results/scheme",
+  icon: ClipboardList,
+},
    {
   label: "Grading Scale",
   href: "/school-admin/grading-scale",
