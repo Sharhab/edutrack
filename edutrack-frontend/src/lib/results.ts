@@ -50,19 +50,7 @@ export type AssessmentScheme = {
   source?: string;
 };
 
-export async function getClassAssessmentScheme(
-  classId: string
-): Promise<AssessmentScheme | null> {
-  if (!classId) {
-    return null;
-  }
 
-  const { data } = await api.get("/result-schemes", {
-    params: { classId },
-  });
-
-  return data?.data?.scheme ?? null;
-}
 
 /* =========================================
    SAVE / AUTOSAVE BULK RESULTS (V2)
@@ -114,4 +102,19 @@ export async function autosaveResults(payload: any) {
 export async function publishResults(payload: any) {
   const { data } = await api.post("/results/admin/publish", payload);
   return data.data;
+}
+
+
+export async function getClassAssessmentScheme(
+  classId: string
+): Promise<AssessmentScheme | null> {
+  if (!classId) {
+    return null;
+  }
+
+  const { data } = await api.get("/result-scheme", {
+    params: { classId },
+  });
+
+  return data?.data?.scheme ?? null;
 }
