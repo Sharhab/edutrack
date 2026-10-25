@@ -5,6 +5,13 @@ import { ApiError } from "../../utils/apiError.js";
 import { Teacher } from "../teachers/teacher.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
+import {
+  getResultScheme,
+} from "./result-scheme.service.js";
+
+import {
+  calculateDynamicResultFields,
+} from "./assessment-calculation.service.js";
 import { getSchoolGradeBands } from "./grading-scale.service.js";
 /* =========================================
    CORE UTILS (SINGLE SOURCE OF TRUTH)
@@ -328,21 +335,133 @@ export async function ensureTeacherCanEnter({
    UPSERT (SINGLE RESULT)
 ========================================= */
 
-export async function createOrUpdateResult(
-  payload,
-  user
-) {
-  const schoolId = user.schoolId;
-   
-await validateResultAcademicPeriod({
-  schoolId,
-  sessionId: payload.sessionId,
-  termId: payload.termId,
-});
-   
-  const gradeBands = await getSchoolGradeBands(schoolId);
+/* =========================================
+   SHARED ASSESSMENT SAVE HELPERS
+========================================= */
 
-const studentIds = results.map((r) => r.studentId);
+function getScoresFromPayload(payload = {}) {
+  // Prefer the new dynamic format when supplied.
+  if (
+    payload.scores &&
+    typeof payload.scores === "object" &&
+    !Array.isArray(payload.scores)
+  ) {
+    return payload.scores;
+  }
+
+  // Backward compatibility with existing teacher entry.
+  return {
+    ca1: payload.ca1,
+    ca2: payload.ca2,
+    assignment: payload.assignment,
+    exam: payload.exam,
+  };
+}
+
+function getSchemeSnapshot(calculated) {
+  return {
+    version: calculated.assessmentScheme.version,
+    totalMax: calculated.assessmentScheme.totalMax,
+    components: calculated.assessmentScheme.components,
+  };
+}
+
+async function calculateForClass({
+  user,
+  schoolId,
+  classId,
+  payload,
+  gradeBands,
+}) {
+  const resolved = await getResultScheme(user, { classId });
+
+  const calculated = calculateDynamicResultFields({
+    scores: getScoresFromPayload(payload),
+    scheme: resolved.scheme,
+    gradeBands,
+  });
+
+  return {
+    ...calculated,
+    // Keep a numeric total for compatibility with existing reports.
+    total: calculated.total ?? 0,
+    assessmentScheme: getSchemeSnapshot(calculated),
+  };
+}
+
+async function ensureResultsEditable({
+  schoolId,
+  classId,
+  subjectId,
+  sessionId,
+  termId,
+  studentIds,
+}) {
+  if (!studentIds.length) {
+    throw new ApiError(400, "At least one student result is required.");
+  }
+
+  const existing = await Result.find({
+    schoolId,
+    classId,
+    subjectId,
+    sessionId,
+    termId,
+    studentId: { $in: studentIds },
+    status: { $in: ["published", "locked"] },
+  })
+    .select("studentId status")
+    .lean();
+
+  if (existing.length) {
+    const locked = existing.filter(
+      (result) => result.status === "locked"
+    );
+
+    if (locked.length) {
+      throw new ApiError(
+        400,
+        "Some results are locked and cannot be modified."
+      );
+    }
+
+    throw new ApiError(
+      400,
+      "Some results are already published. Unpublish them through an authorized workflow before editing."
+    );
+  }
+}
+
+/* =========================================
+   UPSERT SINGLE RESULT
+========================================= */
+
+export async function createOrUpdateResult(payload, user) {
+  if (!user?.schoolId) {
+    throw new ApiError(401, "School context is required.");
+  }
+
+  const schoolId = user.schoolId;
+
+  const requiredFields = [
+    "studentId",
+    "classId",
+    "subjectId",
+    "sessionId",
+    "termId",
+  ];
+
+  for (const field of requiredFields) {
+    if (!payload?.[field]) {
+      throw new ApiError(400, `${field} is required.`);
+    }
+  }
+
+  await validateResultAcademicPeriod({
+    schoolId,
+    sessionId: payload.sessionId,
+    termId: payload.termId,
+  });
 
   await ensureTeacherCanEnter({
     user,
@@ -351,79 +470,77 @@ const studentIds = results.map((r) => r.studentId);
     subjectId: payload.subjectId,
   });
 
-  /* =========================================
-     PREVENT EDITING LOCKED RESULTS
-  ========================================= */
+  const gradeBands = await getSchoolGradeBands(schoolId);
 
-  const existingResult =
-    await Result.findOne({
+  const computed = await calculateForClass({
+    user,
+    schoolId,
+    classId: payload.classId,
+    payload,
+    gradeBands,
+  });
+
+  await ensureResultsEditable({
+    schoolId,
+    classId: payload.classId,
+    subjectId: payload.subjectId,
+    sessionId: payload.sessionId,
+    termId: payload.termId,
+    studentIds: [payload.studentId],
+  });
+
+  const result = await Result.findOneAndUpdate(
+    {
       schoolId,
       studentId: payload.studentId,
       subjectId: payload.subjectId,
       sessionId: payload.sessionId,
       termId: payload.termId,
-    });
-
-  if (existingResult?.status === "locked") {
-    throw new ApiError(
-      400,
-      "This result is locked and cannot be modified"
-    );
-  }
-
-  /* =========================================
-     UPSERT RESULT
-  ========================================= */
-
-  const result =
-    await Result.findOneAndUpdate(
-      {
+    },
+    {
+      $set: {
         schoolId,
         studentId: payload.studentId,
+        classId: payload.classId,
         subjectId: payload.subjectId,
         sessionId: payload.sessionId,
         termId: payload.termId,
+
+        ca1: computed.ca1,
+        ca2: computed.ca2,
+        assignment: computed.assignment,
+        exam: computed.exam,
+
+        scores: computed.scores,
+        assessmentScheme: computed.assessmentScheme,
+
+        total: computed.total,
+        grade: computed.grade,
+        remark: computed.remark,
+
+        status: "draft",
+        enteredBy: user._id || user.id,
       },
-      {
-        $set: {
-          schoolId,
-          studentId: payload.studentId,
-          classId: payload.classId,
-          subjectId: payload.subjectId,
-          sessionId: payload.sessionId,
-          termId: payload.termId,
-
-          ...computed,
-
-          status: "draft",
-
-          enteredBy:
-            user._id || user.id,
-        },
-      },
-      {
-        new: true,
-        upsert: true,
-      }
-    )
-      .populate(
-        "studentId",
-        "firstName lastName admissionNumber"
-      )
-      .populate("classId", "name")
-      .populate("subjectId", "name code")
-      .populate("sessionId", "name")
-      .populate("termId", "name")
-      .populate(
-        "enteredBy",
-        "firstName lastName"
-      );
+    },
+    {
+      new: true,
+      upsert: true,
+      runValidators: true,
+      setDefaultsOnInsert: true,
+    }
+  )
+    .populate("studentId", "firstName lastName admissionNumber")
+    .populate("classId", "name")
+    .populate("subjectId", "name code")
+    .populate("sessionId", "name")
+    .populate("termId", "name")
+    .populate("enteredBy", "firstName lastName");
 
   return formatResult(result);
 }
 
 /* =========================================
-   BULK UPSERT (FAST ENTRY)
+   BULK UPSERT (TEACHER ENTRY)
 ========================================= */
 
 export async function bulkUpsertResults({
@@ -435,26 +552,20 @@ export async function bulkUpsertResults({
   results,
   user,
 }) {
-  if (!Array.isArray(results)) {
-    throw new ApiError(
-      400,
-      "Results must be an array"
-    );
-  }
-
   if (!user) {
-    throw new ApiError(
-      401,
-      "User not authenticated"
-    );
+    throw new ApiError(401, "User not authenticated.");
   }
 
-   await validateResultAcademicPeriod({
-  schoolId,
-  sessionId,
-  termId,
-});
-   
+  if (!Array.isArray(results) || results.length === 0) {
+    throw new ApiError(400, "At least one result is required.");
+  }
+
+  await validateResultAcademicPeriod({
+    schoolId,
+    sessionId,
+    termId,
+  });
+
   await ensureTeacherCanEnter({
     user,
     schoolId,
@@ -462,99 +573,100 @@ export async function bulkUpsertResults({
     subjectId,
   });
 
-  /**
-   * =========================================
-   * PREVENT LOCKED RESULTS UPDATE
-   * =========================================
-   */
+  const studentIds = results.map((result) => result.studentId);
 
-
-  const lockedResults =
-    await Result.find({
-      schoolId,
-      subjectId,
-      sessionId,
-      termId,
-      status: "locked",
-      studentId: {
-        $in: studentIds,
-      },
-    });
-
-  if (lockedResults.length > 0) {
-    const lockedStudents =
-      lockedResults
-        .map((r) =>
-          r.studentId.toString()
-        )
-        .join(", ");
-
-    throw new ApiError(
-      400,
-      `Some results are locked. Students: ${lockedStudents}`
-    );
+  if (
+    studentIds.some(
+      (id) => !id || !mongoose.Types.ObjectId.isValid(id)
+    )
+  ) {
+    throw new ApiError(400, "Every result must contain a valid studentId.");
   }
 
-  /**
-   * =========================================
-   * BUILD BULK OPS
-   * =========================================
-   */
+  if (new Set(studentIds.map(String)).size !== studentIds.length) {
+    throw new ApiError(400, "Duplicate student results were submitted.");
+  }
 
-const operations = results.map((r) => {
-  const computed = calculateResultFields(r, gradeBands);
+  await ensureResultsEditable({
+    schoolId,
+    classId,
+    subjectId,
+    sessionId,
+    termId,
+    studentIds,
+  });
 
-    return {
+  const gradeBands = await getSchoolGradeBands(schoolId);
+
+  const operations = [];
+
+  for (const row of results) {
+    const computed = await calculateForClass({
+      user,
+      schoolId,
+      classId,
+      payload: row,
+      gradeBands,
+    });
+
+    operations.push({
       updateOne: {
         filter: {
           schoolId,
-          studentId: r.studentId,
+          studentId: row.studentId,
+          classId,
           subjectId,
           sessionId,
           termId,
+          // Never update a published or locked result, even if
+          // its status changes between the earlier check and write.
+          status: { $nin: ["published", "locked"] },
         },
-
         update: {
           $set: {
             schoolId,
-            studentId: r.studentId,
+            studentId: row.studentId,
             classId,
             subjectId,
             sessionId,
             termId,
 
-            ...computed,
+            ca1: computed.ca1,
+            ca2: computed.ca2,
+            assignment: computed.assignment,
+            exam: computed.exam,
+
+            scores: computed.scores,
+            assessmentScheme: computed.assessmentScheme,
+
+            total: computed.total,
+            grade: computed.grade,
+            remark: computed.remark,
 
             status: "draft",
-
-            enteredBy: user._id,
+            enteredBy: user._id || user.id,
+          },
+          $setOnInsert: {
+            // No extra fields needed here; kept for future
+            // insert-only defaults if required.
           },
         },
-
         upsert: true,
       },
-    };
+    });
+  }
+
+  const writeResult = await Result.bulkWrite(operations, {
+    ordered: true,
   });
-
-  /**
-   * =========================================
-   * EXECUTE BULK WRITE
-   * =========================================
-   */
-
-  const result =
-    await Result.bulkWrite(
-      operations
-    );
 
   return {
     success: true,
-    matched: result.matchedCount,
-    modified: result.modifiedCount,
-    upserted: result.upsertedCount,
+    matched: writeResult.matchedCount,
+    modified: writeResult.modifiedCount,
+    upserted: writeResult.upsertedCount,
   };
 }
-
 /* =========================================
    GENERATE CLASS RESULTS
 ========================================= */
