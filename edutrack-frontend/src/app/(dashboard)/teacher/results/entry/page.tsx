@@ -12,6 +12,7 @@ import FormInput from "../../../../../components/ui/FormInput";
 
 import {
   bulkUpsertResults,
+  generateResults,
   getClassAssessmentScheme,
   getClassStudentsForResultEntry,
   getResults,
@@ -651,31 +652,49 @@ export default function ResultEntryPage() {
 
     try {
       const snapshot = studentsRef.current.map((student) => ({ ...student }));
+     await bulkUpsertResults({
+  classId,
+  subjectId,
+  sessionId,
+  termId,
+  results: snapshot.map((student) => ({
+    studentId: student.studentId,
+    scores: student.scores,
+    ca1: student.ca1,
+    ca2: student.ca2,
+    assignment: student.assignment,
+    exam: student.exam,
+  })),
+});
 
-      await bulkUpsertResults({
-        classId,
-        subjectId,
-        sessionId,
-        termId,
-        results: snapshot.map((student) => ({
-          studentId: student.studentId,
-          scores: student.scores,
-          ca1: student.ca1,
-          ca2: student.ca2,
-          assignment: student.assignment,
-          exam: student.exam,
-        })),
-      });
+// Generate only the selected subject's results.
+const generated = await generateResults({
+  classId,
+  subjectId,
+  sessionId,
+  termId,
+});
 
-      await publishResults({
-        classId,
-        subjectId,
-        sessionId,
-        termId,
-      });
+if (!generated || generated.generated < 1) {
+  throw new Error(
+    "No draft results were generated. Check that scores are saved and the results are not already published or locked."
+  );
+}
 
-      setPublished(true);
-      setPageMessage("Publish request completed.");
+const publishedResult = await publishResults({
+  classId,
+  subjectId,
+  sessionId,
+  termId,
+});
+
+if (!publishedResult) {
+  throw new Error("The publish request did not return a result.");
+}
+
+setPublished(true);
+setPageMessage("Results generated and published successfully.");
+      
     } catch (error) {
       setPageError(
         axios.isAxiosError(error)
