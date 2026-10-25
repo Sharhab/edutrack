@@ -35,10 +35,13 @@ export async function getStudentResults(studentId: string): Promise<ResultRecord
    GET ASSESSMENT SCHEME FOR CLASS
 ========================================= */
 
+
 export type AssessmentComponent = {
   key: string;
   label: string;
   maxScore: number;
+  enabled?: boolean;
+  order?: number;
 };
 
 export type AssessmentScheme = {
@@ -48,8 +51,8 @@ export type AssessmentScheme = {
   totalMax: number;
   components: AssessmentComponent[];
   source?: string;
+  inherited?: boolean;
 };
-
 
 
 /* =========================================
