@@ -70,6 +70,63 @@ exam: {
   max: 70,
 },
 
+/* =========================================
+   DYNAMIC ASSESSMENT SCORES
+   Existing fields remain for compatibility.
+========================================= */
+
+scores: {
+  type: Map,
+  of: {
+    type: Number,
+    min: 0,
+    max: 100,
+  },
+  default: {},
+},
+
+/* =========================================
+   ASSESSMENT SCHEME SNAPSHOT
+   Preserves the scheme used for this result.
+========================================= */
+
+assessmentScheme: {
+  version: {
+    type: Number,
+    default: 1,
+    min: 1,
+  },
+
+  totalMax: {
+    type: Number,
+    default: 100,
+    min: 1,
+    max: 100,
+  },
+
+  components: [
+    {
+      _id: false,
+
+      key: {
+        type: String,
+        required: true,
+      },
+
+      label: {
+        type: String,
+        required: true,
+      },
+
+      maxScore: {
+        type: Number,
+        required: true,
+        min: 0.01,
+        max: 100,
+      },
+    },
+  ],
+},
 total: {
   type: Number,
   default: 0,
