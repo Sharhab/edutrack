@@ -1,5 +1,10 @@
 
-import { Router } from "express";
+
+import express from "express";
+
+import { protect } from "../../middlewares/auth.middleware.js";
+import { authorize } from "../../middlewares/role.middleware.js";
+import { asyncHandler } from "../../utils/asyncHandler.js";
 
 import {
   getResultSchemeController,
@@ -7,16 +12,13 @@ import {
   saveResultSchemeController,
 } from "./result-scheme.controller.js";
 
-import { protect } from "../../middleware/auth.middleware.js";
-import { authorize } from "../../middleware/authorize.middleware.js";
-
-const router = Router();
+const router = express.Router();
 
 router.use(protect);
 router.use(authorize("school_admin"));
 
-router.get("/all", listResultSchemesController);
-router.get("/", getResultSchemeController);
-router.put("/", saveResultSchemeController);
+router.get("/all", asyncHandler(listResultSchemesController));
+router.get("/", asyncHandler(getResultSchemeController));
+router.put("/", asyncHandler(saveResultSchemeController));
 
 export default router;
