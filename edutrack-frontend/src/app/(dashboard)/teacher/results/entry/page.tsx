@@ -1,7 +1,9 @@
+
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { Save, Search, UploadCloud, RefreshCw } from "lucide-react";
 
 import SectionCard from "../../../../../components/ui/SectionCard";
 import PageLoader from "../../../../../components/ui/PageLoader";
@@ -10,11 +12,14 @@ import FormInput from "../../../../../components/ui/FormInput";
 
 import {
   bulkUpsertResults,
+  getClassAssessmentScheme,
   getClassStudentsForResultEntry,
+  getResults,
   getTeacherResultContext,
   publishResults,
+  type AssessmentComponent,
+  type AssessmentScheme,
 } from "../../../../../lib/results";
-
 
 import {
   getClassTraitAssessments,
@@ -23,24 +28,45 @@ import {
   type ClassStudentTraitAssessment,
 } from "../../../../../lib/trait-assessments";
 
-import {
-  Save,
-  Search,
-  UploadCloud,
-} from "lucide-react";
-
 /* =========================================
-   SCORE LIMITS
+   TYPES
 ========================================= */
 
-const SCORE_LIMITS = {
-  ca1: 10,
-  ca2: 10,
-  assignment: 10,
-  exam: 70,
-} as const;
+type StudentTraitDraft = {
+  psychomotor: TraitRating[];
+  affective: TraitRating[];
+  teacherComment: string;
+};
 
-type ScoreField = keyof typeof SCORE_LIMITS;
+type StudentRow = {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  admissionNumber?: string;
+  gender?: string;
+  attendanceStatus?: string;
+
+  scores: Record<string, number | null>;
+
+  // Backward compatibility with older result records.
+  ca1: number | null;
+  ca2: number | null;
+  assignment: number | null;
+  exam: number | null;
+
+  total: number;
+  grade: string;
+  remark: string;
+  status?: string;
+};
+
+const LEGACY_COMPONENTS: AssessmentComponent[] = [
+  { key: "ca1", label: "CA 1", maxScore: 10 },
+  { key: "ca2", label: "CA 2", maxScore: 10 },
+  { key: "assignment", label: "Assignment", maxScore: 10 },
+  { key: "exam", label: "Exam", maxScore: 70 },
+];
 
 const PSYCHOMOTOR_TRAITS = [
   { key: "handwriting", name: "Handwriting" },
@@ -68,12 +94,6 @@ const TRAIT_RATINGS = [
   { value: 1, label: "1 - Needs Improvement" },
 ];
 
-type StudentTraitDraft = {
-  psychomotor: TraitRating[];
-  affective: TraitRating[];
-  teacherComment: string;
-};
-
 function emptyTraitDraft(): StudentTraitDraft {
   return {
     psychomotor: [],
@@ -82,69 +102,48 @@ function emptyTraitDraft(): StudentTraitDraft {
   };
 }
 
-/* =========================================
-   STUDENT TYPE
-========================================= */
+function emptyStudentScores(
+  components: AssessmentComponent[]
+): Record<string, number | null> {
+  return Object.fromEntries(
+    components.map((component) => [component.key, null])
+  );
+}
 
-type StudentRow = {
-  studentId: string;
-  firstName: string;
-  lastName: string;
-  fullName: string;
-  admissionNumber?: string;
-  gender?: string;
-  attendanceStatus?: string;
-
-  ca1: number | null;
-  ca2: number | null;
-  assignment: number | null;
-  exam: number | null;
-
-  total: number;
-  grade: string;
-  remark: string;
-};
-
-/* =========================================
-   RESULT CALCULATION
-========================================= */
-
-function computeResult(
-  row: Partial<StudentRow>
-) {
-  const ca1 = row.ca1 ?? 0;
-  const ca2 = row.ca2 ?? 0;
-  const assignment = row.assignment ?? 0;
-  const exam = row.exam ?? 0;
-
-  const total =
-    ca1 +
-    ca2 +
-    assignment +
-    exam;
-
-  const hasAnyScore =
-    row.ca1 !== null &&
-    row.ca1 !== undefined ||
-    row.ca2 !== null &&
-    row.ca2 !== undefined ||
-    row.assignment !== null &&
-    row.assignment !== undefined ||
-    row.exam !== null &&
-    row.exam !== undefined;
-
-  /*
-   * Completely blank result:
-   * no automatic F / Fail.
-   */
-  if (!hasAnyScore) {
-    return {
-      total: 0,
-      grade: "",
-      remark: "",
-    };
+function toNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
   }
 
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/* =========================================
+   SCORE CALCULATION
+========================================= */
+
+function calculateStudentResult(
+  scores: Record<string, number | null>,
+  components: AssessmentComponent[]
+) {
+  let total = 0;
+  let hasAnyScore = false;
+
+  for (const component of components) {
+    const value = scores[component.key];
+
+    if (value === null || value === undefined) continue;
+
+    total += value;
+    hasAnyScore = true;
+  }
+
+  if (!hasAnyScore) {
+    return { total: 0, grade: "", remark: "" };
+  }
+
+  // Preview only. The backend remains authoritative for saved grades.
   let grade = "F";
   let remark = "Fail";
 
@@ -165,10 +164,32 @@ function computeResult(
     remark = "Pass";
   }
 
+  return { total, grade, remark };
+}
+
+function normalizeScoresForScheme(
+  existingScores: Record<string, unknown>,
+  components: AssessmentComponent[]
+): Record<string, number | null> {
+  const next = emptyStudentScores(components);
+
+  for (const component of components) {
+    next[component.key] = toNumberOrNull(
+      existingScores[component.key]
+    );
+  }
+
+  return next;
+}
+
+function getLegacyFields(
+  scores: Record<string, number | null>
+) {
   return {
-    total,
-    grade,
-    remark,
+    ca1: scores.ca1 ?? null,
+    ca2: scores.ca2 ?? null,
+    assignment: scores.assignment ?? null,
+    exam: scores.exam ?? null,
   };
 }
 
@@ -177,615 +198,597 @@ function computeResult(
 ========================================= */
 
 export default function ResultEntryPage() {
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [schemeLoading, setSchemeLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [published, setPublished] = useState(false);
 
-  const [studentsLoading, setStudentsLoading] =
-    useState(false);
+  const [context, setContext] = useState<any>(null);
+  const [classId, setClassId] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [sessionId, setSessionId] = useState("");
+  const [termId, setTermId] = useState("");
 
-  const [context, setContext] =
-    useState<any>(null);
+  const [assessmentScheme, setAssessmentScheme] =
+    useState<AssessmentScheme | null>(null);
 
-  const [classId, setClassId] =
-    useState("");
+  const [students, setStudents] = useState<StudentRow[]>([]);
+  const studentsRef = useRef<StudentRow[]>([]);
 
-  const [subjectId, setSubjectId] =
-    useState("");
+  const [search, setSearch] = useState("");
+  const [pageError, setPageError] = useState("");
+  const [pageMessage, setPageMessage] = useState("");
 
-  const [sessionId, setSessionId] =
-    useState("");
-
-  const [termId, setTermId] =
-    useState("");
-
-  const [students, setStudents] =
-    useState<StudentRow[]>([]);
-
-  const studentsRef =
-    useRef<StudentRow[]>([]);
-
-  const [search, setSearch] =
-    useState("");
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [published, setPublished] =
-    useState(false);
-
-  const [pageError, setPageError] =
-    useState("");
   const [traitAssessments, setTraitAssessments] =
-  useState<Record<string, StudentTraitDraft>>({});
+    useState<Record<string, StudentTraitDraft>>({});
+  const [traitsLoading, setTraitsLoading] = useState(false);
+  const [savingTraitStudent, setSavingTraitStudent] =
+    useState<string | null>(null);
+  const [traitError, setTraitError] = useState("");
+  const [traitMessage, setTraitMessage] = useState("");
 
-const [traitsLoading, setTraitsLoading] =
-  useState(false);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingLock = useRef(false);
 
-const [savingTraitStudent, setSavingTraitStudent] =
-  useState<string | null>(null);
+  const components = useMemo(
+    () =>
+      assessmentScheme?.components?.filter(
+        (component) => component.enabled !== false
+      ) ?? LEGACY_COMPONENTS,
+    [assessmentScheme]
+  );
 
-const [traitError, setTraitError] =
-  useState("");
-
-const [traitMessage, setTraitMessage] =
-  useState("");
-  const autosaveTimer =
-    useRef<NodeJS.Timeout | null>(null);
-
-  const savingLock =
-    useRef(false);
-
-  /* =========================================
-     KEEP LATEST STUDENT DATA
-  ========================================= */
+  const totalMax = useMemo(
+    () => components.reduce((sum, component) => sum + component.maxScore, 0),
+    [components]
+  );
 
   useEffect(() => {
     studentsRef.current = students;
   }, [students]);
+
+  const cancelAutosave = useCallback(() => {
+    if (autosaveTimer.current) {
+      clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
+  }, []);
+
+  useEffect(() => cancelAutosave, [cancelAutosave]);
 
   /* =========================================
      LOAD TEACHER CONTEXT
   ========================================= */
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadContext() {
       try {
         setLoading(true);
         setPageError("");
 
-        const data =
-          await getTeacherResultContext();
+        const data = await getTeacherResultContext();
+
+        if (cancelled) return;
 
         setContext(data);
-
-        setClassId(
-          data?.classes?.[0]?._id || ""
-        );
-
-        setSubjectId(
-          data?.subjects?.[0]?._id || ""
-        );
-
-        setSessionId(
-          data?.sessions?.[0]?._id || ""
-        );
-
-        setTermId(
-          data?.terms?.[0]?._id || ""
-        );
-      } catch (err) {
-        if (axios.isAxiosError(err)) {
+        setClassId(data?.classes?.[0]?._id || "");
+        setSubjectId(data?.subjects?.[0]?._id || "");
+        setSessionId(data?.sessions?.[0]?._id || "");
+        setTermId(data?.terms?.[0]?._id || "");
+      } catch (error) {
+        if (!cancelled) {
           setPageError(
-            err.response?.data?.message ||
-              "Failed to load teacher context."
-          );
-        } else {
-          setPageError(
-            "Failed to load teacher context."
+            axios.isAxiosError(error)
+              ? error.response?.data?.message ||
+                  "Failed to load teacher context."
+              : "Failed to load teacher context."
           );
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
-    loadContext();
+    void loadContext();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
-  
 
   /* =========================================
-     LOAD STUDENTS
+     LOAD SCHEME FOR SELECTED CLASS
   ========================================= */
 
   useEffect(() => {
-    if (!classId) return;
+    if (!classId) {
+      setAssessmentScheme(null);
+      return;
+    }
 
-    async function loadStudents() {
+    let cancelled = false;
+
+    async function loadScheme() {
       try {
-        setStudentsLoading(true);
+        setSchemeLoading(true);
+        setPageError("");
 
-        const response =
-          await getClassStudentsForResultEntry(
-            classId
+        const scheme = await getClassAssessmentScheme(classId);
+
+        if (cancelled) return;
+
+        setAssessmentScheme(scheme);
+
+        if (
+          scheme?.components?.length &&
+          Math.abs(
+            scheme.components
+              .filter((component) => component.enabled !== false)
+              .reduce((sum, component) => sum + component.maxScore, 0) -
+              100
+          ) > 0.001
+        ) {
+          setPageError(
+            "The configured assessment components do not total 100. Please ask your school administrator to correct the scheme."
           );
+        }
+      } catch (error) {
+        if (cancelled) return;
 
-        const studentList =
-          response?.students || [];
-
-        const mapped: StudentRow[] =
-          studentList.map(
-            (student: any) => ({
-              studentId: student._id,
-
-              firstName:
-                student.firstName || "",
-
-              lastName:
-                student.lastName || "",
-
-              fullName:
-                student.fullName ||
-                `${student.firstName || ""} ${
-                  student.lastName || ""
-                }`.trim(),
-
-              admissionNumber:
-                student.admissionNumber || "",
-
-              gender:
-                student.gender || "",
-
-              attendanceStatus:
-                student.attendanceStatus ||
-                "present",
-
-              /*
-               * IMPORTANT:
-               * Empty scores are NULL,
-               * not zero.
-               */
-              ca1: null,
-              ca2: null,
-              assignment: null,
-              exam: null,
-
-              total: 0,
-              grade: "",
-              remark: "",
-            })
-          );
-
-        setStudents(mapped);
+        setPageError(
+          axios.isAxiosError(error)
+            ? error.response?.data?.message ||
+                "Failed to load the assessment scheme."
+            : "Failed to load the assessment scheme."
+        );
       } finally {
-        setStudentsLoading(false);
+        if (!cancelled) setSchemeLoading(false);
       }
     }
 
-    loadStudents();
+    void loadScheme();
+
+    return () => {
+      cancelled = true;
+    };
   }, [classId]);
 
   /* =========================================
-   LOAD PSYCHOMOTOR & AFFECTIVE ASSESSMENTS
-========================================= */
+     LOAD STUDENTS AND EXISTING RESULTS
+  ========================================= */
 
-useEffect(() => {
-  if (!classId || !sessionId || !termId) {
-    setTraitAssessments({});
-    return;
-  }
+  useEffect(() => {
+    if (!classId || !subjectId || !sessionId || !termId) {
+      setStudents([]);
+      return;
+    }
 
-  let cancelled = false;
+    let cancelled = false;
 
-  async function loadTraitAssessments() {
-    try {
-      setTraitsLoading(true);
-      setTraitError("");
-      setTraitMessage("");
+    async function loadStudentsAndResults() {
+      try {
+        setStudentsLoading(true);
+        setPageError("");
+        setPageMessage("");
 
-      const records = await getClassTraitAssessments({
-        classId,
-        sessionId,
-        termId,
-      });
+        const [studentResponse, existingResults] = await Promise.all([
+          getClassStudentsForResultEntry(classId),
+          getResults({ classId, subjectId, sessionId, termId }),
+        ]);
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      const mapped: Record<string, StudentTraitDraft> = {};
+        const studentList = studentResponse?.students || [];
+        const resultList = Array.isArray(existingResults)
+          ? existingResults
+          : [];
 
-      records.forEach(
-        (record: ClassStudentTraitAssessment) => {
+        const byStudent = new Map<string, any>();
+
+        for (const result of resultList) {
+          const id =
+            typeof result.studentId === "object"
+              ? result.studentId?._id
+              : result.studentId;
+
+          if (id) byStudent.set(String(id), result);
+        }
+
+        const mapped: StudentRow[] = studentList.map((student: any) => {
+          const studentId = String(student._id);
+          const result = byStudent.get(studentId);
+
+          const savedScores =
+            result?.scores && typeof result.scores === "object"
+              ? result.scores
+              : {
+                  ca1: result?.ca1,
+                  ca2: result?.ca2,
+                  assignment: result?.assignment,
+                  exam: result?.exam,
+                };
+
+          const scores = normalizeScoresForScheme(
+            savedScores,
+            components
+          );
+
+          const computed = calculateStudentResult(scores, components);
+
+          return {
+            studentId,
+            firstName: student.firstName || "",
+            lastName: student.lastName || "",
+            fullName:
+              student.fullName ||
+              `${student.firstName || ""} ${student.lastName || ""}`.trim(),
+            admissionNumber: student.admissionNumber || "",
+            gender: student.gender || "",
+            attendanceStatus: student.attendanceStatus || "present",
+
+            scores,
+            ...getLegacyFields(scores),
+
+            total: result?.total ?? computed.total,
+            grade: result?.grade ?? computed.grade,
+            remark: result?.remark ?? computed.remark,
+            status: result?.status || "draft",
+          };
+        });
+
+        setStudents(mapped);
+        setPublished(
+          mapped.some((student) => student.status === "published")
+        );
+      } catch (error) {
+        if (!cancelled) {
+          setPageError(
+            axios.isAxiosError(error)
+              ? error.response?.data?.message ||
+                  "Failed to load students and saved results."
+              : "Failed to load students and saved results."
+          );
+        }
+      } finally {
+        if (!cancelled) setStudentsLoading(false);
+      }
+    }
+
+    void loadStudentsAndResults();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, subjectId, sessionId, termId, components]);
+
+  /* =========================================
+     LOAD TRAIT ASSESSMENTS
+  ========================================= */
+
+  useEffect(() => {
+    if (!classId || !sessionId || !termId) {
+      setTraitAssessments({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadTraits() {
+      try {
+        setTraitsLoading(true);
+        setTraitError("");
+
+        const records = await getClassTraitAssessments({
+          classId,
+          sessionId,
+          termId,
+        });
+
+        if (cancelled) return;
+
+        const mapped: Record<string, StudentTraitDraft> = {};
+
+        records.forEach((record: ClassStudentTraitAssessment) => {
           if (!record.student?._id) return;
 
           mapped[record.student._id] = {
-            psychomotor:
-              record.assessment?.psychomotor ?? [],
-            affective:
-              record.assessment?.affective ?? [],
-            teacherComment:
-              record.assessment?.teacherComment ?? "",
+            psychomotor: record.assessment?.psychomotor ?? [],
+            affective: record.assessment?.affective ?? [],
+            teacherComment: record.assessment?.teacherComment ?? "",
           };
+        });
+
+        setTraitAssessments(mapped);
+      } catch (error) {
+        if (!cancelled) {
+          setTraitError(
+            axios.isAxiosError(error)
+              ? error.response?.data?.message ||
+                  "Unable to load trait assessments."
+              : "Unable to load trait assessments."
+          );
         }
-      );
-
-      setTraitAssessments(mapped);
-    } catch (err) {
-      if (cancelled) return;
-
-      setTraitError(
-        axios.isAxiosError(err)
-          ? err.response?.data?.message ||
-              "Unable to load trait assessments."
-          : "Unable to load trait assessments."
-      );
-    } finally {
-      if (!cancelled) {
-        setTraitsLoading(false);
+      } finally {
+        if (!cancelled) setTraitsLoading(false);
       }
     }
-  }
 
-  loadTraitAssessments();
+    void loadTraits();
 
-  return () => {
-    cancelled = true;
-  };
-}, [classId, sessionId, termId]);
-
-  /* =========================================
-   UPDATE TRAIT RATINGS
-========================================= */
-
-function updateTrait(
-  studentId: string,
-  group: "psychomotor" | "affective",
-  traitKey: string,
-  traitName: string,
-  rating: number | null
-) {
-  setTraitAssessments((previous) => {
-    const current =
-      previous[studentId] ?? emptyTraitDraft();
-
-    const updatedGroup = current[group].filter(
-      (trait) => trait.traitKey !== traitKey
-    );
-
-    if (rating !== null) {
-      updatedGroup.push({
-        traitKey,
-        traitName,
-        rating,
-      });
-    }
-
-    return {
-      ...previous,
-      [studentId]: {
-        ...current,
-        [group]: updatedGroup,
-      },
+    return () => {
+      cancelled = true;
     };
-  });
-
-  setTraitError("");
-  setTraitMessage("");
-}
-
-function updateTraitComment(
-  studentId: string,
-  teacherComment: string
-) {
-  setTraitAssessments((previous) => ({
-    ...previous,
-    [studentId]: {
-      ...(previous[studentId] ?? emptyTraitDraft()),
-      teacherComment,
-    },
-  }));
-
-  setTraitError("");
-  setTraitMessage("");
-}
-
-/* =========================================
-   SAVE ONE STUDENT'S TRAITS
-========================================= */
-
-async function saveTraits(studentId: string) {
-  if (!classId || !sessionId || !termId) {
-    setTraitError(
-      "Select a class, session, and term first."
-    );
-    return;
-  }
-
-  const draft =
-    traitAssessments[studentId] ?? emptyTraitDraft();
-
-  try {
-    setSavingTraitStudent(studentId);
-    setTraitError("");
-    setTraitMessage("");
-
-    await saveStudentTraitAssessment(studentId, {
-      classId,
-      sessionId,
-      termId,
-      psychomotor: draft.psychomotor,
-      affective: draft.affective,
-      teacherComment: draft.teacherComment,
-    });
-
-    setTraitMessage(
-      "Trait assessment saved successfully."
-    );
-  } catch (err) {
-    setTraitError(
-      axios.isAxiosError(err)
-        ? err.response?.data?.message ||
-            "Failed to save trait assessment."
-        : "Failed to save trait assessment."
-    );
-  } finally {
-    setSavingTraitStudent(null);
-  }
-}
+  }, [classId, sessionId, termId]);
 
   /* =========================================
-     FILTER STUDENTS
-  ========================================= */
-
-  const filteredStudents =
-    useMemo(() => {
-      if (!search.trim()) {
-        return students;
-      }
-
-      const q =
-        search.toLowerCase();
-
-      return students.filter(
-        (student) =>
-          student.fullName
-            .toLowerCase()
-            .includes(q) ||
-          (
-            student.admissionNumber || ""
-          )
-            .toLowerCase()
-            .includes(q)
-      );
-    }, [students, search]);
-
-  /* =========================================
-     UPDATE SCORE
+     SCORE UPDATES
   ========================================= */
 
   function updateScore(
     studentId: string,
-    field: ScoreField,
-    value: number | null
+    component: AssessmentComponent,
+    rawValue: string
   ) {
-    const max =
-      SCORE_LIMITS[field];
-
-    let safeValue =
-      value;
+    const value = rawValue === "" ? null : Number(rawValue);
 
     if (
-      safeValue !== null &&
-      Number.isFinite(safeValue)
+      value !== null &&
+      (!Number.isFinite(value) ||
+        value < 0 ||
+        value > component.maxScore)
     ) {
-      safeValue = Math.min(
-        Math.max(safeValue, 0),
-        max
+      setPageError(
+        `${component.label} must be between 0 and ${component.maxScore}.`
       );
+      return;
     }
 
-    setStudents((prev) =>
-      prev.map((student) => {
-        if (
-          student.studentId !==
-          studentId
-        ) {
-          return student;
-        }
+    setPageError("");
+    setPageMessage("");
 
-        const updated = {
-          ...student,
-          [field]: safeValue,
+    setStudents((previous) =>
+      previous.map((student) => {
+        if (student.studentId !== studentId) return student;
+
+        const scores = {
+          ...student.scores,
+          [component.key]: value,
         };
 
-        const computed =
-          computeResult(updated);
+        const computed = calculateStudentResult(scores, components);
 
         return {
-          ...updated,
-          total: computed.total,
-          grade: computed.grade,
-          remark: computed.remark,
+          ...student,
+          scores,
+          ...getLegacyFields(scores),
+          ...computed,
         };
       })
     );
 
-    triggerAutosave();
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+
+    autosaveTimer.current = setTimeout(() => {
+      void saveDraft(false);
+    }, 1200);
   }
 
   /* =========================================
-     AUTOSAVE
+     SAVE RESULTS
   ========================================= */
- /* =========================================
-   AUTOSAVE AND MANUAL SAVE
-========================================= */
 
-function clearScoreInputs() {
-  if (autosaveTimer.current) {
-    clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = null;
-  }
+  async function saveDraft(showMessage = true) {
+    if (savingLock.current) return;
 
-  const cleared = studentsRef.current.map((student) => ({
-    ...student,
-    ca1: null,
-    ca2: null,
-    assignment: null,
-    exam: null,
-    total: 0,
-    grade: "",
-    remark: "",
-  }));
-
-  // Update the ref immediately to prevent stale scores
-  // from being used by another save.
-  studentsRef.current = cleared;
-  setStudents(cleared);
-  setPublished(false);
-}
-
-function triggerAutosave() {
-  if (autosaveTimer.current) {
-    clearTimeout(autosaveTimer.current);
-  }
-
-  autosaveTimer.current = setTimeout(() => {
-    void saveDraft(false);
-  }, 1200);
-}
-
-async function saveDraft(clearAfterSave = false) {
-  if (savingLock.current) {
-    return;
-  }
-
-  if (!classId || !subjectId || !sessionId || !termId) {
-    setPageError(
-      "Select a class, subject, session, and term first."
-    );
-    return;
-  }
-
-  // Save a snapshot so the request uses the scores
-  // present when the save began.
-  const resultsToSave = studentsRef.current.map(
-    (student) => ({ ...student })
-  );
-
-  savingLock.current = true;
-  setSaving(true);
-  setPageError("");
-
-  try {
-    await bulkUpsertResults({
-      classId,
-      subjectId,
-      sessionId,
-      termId,
-      results: resultsToSave,
-    });
-
-    if (clearAfterSave) {
-      clearScoreInputs();
+    if (!classId || !subjectId || !sessionId || !termId) {
+      setPageError("Select a class, subject, session, and term first.");
+      return;
     }
-  } catch (err) {
-    setPageError(
-      axios.isAxiosError(err)
-        ? err.response?.data?.message ||
-            "Failed to save results."
-        : "Failed to save results."
-    );
 
-    console.error("bulk-upsert failed:", err);
-  } finally {
-    savingLock.current = false;
-    setSaving(false);
+    const snapshot = studentsRef.current.map((student) => ({ ...student }));
+
+    savingLock.current = true;
+    setSaving(true);
+    setPageError("");
+
+    try {
+      await bulkUpsertResults({
+        classId,
+        subjectId,
+        sessionId,
+        termId,
+        results: snapshot.map((student) => ({
+          studentId: student.studentId,
+          scores: student.scores,
+          // Preserve legacy clients and integrations.
+          ca1: student.ca1,
+          ca2: student.ca2,
+          assignment: student.assignment,
+          exam: student.exam,
+        })),
+      });
+
+      if (showMessage) {
+        setPageMessage("Results saved successfully.");
+      }
+    } catch (error) {
+      setPageError(
+        axios.isAxiosError(error)
+          ? error.response?.data?.message || "Failed to save results."
+          : "Failed to save results."
+      );
+    } finally {
+      savingLock.current = false;
+      setSaving(false);
+    }
   }
-}
-    /* =========================================
-     PUBLISH
-  ========================================= */
 
- /* =========================================
-   PUBLISH
-========================================= */
+  async function handlePublish() {
+    if (savingLock.current) return;
 
-async function handlePublish() {
-  if (!classId || !subjectId || !sessionId || !termId) {
-    setPageError(
-      "Select a class, subject, session, and term first."
-    );
-    return;
+    if (!classId || !subjectId || !sessionId || !termId) {
+      setPageError("Select a class, subject, session, and term first.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Save and publish results for the selected class, subject, session, and term?"
+      )
+    ) {
+      return;
+    }
+
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+
+    savingLock.current = true;
+    setSaving(true);
+    setPageError("");
+    setPageMessage("");
+
+    try {
+      const snapshot = studentsRef.current.map((student) => ({ ...student }));
+
+      await bulkUpsertResults({
+        classId,
+        subjectId,
+        sessionId,
+        termId,
+        results: snapshot.map((student) => ({
+          studentId: student.studentId,
+          scores: student.scores,
+          ca1: student.ca1,
+          ca2: student.ca2,
+          assignment: student.assignment,
+          exam: student.exam,
+        })),
+      });
+
+      await publishResults({
+        classId,
+        subjectId,
+        sessionId,
+        termId,
+      });
+
+      setPublished(true);
+      setPageMessage("Publish request completed.");
+    } catch (error) {
+      setPageError(
+        axios.isAxiosError(error)
+          ? error.response?.data?.message || "Failed to publish results."
+          : "Failed to publish results."
+      );
+    } finally {
+      savingLock.current = false;
+      setSaving(false);
+    }
   }
-
-  if (savingLock.current) {
-    return;
-  }
-
-  if (autosaveTimer.current) {
-    clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = null;
-  }
-
-  savingLock.current = true;
-  setSaving(true);
-  setPageError("");
-
-  try {
-    await bulkUpsertResults({
-      classId,
-      subjectId,
-      sessionId,
-      termId,
-      results: studentsRef.current.map(
-        (student) => ({ ...student })
-      ),
-    });
-
-    await publishResults({
-      classId,
-      subjectId,
-      sessionId,
-      termId,
-    });
-
-    clearScoreInputs();
-    setPublished(true);
-  } catch (err) {
-    setPageError(
-      axios.isAxiosError(err)
-        ? err.response?.data?.message ||
-            "Failed to publish results."
-        : "Failed to publish results."
-    );
-
-    console.error("Publish results failed:", err);
-  } finally {
-    savingLock.current = false;
-    setSaving(false);
-  }
-}
 
   /* =========================================
-     STATES
+     TRAIT ASSESSMENTS
   ========================================= */
 
-  if (loading) {
-    return <PageLoader />;
+  function updateTrait(
+    studentId: string,
+    group: "psychomotor" | "affective",
+    traitKey: string,
+    traitName: string,
+    rating: number | null
+  ) {
+    setTraitAssessments((previous) => {
+      const current = previous[studentId] ?? emptyTraitDraft();
+      const updated = current[group].filter(
+        (trait) => trait.traitKey !== traitKey
+      );
+
+      if (rating !== null) updated.push({ traitKey, traitName, rating });
+
+      return {
+        ...previous,
+        [studentId]: { ...current, [group]: updated },
+      };
+    });
+
+    setTraitError("");
+    setTraitMessage("");
   }
 
-  if (pageError) {
-    return (
-      <EmptyState
-        title="Unable to load result system"
-        description={pageError}
-      />
-    );
+  function updateTraitComment(studentId: string, teacherComment: string) {
+    setTraitAssessments((previous) => ({
+      ...previous,
+      [studentId]: {
+        ...(previous[studentId] ?? emptyTraitDraft()),
+        teacherComment,
+      },
+    }));
   }
+
+  async function saveTraits(studentId: string) {
+    if (!classId || !sessionId || !termId) {
+      setTraitError("Select a class, session, and term first.");
+      return;
+    }
+
+    const draft = traitAssessments[studentId] ?? emptyTraitDraft();
+
+    try {
+      setSavingTraitStudent(studentId);
+      setTraitError("");
+      setTraitMessage("");
+
+      await saveStudentTraitAssessment(studentId, {
+        classId,
+        sessionId,
+        termId,
+        psychomotor: draft.psychomotor,
+        affective: draft.affective,
+        teacherComment: draft.teacherComment,
+      });
+
+      setTraitMessage("Trait assessment saved successfully.");
+    } catch (error) {
+      setTraitError(
+        axios.isAxiosError(error)
+          ? error.response?.data?.message ||
+              "Failed to save trait assessment."
+          : "Failed to save trait assessment."
+      );
+    } finally {
+      setSavingTraitStudent(null);
+    }
+  }
+
+  /* =========================================
+     FILTER
+  ========================================= */
+
+  const filteredStudents = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return students;
+
+    return students.filter(
+      (student) =>
+        student.fullName.toLowerCase().includes(query) ||
+        (student.admissionNumber || "").toLowerCase().includes(query)
+    );
+  }, [students, search]);
+
+  /* =========================================
+     LOADING / EMPTY STATES
+  ========================================= */
+
+  if (loading) return <PageLoader />;
 
   if (!context) {
     return (
       <EmptyState
         title="No teacher context"
-        description="Teacher is not assigned to any subject or class."
+        description="The teacher is not assigned to any class or subject."
       />
     );
   }
@@ -796,655 +799,400 @@ async function handlePublish() {
 
   return (
     <div className="space-y-6">
-
-      {/* =====================================
-          HEADER / CONTEXT
-      ===================================== */}
-
       <SectionCard
         title="Result Entry Engine"
-        subtitle="Live grading • autosave • smart publishing"
+        subtitle="Dynamic assessments, live totals, autosave and publishing"
       >
         <div className="grid gap-4 md:grid-cols-4">
-
-          {/* CLASS */}
           <div>
-            <label className="mb-2 block text-sm text-slate-400">
-              Class
-            </label>
-
+            <label className="mb-2 block text-sm text-slate-400">Class</label>
             <select
               value={classId}
-              onChange={(e) =>
-                setClassId(
-                  e.target.value
-                )
-              }
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
+              onChange={(event) => setClassId(event.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white"
             >
-              <option value="">
-                Select Class
-              </option>
-
-              {context?.classes?.map(
-                (item: any) => (
-                  <option
-                    key={item._id}
-                    value={item._id}
-                  >
-                    {item.name}
-                  </option>
-                )
-              )}
+              <option value="">Select class</option>
+              {context?.classes?.map((item: any) => (
+                <option key={item._id} value={item._id}>{item.name}</option>
+              ))}
             </select>
           </div>
 
-          {/* SUBJECT */}
           <div>
-            <label className="mb-2 block text-sm text-slate-400">
-              Subject
-            </label>
-
+            <label className="mb-2 block text-sm text-slate-400">Subject</label>
             <select
               value={subjectId}
-              onChange={(e) =>
-                setSubjectId(
-                  e.target.value
-                )
-              }
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
+              onChange={(event) => setSubjectId(event.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white"
             >
-              <option value="">
-                Select Subject
-              </option>
-
-              {context?.subjects?.map(
-                (item: any) => (
-                  <option
-                    key={item._id}
-                    value={item._id}
-                  >
-                    {item.name}
-                  </option>
-                )
-              )}
+              <option value="">Select subject</option>
+              {context?.subjects?.map((item: any) => (
+                <option key={item._id} value={item._id}>{item.name}</option>
+              ))}
             </select>
           </div>
 
-          {/* SESSION */}
           <div>
-            <label className="mb-2 block text-sm text-slate-400">
-              Session
-            </label>
-
+            <label className="mb-2 block text-sm text-slate-400">Session</label>
             <select
               value={sessionId}
-              onChange={(e) =>
-                setSessionId(
-                  e.target.value
-                )
-              }
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
+              onChange={(event) => setSessionId(event.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white"
             >
-              <option value="">
-                Select Session
-              </option>
-
-              {context?.sessions?.map(
-                (item: any) => (
-                  <option
-                    key={item._id}
-                    value={item._id}
-                  >
-                    {item.name}
-                  </option>
-                )
-              )}
+              <option value="">Select session</option>
+              {context?.sessions?.map((item: any) => (
+                <option key={item._id} value={item._id}>{item.name}</option>
+              ))}
             </select>
           </div>
 
-          {/* TERM */}
           <div>
-            <label className="mb-2 block text-sm text-slate-400">
-              Term
-            </label>
-
+            <label className="mb-2 block text-sm text-slate-400">Term</label>
             <select
               value={termId}
-              onChange={(e) =>
-                setTermId(
-                  e.target.value
-                )
-              }
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
+              onChange={(event) => setTermId(event.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white"
             >
-              <option value="">
-                Select Term
-              </option>
-
-              {context?.terms?.map(
-                (item: any) => (
-                  <option
-                    key={item._id}
-                    value={item._id}
-                  >
-                    {item.name}
-                  </option>
-                )
-              )}
+              <option value="">Select term</option>
+              {context?.terms?.map((item: any) => (
+                <option key={item._id} value={item._id}>{item.name}</option>
+              ))}
             </select>
           </div>
         </div>
 
-        {/* STATUS */}
         <div className="mt-5 flex flex-wrap gap-3">
+          <span className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
+            Students: <strong className="text-white">{students.length}</strong>
+          </span>
 
-          <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
-            Students:
-            <span className="ml-2 font-bold text-white">
-              {students.length}
-            </span>
-          </div>
-
-          <div
-            className={`rounded-full px-4 py-2 text-sm ${
-              saving
-                ? "bg-yellow-500/20 text-yellow-300"
-                : "bg-green-500/20 text-green-300"
-            }`}
-          >
-            {saving
-              ? "Saving..."
-              : "Saved"}
-          </div>
+          <span className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
+            {saving ? "Saving…" : "Ready"}
+          </span>
 
           {published && (
-            <div className="rounded-full bg-cyan-500/20 px-4 py-2 text-sm text-cyan-300">
-              Results Published ✔
-            </div>
+            <span className="rounded-full bg-cyan-500/20 px-4 py-2 text-sm text-cyan-300">
+              Publish request completed
+            </span>
+          )}
+
+          {schemeLoading && (
+            <span className="rounded-full bg-yellow-500/20 px-4 py-2 text-sm text-yellow-200">
+              Loading assessment scheme…
+            </span>
           )}
         </div>
       </SectionCard>
 
-      {/* =====================================
-          SCORE STRUCTURE
-      ===================================== */}
+      {pageError && (
+        <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+          {pageError}
+        </div>
+      )}
+
+      {pageMessage && (
+        <div role="status" className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-300">
+          {pageMessage}
+        </div>
+      )}
 
       <SectionCard
         title="Assessment Structure"
-        subtitle="Maximum scores for this result entry"
+        subtitle={assessmentScheme?.name || "School default assessment scheme"}
       >
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-
-          {[
-            ["CA1", 10],
-            ["CA2", 10],
-            ["Assignment", 10],
-            ["Exam", 70],
-            ["Total", 100],
-          ].map(
-            ([label, score]) => (
-              <div
-                key={label}
-                className="rounded-2xl border border-white/10 bg-slate-900/70 p-4"
-              >
-                <div className="text-xs uppercase tracking-wide text-slate-400">
-                  {label}
-                </div>
-
-                <div className="mt-1 text-xl font-bold text-white">
-                  {score}
-                </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {components.map((component) => (
+            <div key={component.key} className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-400">
+                {component.label}
               </div>
-            )
-          )}
+              <div className="mt-1 text-xl font-bold text-white">
+                {component.maxScore}
+              </div>
+              <div className="text-xs text-slate-500">maximum marks</div>
+            </div>
+          ))}
+
+          <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+            <div className="text-xs uppercase tracking-wide text-cyan-200">Total</div>
+            <div className="mt-1 text-xl font-bold text-white">{totalMax}</div>
+            <div className="text-xs text-cyan-100/70">maximum marks</div>
+          </div>
         </div>
       </SectionCard>
 
-      {/* =====================================
-          STUDENTS
-      ===================================== */}
-
       <SectionCard
         title="Student Results"
-        subtitle="Enter scores for all students in selected class"
+        subtitle="Enter marks for each configured assessment component"
       >
-
-        {/* SEARCH */}
         <div className="mb-5 max-w-md">
-          <div className="relative">
-            <Search
-              size={18}
-              className="pointer-events-none absolute left-4 top-11 text-slate-400"
-            />
-
-            <div className="[&_input]:pl-11">
-              <FormInput
-                label="Search Students"
-                name="search"
-                value={search}
-                placeholder="Search by name or admission number..."
-                onChange={setSearch}
-              />
-            </div>
-          </div>
-          {/* =====================================
-    PSYCHOMOTOR & AFFECTIVE TRAITS
-===================================== */}
-
-<SectionCard
-  title="Psychomotor & Affective Traits"
-  subtitle="Assess each student for the selected academic period"
->
-  {!classId || !sessionId || !termId ? (
-    <EmptyState
-      title="Select the academic period"
-      description="Choose a class, session, and term to assess students."
-    />
-  ) : traitsLoading ? (
-    <PageLoader />
-  ) : students.length === 0 ? (
-    <EmptyState
-      title="No students available"
-      description="Load the class students before entering trait assessments."
-    />
-  ) : (
-    <div className="space-y-4">
-      {traitError && (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
-        >
-          {traitError}
-        </div>
-      )}
-
-      {traitMessage && (
-        <div
-          role="status"
-          className="rounded-xl border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-300"
-        >
-          {traitMessage}
-        </div>
-      )}
-
-      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-3 text-sm text-slate-300">
-        Ratings: 5 = Excellent, 4 = Very Good, 3 = Good,
-        2 = Fair, 1 = Needs Improvement.
-      </div>
-
-      {students.map((student) => {
-        const draft =
-          traitAssessments[student.studentId] ??
-          emptyTraitDraft();
-
-        function renderTraitGroup(
-          title: string,
-          group: "psychomotor" | "affective",
-          traits: readonly { key: string; name: string }[]
-        ) {
-          return (
-            <div className="space-y-3">
-              <h4 className="font-semibold text-white">
-                {title}
-              </h4>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                {traits.map((trait) => {
-                  const selected = draft[group].find(
-                    (item) => item.traitKey === trait.key
-                  );
-
-                  return (
-                    <div
-                      key={trait.key}
-                      className="rounded-xl border border-white/10 bg-slate-950/50 p-3"
-                    >
-                      <label
-                        htmlFor={`${student.studentId}-${trait.key}`}
-                        className="mb-2 block text-sm text-slate-300"
-                      >
-                        {trait.name}
-                      </label>
-
-                      <select
-                        id={`${student.studentId}-${trait.key}`}
-                        value={selected?.rating ?? ""}
-                        onChange={(event) => {
-                          const value = event.target.value;
-
-                          updateTrait(
-                            student.studentId,
-                            group,
-                            trait.key,
-                            trait.name,
-                            value === "" ? null : Number(value)
-                          );
-                        }}
-                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white outline-none focus:border-cyan-500"
-                      >
-                        <option value="">
-                          Select rating
-                        </option>
-
-                        {TRAIT_RATINGS.map((rating) => (
-                          <option
-                            key={rating.value}
-                            value={rating.value}
-                          >
-                            {rating.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        }
-
-        return (
-          <details
-            key={student.studentId}
-            className="group rounded-2xl border border-white/10 bg-slate-950/40"
-          >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4">
-              <div>
-                <div className="font-semibold text-white">
-                  {student.fullName}
-                </div>
-
-                <div className="mt-1 text-xs text-slate-400">
-                  {student.admissionNumber || "No admission number"}
-                </div>
-              </div>
-
-              <span className="text-sm text-cyan-300">
-                Assess traits
-              </span>
-            </summary>
-
-            <div className="space-y-6 border-t border-white/10 p-4">
-              {renderTraitGroup(
-                "Psychomotor Traits",
-                "psychomotor",
-                PSYCHOMOTOR_TRAITS
-              )}
-
-              {renderTraitGroup(
-                "Affective Traits",
-                "affective",
-                AFFECTIVE_TRAITS
-              )}
-
-              <div>
-                <label
-                  htmlFor={`${student.studentId}-teacher-comment`}
-                  className="mb-2 block text-sm text-slate-300"
-                >
-                  Teacher's Comment
-                </label>
-
-                <textarea
-                  id={`${student.studentId}-teacher-comment`}
-                  value={draft.teacherComment}
-                  onChange={(event) =>
-                    updateTraitComment(
-                      student.studentId,
-                      event.target.value
-                    )
-                  }
-                  rows={3}
-                  placeholder="Enter an optional comment about the student's conduct and development..."
-                  className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() =>
-                    void saveTraits(student.studentId)
-                  }
-                  disabled={
-                    savingTraitStudent === student.studentId
-                  }
-                  className="rounded-xl bg-cyan-600 px-5 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Save
-                    size={16}
-                    className="mr-2 inline"
-                  />
-
-                  {savingTraitStudent === student.studentId
-                    ? "Saving Assessment..."
-                    : "Save Trait Assessment"}
-                </button>
-              </div>
-            </div>
-          </details>
-        );
-      })}
-    </div>
-  )}
-</SectionCard>
+          <FormInput
+            label="Search students"
+            name="search"
+            value={search}
+            placeholder="Search name or admission number…"
+            onChange={setSearch}
+          />
         </div>
 
-        {/* TABLE */}
-        {studentsLoading ? (
+        {studentsLoading || schemeLoading ? (
           <PageLoader />
+        ) : !classId || !subjectId || !sessionId || !termId ? (
+          <EmptyState
+            title="Select the academic period"
+            description="Choose a class, subject, session and term to load students."
+          />
         ) : filteredStudents.length === 0 ? (
           <EmptyState
             title="No students found"
-            description="No students available in selected class."
+            description="No students match your search or the selected class has no students."
           />
         ) : (
           <>
             <div className="overflow-x-auto rounded-3xl border border-white/10">
-
               <table className="min-w-full">
-
                 <thead className="bg-slate-900">
                   <tr className="text-left text-sm text-slate-300">
-
-                    <th className="p-4">
-                      Student
-                    </th>
-
-                    <th className="p-4">
-                      Admission No
-                    </th>
-
-                    <th className="p-4">
-                      CA1
-                      <span className="ml-1 text-xs text-slate-500">
-                        /10
-                      </span>
-                    </th>
-
-                    <th className="p-4">
-                      CA2
-                      <span className="ml-1 text-xs text-slate-500">
-                        /10
-                      </span>
-                    </th>
-
-                    <th className="p-4">
-                      Assignment
-                      <span className="ml-1 text-xs text-slate-500">
-                        /10
-                      </span>
-                    </th>
-
-                    <th className="p-4">
-                      Exam
-                      <span className="ml-1 text-xs text-slate-500">
-                        /70
-                      </span>
-                    </th>
-
-                    <th className="p-4">
-                      Total
-                      <span className="ml-1 text-xs text-slate-500">
-                        /100
-                      </span>
-                    </th>
-
-                    <th className="p-4">
-                      Grade
-                    </th>
-
-                    <th className="p-4">
-                      Remark
-                    </th>
-
+                    <th className="p-4">Student</th>
+                    <th className="p-4">Admission No.</th>
+                    {components.map((component) => (
+                      <th key={component.key} className="p-4">
+                        {component.label}
+                        <span className="ml-1 text-xs text-slate-500">
+                          /{component.maxScore}
+                        </span>
+                      </th>
+                    ))}
+                    <th className="p-4">Total / {totalMax}</th>
+                    <th className="p-4">Grade</th>
+                    <th className="p-4">Remark</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {filteredStudents.map(
-                    (student) => (
-                      <tr
-                        key={student.studentId}
-                        className="border-t border-white/5 hover:bg-white/[0.03]"
-                      >
+                  {filteredStudents.map((student) => (
+                    <tr key={student.studentId} className="border-t border-white/5 hover:bg-white/[0.03]">
+                      <td className="p-4">
+                        <div className="font-semibold text-white">{student.fullName}</div>
+                        <div className="mt-1 text-xs text-slate-400">
+                          {student.gender || "—"} · {student.attendanceStatus || "—"}
+                        </div>
+                      </td>
 
-                        <td className="p-4">
-                          <div className="font-semibold text-white">
-                            {student.fullName}
-                          </div>
+                      <td className="p-4 text-slate-300">
+                        {student.admissionNumber || "—"}
+                      </td>
 
-                          <div className="mt-1 text-xs text-slate-400">
-                            {student.gender} •{" "}
-                            {student.attendanceStatus}
-                          </div>
-                        </td>
+                      {components.map((component) => {
+                        const value = student.scores[component.key];
 
-                        <td className="p-4 text-slate-300">
-                          {student.admissionNumber}
-                        </td>
+                        return (
+                          <td key={component.key} className="p-4">
+                            <input
+                              type="number"
+                              min={0}
+                              max={component.maxScore}
+                              step="0.5"
+                              value={value ?? ""}
+                              placeholder="—"
+                              aria-label={`${student.fullName} ${component.label}`}
+                              onChange={(event) =>
+                                updateScore(
+                                  student.studentId,
+                                  component,
+                                  event.target.value
+                                )
+                              }
+                              className="w-24 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-center text-white outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+                            />
+                          </td>
+                        );
+                      })}
 
-                        {(
-                          [
-                            "ca1",
-                            "ca2",
-                            "assignment",
-                            "exam",
-                          ] as const
-                        ).map((field) => {
-
-                          const max =
-                            SCORE_LIMITS[
-                              field
-                            ];
-
-                          const value =
-                            student[field];
-
-                          return (
-                            <td
-                              key={field}
-                              className="p-4"
-                            >
-                              <input
-                                type="number"
-                                min={0}
-                                max={max}
-                                step="0.5"
-                                value={
-                                  value ?? ""
-                                }
-                                placeholder="—"
-                                onChange={(e) => {
-                                  const raw =
-                                    e.target.value;
-
-                                  const parsed =
-                                    raw === ""
-                                      ? null
-                                      : Number(
-                                          raw
-                                        );
-
-                                  updateScore(
-                                    student.studentId,
-                                    field,
-                                    parsed
-                                  );
-                                }}
-                                className="w-24 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-center text-white outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-                              />
-
-                              <div className="mt-1 text-center text-[10px] text-slate-500">
-                                max {max}
-                              </div>
-                            </td>
-                          );
-                        })}
-
-                        <td className="p-4 font-bold text-cyan-300">
-                          {student.grade ||
-                          student.remark ||
-                          student.ca1 !== null ||
-                          student.ca2 !== null ||
-                          student.assignment !== null ||
-                          student.exam !== null
-                            ? student.total
-                            : "—"}
-                        </td>
-
-                        <td className="p-4 font-bold text-yellow-300">
-                          {student.grade || "—"}
-                        </td>
-
-                        <td className="p-4 text-slate-300">
-                          {student.remark || "—"}
-                        </td>
-
-                      </tr>
-                    )
-                  )}
+                      <td className="p-4 font-bold text-cyan-300">
+                        {Object.values(student.scores).some((score) => score !== null)
+                          ? student.total
+                          : "—"}
+                      </td>
+                      <td className="p-4 font-bold text-yellow-300">
+                        {student.grade || "—"}
+                      </td>
+                      <td className="p-4 text-slate-300">
+                        {student.remark || "—"}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
-
               </table>
             </div>
 
-            {/* ACTIONS */}
             <div className="mt-6 flex flex-wrap gap-3">
-
               <button
                 type="button"
                 onClick={() => void saveDraft(true)}
                 disabled={saving}
                 className="rounded-2xl bg-slate-700 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-600 disabled:opacity-60"
               >
-                <Save
-                  size={16}
-                  className="mr-2 inline"
-                />
-
-                Save Draft
+                <Save size={16} className="mr-2 inline" />
+                {saving ? "Saving…" : "Save Draft"}
               </button>
 
               <button
                 type="button"
-                onClick={handlePublish}
-                disabled={saving}
+                onClick={() => void handlePublish()}
+                disabled={saving || students.length === 0}
                 className="rounded-2xl bg-green-600 px-5 py-3 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-60"
               >
-                <UploadCloud
-                  size={16}
-                  className="mr-2 inline"
-                />
-
+                <UploadCloud size={16} className="mr-2 inline" />
                 Publish Results
               </button>
 
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                disabled={saving}
+                className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-semibold text-slate-200 hover:bg-white/5 disabled:opacity-60"
+              >
+                <RefreshCw size={16} className="mr-2 inline" />
+                Reload
+              </button>
             </div>
           </>
         )}
+      </SectionCard>
 
+      {/* =========================================
+          PSYCHOMOTOR AND AFFECTIVE TRAITS
+      ========================================= */}
+
+      <SectionCard
+        title="Psychomotor & Affective Traits"
+        subtitle="Assess each student for the selected academic period"
+      >
+        {traitsLoading ? (
+          <PageLoader />
+        ) : students.length === 0 ? (
+          <EmptyState
+            title="No students available"
+            description="Load students before entering trait assessments."
+          />
+        ) : (
+          <div className="space-y-4">
+            {traitError && (
+              <div role="alert" className="rounded-xl bg-red-500/10 p-3 text-sm text-red-300">
+                {traitError}
+              </div>
+            )}
+            {traitMessage && (
+              <div role="status" className="rounded-xl bg-green-500/10 p-3 text-sm text-green-300">
+                {traitMessage}
+              </div>
+            )}
+
+            <div className="rounded-xl border border-white/10 bg-slate-900/60 p-3 text-sm text-slate-300">
+              Ratings: 5 = Excellent, 4 = Very Good, 3 = Good, 2 = Fair, 1 = Needs Improvement.
+            </div>
+
+            {students.map((student) => {
+              const draft =
+                traitAssessments[student.studentId] ?? emptyTraitDraft();
+
+              const renderTraitGroup = (
+                title: string,
+                group: "psychomotor" | "affective",
+                traits: readonly { key: string; name: string }[]
+              ) => (
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-white">{title}</h4>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {traits.map((trait) => {
+                      const selected = draft[group].find(
+                        (item) => item.traitKey === trait.key
+                      );
+
+                      return (
+                        <div key={trait.key} className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
+                          <label className="mb-2 block text-sm text-slate-300">
+                            {trait.name}
+                          </label>
+                          <select
+                            value={selected?.rating ?? ""}
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              updateTrait(
+                                student.studentId,
+                                group,
+                                trait.key,
+                                trait.name,
+                                raw === "" ? null : Number(raw)
+                              );
+                            }}
+                            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-white"
+                          >
+                            <option value="">Select rating</option>
+                            {TRAIT_RATINGS.map((rating) => (
+                              <option key={rating.value} value={rating.value}>
+                                {rating.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+
+              return (
+                <details key={student.studentId} className="group rounded-2xl border border-white/10 bg-slate-950/40">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4">
+                    <div>
+                      <div className="font-semibold text-white">{student.fullName}</div>
+                      <div className="mt-1 text-xs text-slate-400">
+                        {student.admissionNumber || "No admission number"}
+                      </div>
+                    </div>
+                    <span className="text-sm text-cyan-300">Assess traits</span>
+                  </summary>
+
+                  <div className="space-y-6 border-t border-white/10 p-4">
+                    {renderTraitGroup("Psychomotor Traits", "psychomotor", PSYCHOMOTOR_TRAITS)}
+                    {renderTraitGroup("Affective Traits", "affective", AFFECTIVE_TRAITS)}
+
+                    <div>
+                      <label className="mb-2 block text-sm text-slate-300">
+                        Teacher's Comment
+                      </label>
+                      <textarea
+                        value={draft.teacherComment}
+                        onChange={(event) =>
+                          updateTraitComment(student.studentId, event.target.value)
+                        }
+                        rows={3}
+                        placeholder="Enter an optional comment…"
+                        className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white"
+                      />
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void saveTraits(student.studentId)}
+                        disabled={savingTraitStudent === student.studentId}
+                        className="rounded-xl bg-cyan-600 px-5 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-60"
+                      >
+                        <Save size={16} className="mr-2 inline" />
+                        {savingTraitStudent === student.studentId
+                          ? "Saving assessment…"
+                          : "Save Trait Assessment"}
+                      </button>
+                    </div>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        )}
       </SectionCard>
     </div>
   );
