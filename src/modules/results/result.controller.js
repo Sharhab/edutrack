@@ -276,6 +276,7 @@ export async function generateResultsHandler(
       sessionId,
       termId,
       classId,
+      subjectId,
     } = req.body;
 
     const errors =
@@ -299,13 +300,11 @@ export async function generateResultsHandler(
     const data =
       await generateClassResults({
         schoolId:
-          req.user.schoolId,
-
+        req.user.schoolId,
         sessionId,
-
         termId,
-
         classId,
+        subjectId,
       });
 
     res.json({
