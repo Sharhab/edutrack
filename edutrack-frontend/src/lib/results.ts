@@ -30,6 +30,40 @@ export async function getStudentResults(studentId: string): Promise<ResultRecord
   return res.data.data;
 }
 
+
+/* =========================================
+   GET ASSESSMENT SCHEME FOR CLASS
+========================================= */
+
+export type AssessmentComponent = {
+  key: string;
+  label: string;
+  maxScore: number;
+};
+
+export type AssessmentScheme = {
+  _id?: string;
+  name?: string;
+  version: number;
+  totalMax: number;
+  components: AssessmentComponent[];
+  source?: string;
+};
+
+export async function getClassAssessmentScheme(
+  classId: string
+): Promise<AssessmentScheme | null> {
+  if (!classId) {
+    return null;
+  }
+
+  const { data } = await api.get("/result-schemes", {
+    params: { classId },
+  });
+
+  return data?.data?.scheme ?? null;
+}
+
 /* =========================================
    SAVE / AUTOSAVE BULK RESULTS (V2)
 ========================================= */
