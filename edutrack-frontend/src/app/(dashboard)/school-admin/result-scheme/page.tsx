@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Plus, Save, Trash2, RefreshCw, ClipboardList } from "lucide-react";
 
-import api from "../../../../../lib/axios";
-import { getClasses } from "../../../../../lib/classes";
-import SectionCard from "../../../../../components/ui/SectionCard";
-import PageLoader from "../../../../../components/ui/PageLoader";
+import api from "../../../../lib/axios";
+import { getClasses } from "../../../../lib/classes";
+import SectionCard from "../../../../components/ui/SectionCard";
+import PageLoader from "../../../../components/ui/PageLoader";
 
 type Scope = "school" | "level" | "class";
 
