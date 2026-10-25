@@ -19,10 +19,16 @@ export const LEGACY_ASSESSMENT_COMPONENTS = [
  * If no scheme is configured, retain the existing 10+10+10+70 system.
  */
 export function normalizeAssessmentScheme(scheme) {
-  const components =
-    Array.isArray(scheme?.components) && scheme.components.length > 0
-      ? scheme.components
-      : LEGACY_ASSESSMENT_COMPONENTS;
+  const configuredComponents = Array.isArray(scheme?.components)
+  ? scheme.components.filter(
+      (component) => component.enabled !== false
+    )
+  : [];
+
+const components =
+  configuredComponents.length > 0
+    ? configuredComponents
+    : LEGACY_ASSESSMENT_COMPONENTS;
 
   const normalizedComponents = components.map((component) => ({
     key: String(component.key || "").trim(),
