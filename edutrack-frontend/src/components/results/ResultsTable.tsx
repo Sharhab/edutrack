@@ -36,11 +36,12 @@ export default function ResultsTable({
           title: "Student",
           render: (row) => (
             <div>
-              <p className="font-semibold text-white">
-                {row.studentId
-                  ? `${row.studentId.firstName} ${row.studentId.lastName}`
-                  : "-"}
-              </p>
+            
+<p className="font-semibold text-white">
+  {row.studentId && typeof row.studentId !== "string"
+    ? `${row.studentId.firstName} ${row.studentId.lastName}`
+    : "-"}
+</p>
               <p className="text-xs text-slate-400">
                 {row.classId?.name || "-"}
               </p>
