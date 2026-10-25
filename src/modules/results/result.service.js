@@ -129,74 +129,67 @@ const computed = computeGrade(total, gradeBands);
 ========================================= */
 
 function formatResult(result) {
+  const rawScores =
+    result.scores instanceof Map
+      ? Object.fromEntries(result.scores.entries())
+      : result.scores && typeof result.scores === "object"
+        ? { ...result.scores }
+        : {};
+
+  const assessmentScheme = result.assessmentScheme
+    ? {
+        version: result.assessmentScheme.version ?? 1,
+        totalMax: result.assessmentScheme.totalMax ?? 100,
+        components: Array.isArray(result.assessmentScheme.components)
+          ? result.assessmentScheme.components.map((component) => ({
+              key: component.key,
+              label: component.label,
+              maxScore: component.maxScore,
+            }))
+          : [],
+      }
+    : null;
+
   return {
     _id: result._id,
 
-    studentId: result.studentId?._id || "",
-
+    studentId: result.studentId?._id || result.studentId || "",
     studentName: result.studentId
       ? `${result.studentId.firstName || ""} ${
           result.studentId.lastName || ""
-        }`.trim()
+        }`.trim() || "Unknown Student"
       : "Unknown Student",
+    admissionNumber: result.studentId?.admissionNumber || "",
 
-    admissionNumber:
-      result.studentId?.admissionNumber || "",
-
-    classId: result.classId?._id || "",
+    classId: result.classId?._id || result.classId || "",
     className: result.classId?.name || "",
 
-    subjectId: result.subjectId?._id || "",
+    subjectId: result.subjectId?._id || result.subjectId || "",
     subjectName: result.subjectId?.name || "",
     subjectCode: result.subjectId?.code || "",
 
-    sessionId: result.sessionId?._id || "",
+    sessionId: result.sessionId?._id || result.sessionId || "",
     sessionName: result.sessionId?.name || "",
 
-    termId: result.termId?._id || "",
+    termId: result.termId?._id || result.termId || "",
     termName: result.termId?.name || "",
 
-    /*
-     * IMPORTANT:
-     * Do NOT use || 0 here.
-     *
-     * This preserves:
-     * - null = not entered
-     * - 0 = explicitly entered zero
-     */
-    ca1:
-      result.ca1 === undefined || result.ca1 === null
-        ? null
-        : result.ca1,
+    // Legacy fields retained for existing frontend pages and reports.
+    ca1: result.ca1 ?? null,
+    ca2: result.ca2 ?? null,
+    assignment: result.assignment ?? null,
+    exam: result.exam ?? null,
 
-    ca2:
-      result.ca2 === undefined || result.ca2 === null
-        ? null
-        : result.ca2,
+    // Dynamic assessment data for the new frontend.
+    scores: rawScores,
+    assessmentScheme,
 
-    assignment:
-      result.assignment === undefined ||
-      result.assignment === null
-        ? null
-        : result.assignment,
-
-    exam:
-      result.exam === undefined || result.exam === null
-        ? null
-        : result.exam,
-
-    total:
-      result.total === undefined || result.total === null
-        ? 0
-        : result.total,
-
+    total: result.total ?? 0,
     grade: result.grade || "",
     remark: result.remark || "",
 
     status: result.status || "draft",
-
     published: result.published || false,
-
     locked: result.locked || false,
 
     enteredBy: result.enteredBy
@@ -730,23 +723,58 @@ export async function generateClassResults({
     results.length
   );
 
-  let updated = 0;
+  
+let updated = 0;
 const gradeBands = await getSchoolGradeBands(schoolId);
 
 for (const r of results) {
-  const computed = calculateResultFields(r, gradeBands);
+  // Preserve the assessment scheme originally used for this result.
+  const hasSavedScheme =
+    Array.isArray(r.assessmentScheme?.components) &&
+    r.assessmentScheme.components.length > 0;
 
-  // Keep your existing save/update logic here.
-    r.total = computed.total;
-    r.grade = computed.grade;
-    r.remark = computed.remark;
+  const savedScores =
+    r.scores instanceof Map
+      ? Object.fromEntries(r.scores.entries())
+      : r.scores && typeof r.scores === "object"
+        ? { ...r.scores }
+        : {};
 
-    r.status = "generated";
+  // Legacy records may not contain dynamic scores yet.
+  const hasDynamicScores = Object.keys(savedScores).length > 0;
 
-    await r.save();
+  const scores = hasDynamicScores
+    ? savedScores
+    : {
+        ca1: r.ca1,
+        ca2: r.ca2,
+        assignment: r.assignment,
+        exam: r.exam,
+      };
 
-    updated++;
+  const computed = calculateDynamicResultFields({
+    scores,
+    scheme: hasSavedScheme ? r.assessmentScheme : null,
+    gradeBands,
+  });
+
+  r.scores = computed.scores;
+
+  // Keep legacy fields for existing reports and integrations.
+  for (const key of ["ca1", "ca2", "assignment", "exam"]) {
+    if (computed[key] !== undefined) {
+      r[key] = computed[key];
+    }
   }
+
+  r.total = computed.total ?? 0;
+  r.grade = computed.grade;
+  r.remark = computed.remark;
+  r.status = "generated";
+
+  await r.save();
+  updated++;
+}
 
   console.log(
     "GENERATED RESULTS:",
