@@ -63,11 +63,15 @@ export interface AttendanceListResponse {
 /* =========================
 FILTERS
 ========================= */
+
 export type AttendanceFilters = {
   classId?: string;
   studentId?: string;
   date?: string;
+  sessionId?: string;
+  termId?: string;
 };
+
 /* =========================
 SUMMARY
 ========================= */
