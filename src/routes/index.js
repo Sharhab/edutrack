@@ -34,7 +34,8 @@ import attendanceRoutes from "../modules/attendance/attendance.routes.js";
 import resultRoutes from "../modules/results/result.routes.js";
 import announcementRoutes from "../modules/announcements/announcement.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
-
+import formMasterPortalRoutes from
+  "../modules/form-master-portal/form-master-portal.routes.js";
 // Settings
 import schoolProfileRoutes from "../modules/settings/school-profile.routes.js";
 import schoolPaymentRoutes from "../modules/settings/school-payment.routes.js";
@@ -149,6 +150,7 @@ router.use(
   "/form-master-assignments",
   formMasterAssignmentRoutes
 );
+router.use("/form-master-portal", formMasterPortalRoutes);
 router.use("/teacher/timetable", teacherTimetableRoutes);
 router.use("/class/timetable", classTimetableRoutes);
 router.use("/student/timetable", studentTimetableRoutes);
