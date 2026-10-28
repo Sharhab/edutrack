@@ -1,5 +1,4 @@
 
-// src/lib/attendance.ts
 import api from "./axios";
 
 import {
@@ -12,152 +11,80 @@ import {
 
 const ATTENDANCE_ENDPOINTS = {
   list: "/attendance",
-
   create: "/attendance",
-
-  update: (id: string) =>
-    `/attendance/${id}`,
-
-  remove: (id: string) =>
-    `/attendance/${id}`,
+  update: (id: string) => `/attendance/${id}`,
+  remove: (id: string) => `/attendance/${id}`,
 };
 
-/* =========================
-   GET ALL
-========================= */
+export async function getAttendance(): Promise<AttendanceRecord[]> {
+  const { data } = await api.get<{
+    data: AttendanceListResponse;
+  }>(ATTENDANCE_ENDPOINTS.list);
 
-export async function getAttendance(): Promise<
-  AttendanceRecord[]
-> {
-  const { data } =
-    await api.get<{
-      data: AttendanceListResponse;
-    }>(
-      ATTENDANCE_ENDPOINTS.list
-    );
-
-  return (
-    data?.data?.records || []
-  );
+  return data?.data?.records || [];
 }
-
-/* =========================
-   GET CLASS ATTENDANCE
-========================= */
-/* =========================
-   GET ATTENDANCE RECORDS
-========================= */
 
 export async function getAttendanceRecords(
   filters: AttendanceFilters = {}
 ): Promise<AttendanceListResponse> {
-  const res = await api.get(ATTENDANCE_ENDPOINTS.list, {
+  const { data } = await api.get<{
+    data: AttendanceListResponse;
+  }>(ATTENDANCE_ENDPOINTS.list, {
     params: {
       classId: filters.classId || undefined,
       studentId: filters.studentId || undefined,
       date: filters.date || undefined,
+      sessionId: filters.sessionId || undefined,
+      termId: filters.termId || undefined,
     },
   });
 
-  return res.data.data; // ✅ IMPORTANT FIX
+  return data.data;
 }
-
-/* =========================
-   CREATE BULK ATTENDANCE
-========================= */
 
 export async function createAttendance(
   payload: AttendanceFormValues
-): Promise<
-  AttendanceRecord[]
-> {
-  const requestBody: AttendanceCreatePayload =
-    {
-      classId:
-        payload.classId,
+): Promise<AttendanceRecord[]> {
+  const requestBody: AttendanceCreatePayload = {
+    classId: payload.classId,
+    sessionId: payload.sessionId,
+    termId: payload.termId,
+    date: payload.date,
+    records: payload.records.map((student) => ({
+      studentId: student.studentId,
+      status: student.status,
+    })),
+  };
 
-      sessionId:
-        payload.sessionId,
-
-      termId:
-        payload.termId,
-
-      date:
-        payload.date,
-
-      records:
-        payload.records.map(
-          (student) => ({
-            studentId:
-              student.studentId,
-
-            status:
-              student.status,
-          })
-        ),
-    };
-
-  const { data } =
-    await api.post(
-      ATTENDANCE_ENDPOINTS.create,
-      requestBody
-    );
-
-  return (
-    data?.data || []
+  const { data } = await api.post(
+    ATTENDANCE_ENDPOINTS.create,
+    requestBody
   );
-}
 
-/* =========================
-   UPDATE SINGLE RECORD
-========================= */
+  return data?.data || [];
+}
 
 export async function updateAttendance(
   id: string,
   payload: {
     studentId: string;
-
     classId: string;
-
     sessionId: string;
-
     termId: string;
-
     date: string;
-
-    status:
-      | "present"
-      | "absent"
-      | "late";
+    status: "present" | "absent" | "late";
   }
-): Promise<
-  AttendanceRecord
-> {
-  const { data } =
-    await api.put(
-      ATTENDANCE_ENDPOINTS.update(
-        id
-      ),
-      payload
-    );
+): Promise<AttendanceRecord> {
+  const { data } = await api.put(
+    ATTENDANCE_ENDPOINTS.update(id),
+    payload
+  );
 
   return data?.data;
 }
 
-/* =========================
-   DELETE
-========================= */
-
-export async function deleteAttendance(
-  id: string
-) {
-  const { data } =
-    await api.delete(
-      ATTENDANCE_ENDPOINTS.remove(
-        id
-      )
-    );
+export async function deleteAttendance(id: string) {
+  const { data } = await api.delete(ATTENDANCE_ENDPOINTS.remove(id));
 
   return data?.data;
 }
-
