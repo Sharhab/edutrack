@@ -28,9 +28,10 @@ export async function getTeacherClassStudentsHandler(
   res
 ) {
   const data = await getTeacherClassStudents(
-    req.user.id,
-    req.params.classId
-  );
+  req.user.id,
+  req.params.classId,
+  req.query.sessionId
+);
 
   return res.json({
     success: true,
