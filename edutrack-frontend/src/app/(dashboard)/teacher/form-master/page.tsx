@@ -3,7 +3,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { BookOpen, GraduationCap, Users } from "lucide-react";
+import {
+  BookOpen,
+  CalendarDays,
+  GraduationCap,
+  Users,
+  RefreshCw,
+  School,
+} from "lucide-react";
 
 import api from "../../../../lib/axios";
 import {
@@ -25,6 +32,7 @@ import { getTerms } from "../../../../lib/options";
 
 import AttendanceForm from "../../../../components/attendance/AttendanceForm";
 import PageLoader from "../../../../components/ui/PageLoader";
+import { useTenant } from "../../../../components/tenant/TenantProvider";
 
 import type {
   AttendanceFormValues,
@@ -38,11 +46,13 @@ type TermOption = {
   isCurrent?: boolean;
 };
 
-function getErrorMessage(error: unknown) {
+type AttendanceStatus = "present" | "absent" | "late";
+
+function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     return (
       error.response?.data?.message ||
-      "Unable to complete the request."
+      "Unable to complete the request. Please try again."
     );
   }
 
@@ -51,7 +61,7 @@ function getErrorMessage(error: unknown) {
     : "An unexpected error occurred.";
 }
 
-function getLocalDate() {
+function getLocalDate(): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -71,6 +81,10 @@ function createEmptyAttendance(): AttendanceFormValues {
 }
 
 export default function FormMasterDashboardPage() {
+  const { tenant } = useTenant();
+  const brandColor = tenant?.themeColor || "#06b6d4";
+  const schoolName = tenant?.schoolName || "EduTrack";
+
   const [sessions, setSessions] = useState<FormMasterSession[]>([]);
   const [terms, setTerms] = useState<TermOption[]>([]);
   const [sessionId, setSessionId] = useState("");
@@ -96,10 +110,6 @@ export default function FormMasterDashboardPage() {
     try {
       setLoading(true);
       setError("");
-      setSelectedClass(null);
-      setStudents([]);
-      setAttendance(createEmptyAttendance());
-      setExistingRecords(false);
 
       const data = await getFormMasterOverview(id);
       setDashboard(data);
@@ -117,6 +127,7 @@ export default function FormMasterDashboardPage() {
     async function initialize() {
       try {
         setLoading(true);
+        setError("");
 
         const [sessionResponse, termOptions] = await Promise.all([
           api.get("/sessions"),
@@ -128,35 +139,46 @@ export default function FormMasterDashboardPage() {
         const sessionRows: FormMasterSession[] =
           sessionResponse.data.data || [];
 
+        const termRows: TermOption[] = termOptions.map((term) => ({
+          _id: term._id,
+          name: term.name,
+          isCurrent: term.isCurrent,
+        }));
+
         setSessions(sessionRows);
-        setTerms(termOptions);
+        setTerms(termRows);
 
         const currentSession =
-          sessionRows.find((item) => item.isCurrent) ||
-          sessionRows[0];
+          sessionRows.find((item) => item.isCurrent) || sessionRows[0];
 
         const currentTerm =
-          termOptions.find((item) => item.isCurrent) ||
-          termOptions[0];
+          termRows.find((item) => item.isCurrent) || termRows[0];
 
         const initialSessionId = currentSession?._id || "";
+        const initialTermId = currentTerm?._id || "";
 
         setSessionId(initialSessionId);
         setAttendance((previous) => ({
           ...previous,
           sessionId: initialSessionId,
-          termId: currentTerm?._id || "",
+          termId: initialTermId,
         }));
 
         const data = await getFormMasterOverview(
           initialSessionId || undefined
         );
 
-        if (mounted) setDashboard(data);
+        if (mounted) {
+          setDashboard(data);
+        }
       } catch (err) {
-        if (mounted) setError(getErrorMessage(err));
+        if (mounted) {
+          setError(getErrorMessage(err));
+        }
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     }
 
@@ -169,17 +191,18 @@ export default function FormMasterDashboardPage() {
 
   async function handleSessionChange(id: string) {
     setSessionId(id);
+    setSelectedClass(null);
+    setStudents([]);
+    setStudentsError("");
+    setActionMessage("");
+    setExistingRecords(false);
+
     setAttendance((previous) => ({
       ...previous,
       sessionId: id,
       classId: "",
       records: [],
     }));
-
-    setSelectedClass(null);
-    setStudents([]);
-    setExistingRecords(false);
-    setActionMessage("");
 
     await loadDashboard(id || undefined);
   }
@@ -194,6 +217,7 @@ export default function FormMasterDashboardPage() {
     }));
 
     setActionMessage("");
+    setStudentsError("");
   }
 
   async function loadClassAttendance(
@@ -230,7 +254,7 @@ export default function FormMasterDashboardPage() {
       const savedRecords: AttendanceRecord[] =
         attendanceResponse.records || [];
 
-      const savedByStudent = new Map(
+      const savedByStudent = new Map<string, AttendanceStatus>(
         savedRecords.map((record) => [
           String(record.studentId),
           record.status,
@@ -248,14 +272,13 @@ export default function FormMasterDashboardPage() {
         records: classStudents.map((student) => ({
           studentId: student._id,
           studentName: student.fullName,
-          // Existing statuses are restored. New entries default to
-          // present, so review each student's status before saving.
           status: savedByStudent.get(student._id) || "present",
         })),
       });
     } catch (err) {
       setStudentsError(getErrorMessage(err));
       setStudents([]);
+
       setAttendance((previous) => ({
         ...previous,
         classId: item.classId,
@@ -291,7 +314,7 @@ export default function FormMasterDashboardPage() {
 
   function handleStudentStatusChange(
     studentId: string,
-    status: "present" | "absent" | "late"
+    status: AttendanceStatus
   ) {
     setAttendance((previous) => ({
       ...previous,
@@ -339,7 +362,6 @@ export default function FormMasterDashboardPage() {
         "Attendance saved successfully for the selected date."
       );
 
-      // Reload the selected date to verify the saved records.
       await loadClassAttendance(
         selectedClass,
         attendance.date,
@@ -353,25 +375,12 @@ export default function FormMasterDashboardPage() {
     }
   }
 
-  if (loading) return <PageLoader />;
-
-  if (error) {
-    return (
-      <div className="space-y-3 rounded-2xl border border-red-200 bg-red-50 p-5">
-        <h1 className="text-lg font-semibold text-red-800">
-          Unable to load Form Master dashboard
-        </h1>
-        <p className="text-sm text-red-700">{error}</p>
-        <button
-          type="button"
-          onClick={() => void loadDashboard(sessionId || undefined)}
-          className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white"
-        >
-          Try again
-        </button>
-      </div>
-    );
-  }
+  const classOptions: ClassOption[] = (dashboard?.classes || []).map(
+    (item) => ({
+      _id: item.classId,
+      name: item.name,
+    })
+  );
 
   const teacherName = [
     dashboard?.teacher.firstName,
@@ -380,64 +389,119 @@ export default function FormMasterDashboardPage() {
     .filter(Boolean)
     .join(" ");
 
-  const classOptions: ClassOption[] = (dashboard?.classes || []).map(
-    (item) => ({
-      _id: item.classId,
-      name: item.name,
-    })
-  );
+  if (loading) {
+    return <PageLoader />;
+  }
 
-  return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+  if (error) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
         <div>
-          <p className="text-sm font-medium text-cyan-700">
-            EduTrack · Teacher Portal
-          </p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">
-            Form Master Dashboard
+          <h1 className="text-xl font-bold text-slate-900">
+            Unable to load Form Master dashboard
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Welcome{teacherName ? `, ${teacherName}` : ""}. Manage your
-            assigned classes and daily attendance.
-          </p>
+          <p className="mt-2 text-sm text-red-700">{error}</p>
         </div>
 
-        <div className="w-full md:max-w-xs">
-          <label
-            htmlFor="form-master-session"
-            className="mb-2 block text-sm font-medium text-slate-700"
-          >
-            Academic session
-          </label>
-          <select
-            id="form-master-session"
-            value={sessionId}
-            onChange={(event) =>
-              void handleSessionChange(event.target.value)
-            }
-            className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm"
-          >
-            <option value="">Select session</option>
-            {sessions.map((session) => (
-              <option key={session._id} value={session._id}>
-                {session.name}
-                {session.isCurrent ? " (Current)" : ""}
-              </option>
-            ))}
-          </select>
+        <button
+          type="button"
+          onClick={() => void loadDashboard(sessionId || undefined)}
+          className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+          style={{ backgroundColor: brandColor }}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <main className="space-y-6">
+      {/* School identity and page heading */}
+      <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            {tenant?.logoUrl ? (
+              <img
+                src={tenant.logoUrl}
+                alt={`${schoolName} logo`}
+                className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-1.5"
+              />
+            ) : (
+              <div
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-white"
+                style={{ backgroundColor: brandColor }}
+                aria-hidden="true"
+              >
+                <School size={27} />
+              </div>
+            )}
+
+            <div className="min-w-0">
+              <p
+                className="truncate text-sm font-semibold"
+                style={{ color: brandColor }}
+              >
+                {schoolName}
+              </p>
+
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
+                Form Master Dashboard
+              </h1>
+
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Welcome{teacherName ? `, ${teacherName}` : ""}. Manage
+                your assigned classes and daily attendance.
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full lg:max-w-xs">
+            <label
+              htmlFor="form-master-session"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Academic session
+            </label>
+
+            <select
+              id="form-master-session"
+              value={sessionId}
+              onChange={(event) =>
+                void handleSessionChange(event.target.value)
+              }
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-800 outline-none transition focus:ring-2"
+              style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
+            >
+              <option value="">Select session</option>
+              {sessions.map((session) => (
+                <option key={session._id} value={session._id}>
+                  {session.name}
+                  {session.isCurrent ? " (Current)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </header>
 
+      {/* Overview statistics */}
       <section className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-cyan-50 p-3 text-cyan-700">
-              <GraduationCap size={24} />
+          <div className="flex items-center gap-4">
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-xl"
+              style={{
+                backgroundColor: `${brandColor}18`,
+                color: brandColor,
+              }}
+            >
+              <GraduationCap size={25} />
             </div>
+
             <div>
               <p className="text-sm text-slate-500">Assigned classes</p>
-              <p className="text-2xl font-bold text-slate-900">
+              <p className="mt-1 text-2xl font-bold text-slate-900">
                 {dashboard?.stats.assignedClasses ?? 0}
               </p>
             </div>
@@ -445,15 +509,16 @@ export default function FormMasterDashboardPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-indigo-50 p-3 text-indigo-700">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
               <Users size={24} />
             </div>
+
             <div>
               <p className="text-sm text-slate-500">
                 Students in assigned classes
               </p>
-              <p className="text-2xl font-bold text-slate-900">
+              <p className="mt-1 text-2xl font-bold text-slate-900">
                 {dashboard?.stats.totalStudents ?? 0}
               </p>
             </div>
@@ -461,13 +526,14 @@ export default function FormMasterDashboardPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      {/* Assigned classes */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-5">
-          <h2 className="text-lg font-semibold text-slate-900">
+          <h2 className="text-lg font-bold text-slate-900">
             My Assigned Classes
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Only classes assigned to you for the selected session appear here.
+            Classes assigned to you for the selected academic session.
           </p>
         </div>
 
@@ -478,61 +544,105 @@ export default function FormMasterDashboardPage() {
         )}
 
         {dashboard?.session && dashboard.classes.length === 0 && (
-          <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
-            <BookOpen className="mx-auto mb-3 text-slate-400" size={32} />
+          <div className="rounded-xl border border-dashed border-slate-300 px-5 py-10 text-center">
+            <BookOpen
+              className="mx-auto mb-3 text-slate-400"
+              size={32}
+            />
             <h3 className="font-semibold text-slate-800">
               No classes assigned
             </h3>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500">
               Contact your School Admin to be assigned as a Form Master.
             </p>
           </div>
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {dashboard?.classes.map((item) => (
-            <article
-              key={item.assignmentId}
-              className="rounded-xl border border-slate-200 p-4 transition hover:border-cyan-300 hover:shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-slate-900">
-                    {item.name}
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {[item.level, item.code].filter(Boolean).join(" · ") ||
-                      "Class"}
-                  </p>
-                </div>
-                <span className="rounded-lg bg-cyan-50 px-3 py-1 text-sm font-semibold text-cyan-800">
-                  {item.studentCount} students
-                </span>
-              </div>
+          {dashboard?.classes.map((item) => {
+            const isSelected =
+              selectedClass?.assignmentId === item.assignmentId;
 
-              <button
-                type="button"
-                onClick={() => void handleViewStudents(item)}
-                disabled={!sessionId || !attendance.termId}
-                className="mt-4 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            return (
+              <article
+                key={item.assignmentId}
+                className={`rounded-xl border bg-white p-4 transition ${
+                  isSelected
+                    ? "shadow-sm"
+                    : "border-slate-200 hover:shadow-sm"
+                }`}
+                style={
+                  isSelected
+                    ? { borderColor: brandColor }
+                    : undefined
+                }
               >
-                Open attendance
-              </button>
-            </article>
-          ))}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-slate-900">
+                      {item.name}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {[item.level, item.code]
+                        .filter(Boolean)
+                        .join(" · ") || "Class"}
+                    </p>
+                  </div>
+
+                  <span
+                    className="shrink-0 rounded-lg px-3 py-1 text-xs font-semibold"
+                    style={{
+                      backgroundColor: `${brandColor}18`,
+                      color: brandColor,
+                    }}
+                  >
+                    {item.studentCount} students
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleViewStudents(item)}
+                  disabled={
+                    studentsLoading || !sessionId || !attendance.termId
+                  }
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ backgroundColor: brandColor }}
+                >
+                  <CalendarDays size={16} />
+                  {isSelected ? "Reload attendance" : "Open attendance"}
+                </button>
+              </article>
+            );
+          })}
         </div>
       </section>
 
+      {/* Daily and historical attendance */}
       {selectedClass && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-5">
-            <h2 className="text-lg font-semibold text-slate-900">
-              {selectedClass.name} — Attendance
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Select the academic period and date, then load the attendance
-              records for that day.
-            </p>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p
+                className="text-xs font-semibold uppercase tracking-wide"
+                style={{ color: brandColor }}
+              >
+                Attendance register
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">
+                {selectedClass.name}
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Select a session, term, and date to enter or edit
+                attendance for that day.
+              </p>
+            </div>
+
+            {existingRecords && (
+              <span className="inline-flex w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">
+                Existing records loaded
+              </span>
+            )}
           </div>
 
           <div className="mb-5 grid gap-4 md:grid-cols-3">
@@ -543,13 +653,15 @@ export default function FormMasterDashboardPage() {
               >
                 Academic term
               </label>
+
               <select
                 id="form-master-term"
                 value={attendance.termId}
                 onChange={(event) =>
                   updateAttendanceField("termId", event.target.value)
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm"
+                className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-800 outline-none focus:ring-2"
+                style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
               >
                 <option value="">Select term</option>
                 {terms.map((term) => (
@@ -568,6 +680,7 @@ export default function FormMasterDashboardPage() {
               >
                 Attendance date
               </label>
+
               <input
                 id="form-master-date"
                 type="date"
@@ -575,7 +688,8 @@ export default function FormMasterDashboardPage() {
                 onChange={(event) =>
                   updateAttendanceField("date", event.target.value)
                 }
-                className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm"
+                className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-800 outline-none focus:ring-2"
+                style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
               />
             </div>
 
@@ -589,22 +703,30 @@ export default function FormMasterDashboardPage() {
                   !attendance.termId ||
                   !attendance.sessionId
                 }
-                className="w-full rounded-lg bg-cyan-700 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ backgroundColor: brandColor }}
               >
+                <RefreshCw
+                  size={16}
+                  className={studentsLoading ? "animate-spin" : ""}
+                />
                 {studentsLoading ? "Loading..." : "Load selected date"}
               </button>
             </div>
           </div>
 
           {existingRecords && (
-            <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-              Existing attendance was found for this date. Review and update
-              the statuses before saving.
-            </p>
+            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-800">
+              Attendance records were found for this date. Review the
+              existing statuses and save your changes to update them.
+            </div>
           )}
 
           {studentsError && (
-            <p role="alert" className="mb-4 text-sm text-red-700">
+            <p
+              role="alert"
+              className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
               {studentsError}
             </p>
           )}
@@ -612,7 +734,7 @@ export default function FormMasterDashboardPage() {
           {actionMessage && (
             <p
               role="status"
-              className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
+              className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
             >
               {actionMessage}
             </p>
@@ -631,19 +753,26 @@ export default function FormMasterDashboardPage() {
               onSubmit={() => void handleSubmitAttendance()}
               submitting={submitting}
               submitLabel={
-                existingRecords
-                  ? "Update Attendance"
-                  : "Save Attendance"
+                existingRecords ? "Update Attendance" : "Save Attendance"
               }
             />
           ) : (
-            <p className="text-sm text-slate-500">
-              No students loaded. Select a date and choose Load selected date.
-            </p>
+            <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center">
+              <Users
+                className="mx-auto mb-2 text-slate-400"
+                size={28}
+              />
+              <p className="text-sm font-medium text-slate-700">
+                No students loaded
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Choose the academic term and date, then select Load
+                selected date to view the register.
+              </p>
+            </div>
           )}
         </section>
       )}
-    </div>
+    </main>
   );
-                           }
-      
+}
