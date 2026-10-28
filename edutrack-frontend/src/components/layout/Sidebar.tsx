@@ -58,6 +58,11 @@ const navByRole: Record<
   { label: "Billing", href: "/school-admin/billing", icon: CreditCard },
   { label: "Students", href: "/school-admin/students", icon: GraduationCap },
   { label: "Teachers", href: "/school-admin/teachers", icon: Users },
+   {
+  label: "Form Master Assignment",
+  href: "/school-admin/teachers/form-master-assignment",
+  icon: Users,
+},
   { label: "Attendance", href: "/school-admin/attendance", icon: CalendarCheck },
   { label: "Classes", href: "/school-admin/classes", icon: Building2 },
   { label: "Subjects", href: "/school-admin/subjects", icon: Library },
