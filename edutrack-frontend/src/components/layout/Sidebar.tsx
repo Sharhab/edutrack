@@ -162,6 +162,11 @@ icon: CalendarDays,
  student: [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
   { label: "My Classes", href: "/student/classes", icon: GraduationCap },
+   {
+  label: "Form Master Dashboard",
+  href: "/teacher/form-master",
+  icon: Users,
+},
   { label: "My Timetable", href: "/student/timetable", icon: CalendarDays },
   { label: "Results", href: "/student/results", icon: BookOpen },
   { label: "Announcements", href: "/student/announcements", icon: Bell },
