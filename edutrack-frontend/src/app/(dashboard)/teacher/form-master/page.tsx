@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -9,7 +10,6 @@ import {
   getFormMasterOverview,
   getFormMasterClassStudents,
 } from "../../../../lib/form-master-portal";
-
 import type {
   FormMasterOverview,
   FormMasterSession,
@@ -17,13 +17,32 @@ import type {
   FormMasterStudent,
 } from "../../../../lib/form-master-portal";
 
+import {
+  getAttendanceRecords,
+  createAttendance,
+} from "../../../../lib/attendance";
+import { getTerms } from "../../../../lib/options";
+
+import AttendanceForm from "../../../../components/attendance/AttendanceForm";
 import PageLoader from "../../../../components/ui/PageLoader";
+
+import type {
+  AttendanceFormValues,
+  AttendanceRecord,
+} from "../../../../types/attendance";
+import type { ClassOption } from "../../../../types/options";
+
+type TermOption = {
+  _id: string;
+  name: string;
+  isCurrent?: boolean;
+};
 
 function getErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     return (
       error.response?.data?.message ||
-      "Unable to load Form Master dashboard."
+      "Unable to complete the request."
     );
   }
 
@@ -32,20 +51,46 @@ function getErrorMessage(error: unknown) {
     : "An unexpected error occurred.";
 }
 
+function getLocalDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function createEmptyAttendance(): AttendanceFormValues {
+  return {
+    classId: "",
+    sessionId: "",
+    termId: "",
+    date: getLocalDate(),
+    records: [],
+  };
+}
+
 export default function FormMasterDashboardPage() {
   const [sessions, setSessions] = useState<FormMasterSession[]>([]);
+  const [terms, setTerms] = useState<TermOption[]>([]);
   const [sessionId, setSessionId] = useState("");
   const [dashboard, setDashboard] =
     useState<FormMasterOverview | null>(null);
 
   const [selectedClass, setSelectedClass] =
     useState<FormMasterClass | null>(null);
-
   const [students, setStudents] = useState<FormMasterStudent[]>([]);
+
+  const [attendance, setAttendance] =
+    useState<AttendanceFormValues>(createEmptyAttendance);
+
   const [loading, setLoading] = useState(true);
   const [studentsLoading, setStudentsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [studentsError, setStudentsError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [existingRecords, setExistingRecords] = useState(false);
 
   const loadDashboard = useCallback(async (id?: string) => {
     try {
@@ -53,6 +98,8 @@ export default function FormMasterDashboardPage() {
       setError("");
       setSelectedClass(null);
       setStudents([]);
+      setAttendance(createEmptyAttendance());
+      setExistingRecords(false);
 
       const data = await getFormMasterOverview(id);
       setDashboard(data);
@@ -71,24 +118,41 @@ export default function FormMasterDashboardPage() {
       try {
         setLoading(true);
 
-        const response = await api.get("/sessions");
+        const [sessionResponse, termOptions] = await Promise.all([
+          api.get("/sessions"),
+          getTerms(),
+        ]);
+
         if (!mounted) return;
 
-        const rows: FormMasterSession[] = response.data.data || [];
-        setSessions(rows);
+        const sessionRows: FormMasterSession[] =
+          sessionResponse.data.data || [];
 
-        const current =
-          rows.find((session) => session.isCurrent) || rows[0];
+        setSessions(sessionRows);
+        setTerms(termOptions);
 
-        if (current) {
-          setSessionId(current._id);
-          const data = await getFormMasterOverview(current._id);
+        const currentSession =
+          sessionRows.find((item) => item.isCurrent) ||
+          sessionRows[0];
 
-          if (mounted) setDashboard(data);
-        } else {
-          const data = await getFormMasterOverview();
-          if (mounted) setDashboard(data);
-        }
+        const currentTerm =
+          termOptions.find((item) => item.isCurrent) ||
+          termOptions[0];
+
+        const initialSessionId = currentSession?._id || "";
+
+        setSessionId(initialSessionId);
+        setAttendance((previous) => ({
+          ...previous,
+          sessionId: initialSessionId,
+          termId: currentTerm?._id || "",
+        }));
+
+        const data = await getFormMasterOverview(
+          initialSessionId || undefined
+        );
+
+        if (mounted) setDashboard(data);
       } catch (err) {
         if (mounted) setError(getErrorMessage(err));
       } finally {
@@ -105,12 +169,43 @@ export default function FormMasterDashboardPage() {
 
   async function handleSessionChange(id: string) {
     setSessionId(id);
+    setAttendance((previous) => ({
+      ...previous,
+      sessionId: id,
+      classId: "",
+      records: [],
+    }));
+
+    setSelectedClass(null);
+    setStudents([]);
+    setExistingRecords(false);
+    setActionMessage("");
+
     await loadDashboard(id || undefined);
   }
 
-  async function handleViewStudents(item: FormMasterClass) {
-    if (!sessionId) {
-      setStudentsError("Select an academic session first.");
+  function updateAttendanceField<K extends keyof AttendanceFormValues>(
+    field: K,
+    value: AttendanceFormValues[K]
+  ) {
+    setAttendance((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+
+    setActionMessage("");
+  }
+
+  async function loadClassAttendance(
+    item: FormMasterClass,
+    date: string,
+    selectedSessionId: string,
+    termId: string
+  ) {
+    if (!selectedSessionId || !termId || !date) {
+      setStudentsError(
+        "Select an academic session, term, and date first."
+      );
       return;
     }
 
@@ -118,18 +213,143 @@ export default function FormMasterDashboardPage() {
       setSelectedClass(item);
       setStudents([]);
       setStudentsError("");
+      setActionMessage("");
       setStudentsLoading(true);
+      setExistingRecords(false);
 
-      const rows = await getFormMasterClassStudents(
-        item.classId,
-        sessionId
+      const [classStudents, attendanceResponse] = await Promise.all([
+        getFormMasterClassStudents(item.classId, selectedSessionId),
+        getAttendanceRecords({
+          classId: item.classId,
+          date,
+          sessionId: selectedSessionId,
+          termId,
+        }),
+      ]);
+
+      const savedRecords: AttendanceRecord[] =
+        attendanceResponse.records || [];
+
+      const savedByStudent = new Map(
+        savedRecords.map((record) => [
+          String(record.studentId),
+          record.status,
+        ])
       );
 
-      setStudents(rows);
+      setStudents(classStudents);
+      setExistingRecords(savedRecords.length > 0);
+
+      setAttendance({
+        classId: item.classId,
+        sessionId: selectedSessionId,
+        termId,
+        date,
+        records: classStudents.map((student) => ({
+          studentId: student._id,
+          studentName: student.fullName,
+          // Existing statuses are restored. New entries default to
+          // present, so review each student's status before saving.
+          status: savedByStudent.get(student._id) || "present",
+        })),
+      });
     } catch (err) {
       setStudentsError(getErrorMessage(err));
+      setStudents([]);
+      setAttendance((previous) => ({
+        ...previous,
+        classId: item.classId,
+        records: [],
+      }));
     } finally {
       setStudentsLoading(false);
+    }
+  }
+
+  async function handleViewStudents(item: FormMasterClass) {
+    await loadClassAttendance(
+      item,
+      attendance.date || getLocalDate(),
+      sessionId,
+      attendance.termId
+    );
+  }
+
+  async function handleReloadSelectedDate() {
+    if (!selectedClass) {
+      setStudentsError("Select an assigned class first.");
+      return;
+    }
+
+    await loadClassAttendance(
+      selectedClass,
+      attendance.date,
+      attendance.sessionId,
+      attendance.termId
+    );
+  }
+
+  function handleStudentStatusChange(
+    studentId: string,
+    status: "present" | "absent" | "late"
+  ) {
+    setAttendance((previous) => ({
+      ...previous,
+      records: previous.records.map((record) =>
+        record.studentId === studentId
+          ? { ...record, status }
+          : record
+      ),
+    }));
+
+    setActionMessage("");
+  }
+
+  async function handleSubmitAttendance() {
+    if (!selectedClass) {
+      setActionMessage("Select an assigned class first.");
+      return;
+    }
+
+    if (
+      !attendance.classId ||
+      !attendance.sessionId ||
+      !attendance.termId ||
+      !attendance.date
+    ) {
+      setActionMessage(
+        "Select a class, session, term, and attendance date."
+      );
+      return;
+    }
+
+    if (attendance.records.length === 0) {
+      setActionMessage("There are no students to save attendance for.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setActionMessage("");
+
+      await createAttendance(attendance);
+
+      setExistingRecords(true);
+      setActionMessage(
+        "Attendance saved successfully for the selected date."
+      );
+
+      // Reload the selected date to verify the saved records.
+      await loadClassAttendance(
+        selectedClass,
+        attendance.date,
+        attendance.sessionId,
+        attendance.termId
+      );
+    } catch (err) {
+      setActionMessage(getErrorMessage(err));
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -160,6 +380,13 @@ export default function FormMasterDashboardPage() {
     .filter(Boolean)
     .join(" ");
 
+  const classOptions: ClassOption[] = (dashboard?.classes || []).map(
+    (item) => ({
+      _id: item.classId,
+      name: item.name,
+    })
+  );
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -167,14 +394,12 @@ export default function FormMasterDashboardPage() {
           <p className="text-sm font-medium text-cyan-700">
             EduTrack · Teacher Portal
           </p>
-
           <h1 className="mt-1 text-2xl font-bold text-slate-900">
             Form Master Dashboard
           </h1>
-
           <p className="mt-1 text-sm text-slate-500">
-            Welcome{teacherName ? `, ${teacherName}` : ""}. Monitor your
-            assigned classes and students.
+            Welcome{teacherName ? `, ${teacherName}` : ""}. Manage your
+            assigned classes and daily attendance.
           </p>
         </div>
 
@@ -185,7 +410,6 @@ export default function FormMasterDashboardPage() {
           >
             Academic session
           </label>
-
           <select
             id="form-master-session"
             value={sessionId}
@@ -194,7 +418,7 @@ export default function FormMasterDashboardPage() {
             }
             className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm"
           >
-            <option value="">Current session</option>
+            <option value="">Select session</option>
             {sessions.map((session) => (
               <option key={session._id} value={session._id}>
                 {session.name}
@@ -249,8 +473,7 @@ export default function FormMasterDashboardPage() {
 
         {!dashboard?.session && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            No current academic session is configured. Ask your School Admin
-            to configure the academic session.
+            No academic session is configured for this selection.
           </div>
         )}
 
@@ -282,7 +505,6 @@ export default function FormMasterDashboardPage() {
                       "Class"}
                   </p>
                 </div>
-
                 <span className="rounded-lg bg-cyan-50 px-3 py-1 text-sm font-semibold text-cyan-800">
                   {item.studentCount} students
                 </span>
@@ -291,9 +513,10 @@ export default function FormMasterDashboardPage() {
               <button
                 type="button"
                 onClick={() => void handleViewStudents(item)}
-                className="mt-4 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                disabled={!sessionId || !attendance.termId}
+                className="mt-4 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                View students
+                Open attendance
               </button>
             </article>
           ))}
@@ -301,65 +524,126 @@ export default function FormMasterDashboardPage() {
       </section>
 
       {selectedClass && (
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 p-5">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-5">
             <h2 className="text-lg font-semibold text-slate-900">
-              {selectedClass.name} — Students
+              {selectedClass.name} — Attendance
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Academic session: {dashboard?.session?.name || "Not selected"}
+              Select the academic period and date, then load the attendance
+              records for that day.
             </p>
           </div>
 
-          {studentsLoading && (
-            <p className="p-5 text-sm text-slate-500">
-              Loading students...
+          <div className="mb-5 grid gap-4 md:grid-cols-3">
+            <div>
+              <label
+                htmlFor="form-master-term"
+                className="mb-2 block text-sm font-medium text-slate-700"
+              >
+                Academic term
+              </label>
+              <select
+                id="form-master-term"
+                value={attendance.termId}
+                onChange={(event) =>
+                  updateAttendanceField("termId", event.target.value)
+                }
+                className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm"
+              >
+                <option value="">Select term</option>
+                {terms.map((term) => (
+                  <option key={term._id} value={term._id}>
+                    {term.name}
+                    {term.isCurrent ? " (Current)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="form-master-date"
+                className="mb-2 block text-sm font-medium text-slate-700"
+              >
+                Attendance date
+              </label>
+              <input
+                id="form-master-date"
+                type="date"
+                value={attendance.date}
+                onChange={(event) =>
+                  updateAttendanceField("date", event.target.value)
+                }
+                className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm"
+              />
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => void handleReloadSelectedDate()}
+                disabled={
+                  studentsLoading ||
+                  !attendance.date ||
+                  !attendance.termId ||
+                  !attendance.sessionId
+                }
+                className="w-full rounded-lg bg-cyan-700 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {studentsLoading ? "Loading..." : "Load selected date"}
+              </button>
+            </div>
+          </div>
+
+          {existingRecords && (
+            <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+              Existing attendance was found for this date. Review and update
+              the statuses before saving.
             </p>
           )}
 
           {studentsError && (
-            <p role="alert" className="p-5 text-sm text-red-700">
+            <p role="alert" className="mb-4 text-sm text-red-700">
               {studentsError}
             </p>
           )}
 
-          {!studentsLoading && !studentsError && students.length === 0 && (
-            <p className="p-5 text-sm text-slate-500">
-              No students were found in this class.
+          {actionMessage && (
+            <p
+              role="status"
+              className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
+            >
+              {actionMessage}
             </p>
           )}
 
-          {!studentsLoading && students.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px] text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
-                  <tr>
-                    <th className="px-5 py-3">Student</th>
-                    <th className="px-5 py-3">Admission number</th>
-                    <th className="px-5 py-3">Gender</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {students.map((student) => (
-                    <tr key={student._id}>
-                      <td className="px-5 py-3 font-medium text-slate-800">
-                        {student.fullName}
-                      </td>
-                      <td className="px-5 py-3 text-slate-600">
-                        {student.admissionNumber || "—"}
-                      </td>
-                      <td className="px-5 py-3 capitalize text-slate-600">
-                        {student.gender || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {studentsLoading ? (
+            <PageLoader />
+          ) : students.length > 0 ? (
+            <AttendanceForm
+              values={attendance}
+              classes={classOptions}
+              sessions={sessions}
+              terms={terms}
+              onChange={updateAttendanceField}
+              onStudentStatusChange={handleStudentStatusChange}
+              onSubmit={() => void handleSubmitAttendance()}
+              submitting={submitting}
+              submitLabel={
+                existingRecords
+                  ? "Update Attendance"
+                  : "Save Attendance"
+              }
+            />
+          ) : (
+            <p className="text-sm text-slate-500">
+              No students loaded. Select a date and choose Load selected date.
+            </p>
           )}
         </section>
       )}
     </div>
   );
-            }
+                           }
+      
