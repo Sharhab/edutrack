@@ -18,7 +18,7 @@ import sessionRoutes from "../modules/sessions/session.routes.js";
 import termRoutes from "../modules/terms/term.routes.js";
 import classRoutes from "../modules/classes/class.routes.js";
 import subjectRoutes from "../modules/subjects/subject.routes.js";
-
+import formMasterAssignmentRoutes from "../modules/form-master-assignments/form-master-assignment.routes.js";
 import timetableSettingRoutes from "../modules/timetables/timetable-setting.routes.js";
 import timetableRequirementRoutes from "../modules/timetables/timetable-requirement.routes.js";
 import teacherTimetableRoutes from "../modules/timetables/teacher-timetable.routes.js";
@@ -145,7 +145,10 @@ router.use("/subjects", subjectRoutes);
 router.use("/timetable-settings", timetableSettingRoutes);
 router.use("/timetable-requirements", timetableRequirementRoutes);
 router.use("/timetables", timetableRoutes);
-
+router.use(
+  "/form-master-assignments",
+  formMasterAssignmentRoutes
+);
 router.use("/teacher/timetable", teacherTimetableRoutes);
 router.use("/class/timetable", classTimetableRoutes);
 router.use("/student/timetable", studentTimetableRoutes);
