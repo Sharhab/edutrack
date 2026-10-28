@@ -5,7 +5,8 @@ import { Attendance } from "../attendance/attendance.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
 import { ApiError } from "../../utils/apiError.js";
-
+import mongoose from "mongoose";
+import { FormMasterAssignment } from "../form-master-assignments/form-master-assignment.model.js";
 /* =========================================
    GET TEACHER PROFILE
 ========================================= */
@@ -92,13 +93,48 @@ export async function getTeacherPortalOverview(
   };
 }
 
+async function canManageClass({
+  teacher,
+  classId,
+  sessionId,
+}) {
+  // Preserve existing teacher class assignments.
+  const isRegularClassTeacher = (
+    teacher.classIds || []
+  ).some(
+    (id) => String(id) === String(classId)
+  );
+
+  if (isRegularClassTeacher) {
+    return true;
+  }
+
+  // Form Master assignments require a valid academic session.
+  if (
+    !sessionId ||
+    !mongoose.Types.ObjectId.isValid(sessionId)
+  ) {
+    return false;
+  }
+
+  const assignment = await FormMasterAssignment.findOne({
+    schoolId: teacher.schoolId,
+    sessionId,
+    classId,
+    teacherId: teacher._id,
+    teacherUserId: teacher.userId,
+  }).lean();
+
+  return Boolean(assignment);
+}
 /* =========================================
    GET CLASS STUDENTS
 ========================================= */
 
 export async function getTeacherClassStudents(
   userId,
-  classId
+  classId,
+  sessionId
 ) {
   const teacher = await Teacher.findOne({
     userId,
@@ -112,12 +148,18 @@ export async function getTeacherClassStudents(
     );
   }
 
-  const isAssigned = (
-    teacher.classIds || []
-  ).some(
-    (id) =>
-      String(id) === String(classId)
+  const isAssigned = await canManageClass({
+  teacher,
+  classId,
+  sessionId,
+});
+
+if (!isAssigned) {
+  throw new ApiError(
+    403,
+    "You are not assigned to this class for the selected session"
   );
+}
 
   if (!isAssigned) {
     throw new ApiError(
@@ -198,12 +240,18 @@ export async function submitTeacherAttendance(
      CHECK CLASS ASSIGNMENT
   ========================================= */
 
-  const isAssigned = (
-    teacher.classIds || []
-  ).some(
-    (id) =>
-      String(id) === String(classId)
+ const isAssigned = await canManageClass({
+  teacher,
+  classId,
+  sessionId,
+});
+
+if (!isAssigned) {
+  throw new ApiError(
+    403,
+    "You are not assigned to this class for the selected session"
   );
+}
 
   if (!isAssigned) {
     throw new ApiError(
