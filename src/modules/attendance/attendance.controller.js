@@ -1,6 +1,8 @@
+
 import {
   attendanceQuerySchema,
   markAttendanceSchema,
+  updateAttendanceSchema,
 } from "./attendance.validation.js";
 
 import {
@@ -12,7 +14,7 @@ import {
   deleteAttendance,
 } from "./attendance.service.js";
 
-// CREATE
+// CREATE / MARK ATTENDANCE
 export async function markAttendanceHandler(req, res) {
   const parsed = markAttendanceSchema.parse(req.body);
   const data = await markAttendance(parsed, req.user);
@@ -24,14 +26,15 @@ export async function markAttendanceHandler(req, res) {
   });
 }
 
-// LIST
+// LIST ATTENDANCE
 export async function listAttendanceHandler(req, res) {
   const parsed = attendanceQuerySchema.parse(req.query);
   const data = await listAttendance(parsed, req.user);
 
   const total = data.length;
-  const present = data.filter((i) => i.status === "present").length;
-  const absent = data.filter((i) => i.status === "absent").length;
+  const present = data.filter((item) => item.status === "present").length;
+  const absent = data.filter((item) => item.status === "absent").length;
+  const late = data.filter((item) => item.status === "late").length;
 
   res.json({
     success: true,
@@ -42,6 +45,7 @@ export async function listAttendanceHandler(req, res) {
         total,
         present,
         absent,
+        late,
         attendanceRate: total
           ? Math.round((present / total) * 100)
           : 0,
@@ -50,7 +54,7 @@ export async function listAttendanceHandler(req, res) {
   });
 }
 
-// GET ONE
+// GET ONE ATTENDANCE RECORD
 export async function getAttendanceHandler(req, res) {
   const data = await getAttendanceById(req.params.id, req.user);
 
@@ -61,9 +65,9 @@ export async function getAttendanceHandler(req, res) {
   });
 }
 
-// UPDATE
+// UPDATE ATTENDANCE
 export async function updateAttendanceHandler(req, res) {
-  const parsed = markAttendanceSchema.partial().parse(req.body);
+  const parsed = updateAttendanceSchema.parse(req.body);
 
   const data = await updateAttendance(
     req.params.id,
@@ -78,7 +82,7 @@ export async function updateAttendanceHandler(req, res) {
   });
 }
 
-// DELETE
+// DELETE ATTENDANCE
 export async function deleteAttendanceHandler(req, res) {
   await deleteAttendance(req.params.id, req.user);
 
@@ -88,7 +92,7 @@ export async function deleteAttendanceHandler(req, res) {
   });
 }
 
-// CLASS + DATE
+// GET ATTENDANCE BY CLASS AND DATE
 export async function getAttendanceByClassDateHandler(req, res) {
   const data = await getAttendanceByClassAndDate(
     {
@@ -99,8 +103,9 @@ export async function getAttendanceByClassDateHandler(req, res) {
   );
 
   const total = data.length;
-  const present = data.filter((i) => i.status === "present").length;
-  const absent = data.filter((i) => i.status === "absent").length;
+  const present = data.filter((item) => item.status === "present").length;
+  const absent = data.filter((item) => item.status === "absent").length;
+  const late = data.filter((item) => item.status === "late").length;
 
   res.json({
     success: true,
@@ -111,10 +116,11 @@ export async function getAttendanceByClassDateHandler(req, res) {
         total,
         present,
         absent,
+        late,
         attendanceRate: total
           ? Math.round((present / total) * 100)
           : 0,
       },
     },
   });
-}
+                           }
