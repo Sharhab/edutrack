@@ -1,359 +1,68 @@
+
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import SectionCard from "../../../../components/ui/SectionCard";
-import PageLoader from "../../../../components/ui/PageLoader";
-import EmptyState from "../../../../components/ui/EmptyState";
-import TeacherClassCards from "../../../../components/teacher/TeacherClassCards";
-import TeacherAttendanceTable from "../../../../components/teacher/TeacherAttendanceTable";
-import TeacherAnnouncementsList from "../../../../components/teacher/TeacherAnnouncementsList";
-import {
-  getTeacherClassStudents,
-  getTeacherPortalOverview,
-  getTeacherResultContext,
-  submitTeacherAttendance,
-} from "../../../../lib/teacher-portal";
-import {
-  TeacherAssignedClass,
-  TeacherPortalAnnouncement,
-  TeacherPortalStudent,
-} from "../../../../types/teacher-portal";
+import { ClipboardCheck, Info } from "lucide-react";
+import { useTenant } from "../../../../components/tenant/TenantProvider";
 
-export default function TeacherStudentsPage() {
-  const [classes, setClasses] = useState<TeacherAssignedClass[]>([]);
-  const [announcements, setAnnouncements] =
-    useState<TeacherPortalAnnouncement[]>([]);
-  const [students, setStudents] = useState<TeacherPortalStudent[]>([]);
-  const [selectedClassId, setSelectedClassId] = useState("");
-
-  const [academicContext, setAcademicContext] = useState<{
-    sessionId: string;
-    termId: string;
-  } | null>(null);
-
-  const [loading, setLoading] = useState(true);
-  const [studentsLoading, setStudentsLoading] = useState(false);
-  const [submittingAttendance, setSubmittingAttendance] = useState(false);
-
-  const [pageError, setPageError] = useState("");
-  const [studentsError, setStudentsError] = useState("");
-  const [actionMessage, setActionMessage] = useState("");
-
-  /* =========================================
-     LOAD ACADEMIC SESSION + TERM
-  ========================================= */
-
-  async function loadAcademicContext() {
-    try {
-      const context = await getTeacherResultContext();
-
-      const sessionId = context?.session?._id;
-      const termId = context?.term?._id;
-
-      if (!sessionId || !termId) {
-        throw new Error(
-          "Active academic session or term was not found."
-        );
-      }
-
-      setAcademicContext({
-        sessionId,
-        termId,
-      });
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setPageError(
-          err.response?.data?.message ||
-            "Failed to load academic session and term."
-        );
-      } else {
-        setPageError(
-          "Failed to load academic session and term."
-        );
-      }
-    }
-  }
-
-  /* =========================================
-     LOAD TEACHER OVERVIEW
-  ========================================= */
-
-  async function loadOverview() {
-    try {
-      setLoading(true);
-      setPageError("");
-
-      const data = await getTeacherPortalOverview();
-
-      setClasses(data.classes);
-      setAnnouncements(data.announcements);
-
-      if (data.classes.length > 0) {
-        setSelectedClassId(data.classes[0]._id);
-      }
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setPageError(
-          err.response?.data?.message ||
-            "Failed to load teacher portal information."
-        );
-      } else {
-        setPageError(
-          "Failed to load teacher portal information."
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  /* =========================================
-     LOAD STUDENTS
-  ========================================= */
-
-  async function loadStudents(classId: string) {
-    try {
-      setStudentsLoading(true);
-      setStudentsError("");
-      setActionMessage("");
-
-      const data = await getTeacherClassStudents(classId);
-
-      setStudents(
-        data.map((item) => ({
-          ...item,
-          attendanceStatus:
-            item.attendanceStatus || "present",
-        }))
-      );
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setStudentsError(
-          err.response?.data?.message ||
-            "Failed to load class students."
-        );
-      } else {
-        setStudentsError(
-          "Failed to load class students."
-        );
-      }
-
-      setStudents([]);
-    } finally {
-      setStudentsLoading(false);
-    }
-  }
-
-  /* =========================================
-     INITIAL LOAD
-  ========================================= */
-
-  useEffect(() => {
-    loadOverview();
-    loadAcademicContext();
-  }, []);
-
-  /* =========================================
-     LOAD STUDENTS WHEN CLASS CHANGES
-  ========================================= */
-
-  useEffect(() => {
-    if (selectedClassId) {
-      loadStudents(selectedClassId);
-    }
-  }, [selectedClassId]);
-
-  /* =========================================
-     TOGGLE ATTENDANCE
-  ========================================= */
-
-  function handleToggleStatus(
-    studentId: string,
-    status: "present" | "absent"
-  ) {
-    setStudents((prev) =>
-      prev.map((item) =>
-        item._id === studentId
-          ? {
-              ...item,
-              attendanceStatus: status,
-            }
-          : item
-      )
-    );
-  }
-
-  /* =========================================
-     SUBMIT ATTENDANCE
-  ========================================= */
-
-  async function handleSubmitAttendance() {
-    try {
-      setSubmittingAttendance(true);
-      setActionMessage("");
-
-      if (!academicContext) {
-        setActionMessage(
-          "Active academic session and term are not available."
-        );
-        return;
-      }
-
-      if (!selectedClassId) {
-        setActionMessage(
-          "Please select a class before submitting attendance."
-        );
-        return;
-      }
-
-      if (!students.length) {
-        setActionMessage(
-          "There are no students to submit attendance for."
-        );
-        return;
-      }
-
-      await submitTeacherAttendance({
-        classId: selectedClassId,
-        sessionId: academicContext.sessionId,
-        termId: academicContext.termId,
-        attendance: students.map((item) => ({
-          studentId: item._id,
-          status:
-            item.attendanceStatus || "present",
-        })),
-      });
-
-      setActionMessage(
-        "Attendance submitted successfully."
-      );
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setActionMessage(
-          err.response?.data?.message ||
-            "Failed to submit attendance."
-        );
-      } else {
-        setActionMessage(
-          "Failed to submit attendance."
-        );
-      }
-    } finally {
-      setSubmittingAttendance(false);
-    }
-  }
-
-  /* =========================================
-     SELECTED CLASS
-  ========================================= */
-
-  const selectedClass = useMemo(() => {
-    return (
-      classes.find(
-        (item) => item._id === selectedClassId
-      ) || null
-    );
-  }, [classes, selectedClassId]);
-
-  /* =========================================
-     LOADING
-  ========================================= */
-
-  if (loading) {
-    return <PageLoader />;
-  }
-
-  /* =========================================
-     PAGE ERROR
-  ========================================= */
-
-  if (pageError) {
-    return (
-      <EmptyState
-        title="Unable to load teacher portal"
-        description={pageError}
-      />
-    );
-  }
-
-  /* =========================================
-     PAGE
-  ========================================= */
+export default function TeacherAttendancePage() {
+  const { tenant } = useTenant();
+  const brandColor = tenant?.themeColor || "#06b6d4";
 
   return (
-    <div className="space-y-6">
-      <SectionCard
-        title="Assigned Classes"
-        subtitle="Select a class to manage attendance and students"
-      >
-        <TeacherClassCards
-          classes={classes}
-          selectedClassId={selectedClassId}
-          onSelect={setSelectedClassId}
-        />
-      </SectionCard>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <SectionCard
-            title={
-              selectedClass
-                ? `${selectedClass.name} Attendance`
-                : "Attendance"
-            }
-            subtitle="Mark attendance for students in the selected class"
-            rightAction={
-              <button
-                type="button"
-                onClick={handleSubmitAttendance}
-                disabled={
-                  submittingAttendance ||
-                  !students.length ||
-                  !academicContext
-                }
-                className="btn-primary"
-              >
-                {submittingAttendance
-                  ? "Submitting..."
-                  : "Submit Attendance"}
-              </button>
-            }
+    <main className="space-y-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="flex items-start gap-4">
+          <div
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+            style={{
+              backgroundColor: `${brandColor}18`,
+              color: brandColor,
+            }}
           >
-            {actionMessage ? (
-              <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
-                {actionMessage}
-              </div>
-            ) : null}
+            <ClipboardCheck size={26} />
+          </div>
 
-            {studentsLoading ? (
-              <PageLoader />
-            ) : studentsError ? (
-              <EmptyState
-                title="Unable to load students"
-                description={studentsError}
-              />
-            ) : (
-              <TeacherAttendanceTable
-                students={students}
-                onToggleStatus={handleToggleStatus}
-              />
-            )}
-          </SectionCard>
+          <div className="min-w-0">
+            <p
+              className="text-sm font-semibold"
+              style={{ color: brandColor }}
+            >
+              {tenant?.schoolName || "EduTrack"}
+            </p>
+
+            <h1 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">
+              Daily Class Attendance
+            </h1>
+
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Daily class-register attendance is managed by the
+              assigned Form Master for each class.
+            </p>
+          </div>
         </div>
 
-        <div className="xl:col-span-1">
-          <SectionCard
-            title="Announcements"
-            subtitle="Latest updates from school admin"
-          >
-            <TeacherAnnouncementsList
-              items={announcements}
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-start gap-3">
+            <Info
+              className="mt-0.5 shrink-0 text-slate-500"
+              size={20}
             />
-          </SectionCard>
+
+            <div>
+              <h2 className="font-semibold text-slate-900">
+                Need to mark daily attendance?
+              </h2>
+
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Open the Form Master dashboard if you have been
+                assigned as a Form Master. If no Form Master has
+                been assigned to your class, contact the School
+                Admin.
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
-
