@@ -703,36 +703,56 @@ export default function ReportCardTemplate({
     box-sizing: border-box !important;
   }
 
+  
   .report-card-page {
     width: 210mm !important;
-    max-width: 210mm !important;
     min-width: 0 !important;
+    max-width: 210mm !important;
     height: 297mm !important;
-    min-height: 0 !important;
+    min-height: 297mm !important;
     max-height: 297mm !important;
     margin: 0 !important;
     padding: 3mm 5mm !important;
     overflow: hidden !important;
+    box-sizing: border-box !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
 
   .report-card-paper {
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     min-height: 0 !important;
-    max-height: none !important;
+    max-height: 100% !important;
     margin: 0 !important;
-    overflow: visible !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
 
   .report-content {
-    padding: 2mm 3mm 0 !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    padding: 2mm 3mm 3mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-sizing: border-box !important;
     overflow: visible !important;
   }
 
+  .bottom-grid {
+    margin-top: 2mm !important;
+    margin-bottom: 0 !important;
+  }
+
+  .next-term-resumption {
+    margin-top: 2mm !important;
+  }
+  
   .report-card-header {
     min-height: 27mm !important;
     padding: 2mm 3mm !important;
@@ -831,10 +851,6 @@ export default function ReportCardTemplate({
     margin-top: 1mm !important;
   }
 
-  .bottom-grid {
-    gap: 1.5mm !important;
-    margin-bottom: 0 !important;
-  }
 
   .grading-table th,
   .grading-table td {
