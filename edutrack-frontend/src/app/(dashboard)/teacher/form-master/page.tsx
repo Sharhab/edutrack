@@ -416,7 +416,10 @@ export default function FormMasterDashboardPage() {
   }
 
   return (
-    <main className="space-y-6">
+  <main
+    className="min-h-screen space-y-6 rounded-2xl p-3 sm:p-5 lg:p-6"
+    style={{ backgroundColor: brandColor }}
+  >
       {/* School identity and page heading */}
       <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
