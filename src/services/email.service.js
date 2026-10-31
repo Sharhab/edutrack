@@ -506,3 +506,116 @@ export async function sendParentWelcomeEmail({
       : undefined,
   });
 }
+
+/**
+ * =========================================
+ * EDU TRACK SUBSCRIPTION PAYMENT RECEIPT
+ * =========================================
+ */
+export async function sendSubscriptionPaymentReceiptEmail({
+  to,
+  schoolName,
+  receiptNumber,
+  reference,
+  amount,
+  currency = "NGN",
+  plan,
+  billingCycle,
+  paidAt,
+}) {
+  const safeSchoolName = escapeHtml(schoolName || "School");
+  const safeReceiptNumber = escapeHtml(receiptNumber);
+  const safeReference = escapeHtml(reference);
+  const safePlan = escapeHtml(plan);
+  const safeBillingCycle = escapeHtml(billingCycle);
+  const safeCurrency = escapeHtml(currency);
+
+  const formattedAmount = new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(Number(amount));
+
+  const formattedDate = paidAt
+    ? new Date(paidAt).toLocaleString("en-NG", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Africa/Lagos",
+      })
+    : "Not available";
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>EduTrack Payment Receipt</title>
+      </head>
+      <body style="margin:0;padding:24px;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+          <div style="background:#0891b2;padding:24px;text-align:center;color:#ffffff;">
+            <h1 style="margin:0;">EduTrack</h1>
+            <p style="margin:8px 0 0;">Subscription Payment Receipt</p>
+          </div>
+
+          <div style="padding:28px;">
+            <h2 style="margin-top:0;">Payment successful</h2>
+            <p>
+              Dear ${safeSchoolName}, your EduTrack subscription payment
+              has been verified successfully. Keep this email for your records.
+            </p>
+
+            <table style="width:100%;border-collapse:collapse;">
+              <tr>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;">Receipt number</td>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:bold;">${safeReceiptNumber}</td>
+              </tr>
+              <tr>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;">School</td>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;text-align:right;">${safeSchoolName}</td>
+              </tr>
+              <tr>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;">Amount paid</td>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:bold;">${escapeHtml(formattedAmount)}</td>
+              </tr>
+              <tr>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;">Plan</td>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;text-align:right;">${safePlan}</td>
+              </tr>
+              <tr>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;">Billing cycle</td>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;text-align:right;">${safeBillingCycle}</td>
+              </tr>
+              <tr>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;">Payment reference</td>
+                <td style="padding:12px;border-bottom:1px solid #e2e8f0;text-align:right;word-break:break-word;">${safeReference}</td>
+              </tr>
+              <tr>
+                <td style="padding:12px;">Payment date</td>
+                <td style="padding:12px;text-align:right;">${escapeHtml(formattedDate)}</td>
+              </tr>
+            </table>
+
+            <p style="margin-top:24px;color:#64748b;font-size:13px;">
+              This receipt confirms the EduTrack subscription payment recorded
+              against the reference above. Contact EduTrack support if you
+              believe any information is incorrect.
+            </p>
+          </div>
+
+          <div style="padding:16px;text-align:center;background:#f8fafc;color:#64748b;font-size:12px;">
+            © ${new Date().getFullYear()} EduTrack
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to,
+    subject: `EduTrack payment receipt ${receiptNumber}`,
+    html,
+    idempotencyKey: `edutrack-subscription-receipt-${receiptNumber}`,
+  });
+}
