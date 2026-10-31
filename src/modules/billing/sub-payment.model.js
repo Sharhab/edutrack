@@ -127,7 +127,31 @@ const SubpaymentSchema =
 
         default: null,
       },
+           // =========================
+      // RECEIPT TRACKING
+      // =========================
+      receiptNumber: {
+        type: String,
+        unique: true,
+        sparse: true,
+        index: true,
+      },
 
+      receiptEmailStatus: {
+        type: String,
+        enum: ["pending", "sent", "failed", "not_applicable"],
+        default: "not_applicable",
+      },
+
+      receiptEmailSentAt: {
+        type: Date,
+        default: null,
+      },
+
+      receiptEmailError: {
+        type: String,
+        default: "",
+      },
       /**
        * PAYSTACK / PROVIDER DATA
        */
