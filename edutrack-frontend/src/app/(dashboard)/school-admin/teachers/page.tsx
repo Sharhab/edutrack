@@ -618,16 +618,23 @@ function closeResetModal() {
             password will no longer work.
           </p>
 
-          <button
-            type="button"
-            onClick={() =>
-              GenUI.copy(temporaryPassword)
-            }
-            className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-white hover:bg-white/5"
-          >
-            <Copy size={16} />
-            Copy Temporary Password
-          </button>
+     
+<button
+  type="button"
+  onClick={async () => {
+    try {
+      await navigator.clipboard.writeText(temporaryPassword);
+      alert("Temporary password copied successfully.");
+    } catch (error) {
+      console.error("Failed to copy password:", error);
+      alert("Unable to copy automatically. Please select and copy the password manually.");
+    }
+  }}
+  className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm font-medium transition hover:bg-white/10"
+>
+  Copy temporary password
+</button>
+
         </div>
       )}
 
