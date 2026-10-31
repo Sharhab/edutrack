@@ -34,13 +34,28 @@ export interface Subscription {
 
 export interface PaymentRecord {
   _id: string;
-  tenantId: string;
-  schoolName?: string;
+  schoolId?: {
+    _id?: string;
+    name?: string;
+    slug?: string;
+    email?: string;
+  } | string;
+  subscriptionId?: {
+    _id?: string;
+    plan?: BillingPlan;
+    status?: BillingStatus;
+    billingCycle?: BillingCycle;
+  } | string;
   reference?: string;
+  receiptNumber?: string;
+  receiptEmailStatus?: "pending" | "sent" | "failed" | "not_applicable";
+  receiptEmailSentAt?: string | null;
+  receiptEmailError?: string;
   amount: number;
+  currency?: string;
   status: PaymentStatus;
-  paymentMethod?: string;
-  paidAt?: string;
+  method?: string;
+  paidAt?: string | null;
   createdAt?: string;
 }
 
