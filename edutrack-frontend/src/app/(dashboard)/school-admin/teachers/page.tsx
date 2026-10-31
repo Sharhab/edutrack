@@ -119,17 +119,18 @@ function isTeacherActive(teacher: Teacher) {
   return Boolean(user.isActive ?? teacher.isActive ?? true);
 }
 
-function generateSecurePassword() {
+
+function generateSecurePassword(): string {
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const lower = "abcdefghijkmnopqrstuvwxyz";
   const numbers = "23456789";
   const symbols = "!@#$%&*";
-
   const all = upper + lower + numbers + symbols;
+
   const randomValues = new Uint32Array(8);
   crypto.getRandomValues(randomValues);
 
-  const password = [
+  const characters = [
     upper[randomValues[0] % upper.length],
     lower[randomValues[1] % lower.length],
     numbers[randomValues[2] % numbers.length],
@@ -140,33 +141,12 @@ function generateSecurePassword() {
     ),
   ];
 
-  // Shuffle the characters
-  for (let i = password.length - 1; i > 0; i--) {
-    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
-    [password[i], password[j]] = [password[j], password[i]];
-  }
-
-  return password.join("");
-}
-  crypto.getRandomValues(random);
-
-  const characters = Array.from(
-    random,
-    (value) => all[value % all.length]
-  );
-
-  // Ensure the password contains each character category.
-  characters[0] = upper[random[0] % upper.length];
-  characters[1] = lower[random[1] % lower.length];
-  characters[2] = numbers[random[2] % numbers.length];
-  characters[3] = symbols[random[3] % symbols.length];
-
-  // Securely shuffle the generated characters.
-  const shuffleValues = new Uint32Array(characters.length);
-  crypto.getRandomValues(shuffleValues);
-
+  // Shuffle the eight characters.
   for (let i = characters.length - 1; i > 0; i--) {
-    const j = shuffleValues[i] % (i + 1);
+    const random = new Uint32Array(1);
+    crypto.getRandomValues(random);
+    const j = random[0] % (i + 1);
+
     [characters[i], characters[j]] = [
       characters[j],
       characters[i],
@@ -175,6 +155,7 @@ function generateSecurePassword() {
 
   return characters.join("");
 }
+
 
 export default function TeachersPage() {
   const [items, setItems] = useState<Teacher[]>([]);
