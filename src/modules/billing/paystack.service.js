@@ -4,7 +4,7 @@ import { ApiError } from "../../utils/apiError.js";
 import { School } from "../schools/school.model.js";
 import { Subscription } from "./subscription.model.js";
 import { SubPayment } from "./sub-payment.model.js";
-
+import { sendSubscriptionPaymentReceiptEmail } from "../../services/email.service.js";
 /**
  * =========================================
  * SAFE PAYSTACK REQUEST
@@ -174,7 +174,86 @@ function calculateSubscriptionExpiry(startDate, billingCycle) {
 
   return expiry;
 }
+/**
+ * =========================================
+ * SEND RECEIPT AFTER VERIFIED PAYMENT
+ * =========================================
+ */
+async function sendVerifiedSubscriptionReceipt(paymentRecord, school) {
+  if (
+    paymentRecord.status !== "success" ||
+    paymentRecord.metadata?.purpose !== "edutrack_subscription"
+  ) {
+    return;
+  }
 
+  // Assign the receipt number once and persist it.
+  if (!paymentRecord.receiptNumber) {
+    paymentRecord.receiptNumber =
+      `EDU-RCP-${String(paymentRecord._id).slice(-8).toUpperCase()}`;
+
+    await paymentRecord.save();
+  }
+
+  // Do not resend a receipt already marked as sent.
+  if (paymentRecord.receiptEmailStatus === "sent") {
+    return;
+  }
+
+  if (!school?.email) {
+    paymentRecord.receiptEmailStatus = "failed";
+    paymentRecord.receiptEmailError =
+      "The school's registered email address is missing.";
+
+    await paymentRecord.save();
+    return;
+  }
+
+  try {
+    paymentRecord.receiptEmailStatus = "pending";
+    paymentRecord.receiptEmailError = "";
+    await paymentRecord.save();
+
+    const result = await sendSubscriptionPaymentReceiptEmail({
+      to: school.email,
+      schoolName: school.name,
+      receiptNumber: paymentRecord.receiptNumber,
+      reference: paymentRecord.reference,
+      amount: paymentRecord.amount,
+      currency: paymentRecord.currency || "NGN",
+      plan: paymentRecord.metadata?.plan || "EduTrack subscription",
+      billingCycle: paymentRecord.metadata?.billingCycle || "",
+      paidAt: paymentRecord.paidAt,
+    });
+
+    if (!result?.success) {
+      throw new Error(
+        result?.reason ||
+        result?.error?.message ||
+        "The email provider did not confirm delivery."
+      );
+    }
+
+    paymentRecord.receiptEmailStatus = "sent";
+    paymentRecord.receiptEmailSentAt = new Date();
+    paymentRecord.receiptEmailError = "";
+    await paymentRecord.save();
+  } catch (error) {
+    // Email failure must never reverse a verified payment.
+    paymentRecord.receiptEmailStatus = "failed";
+    paymentRecord.receiptEmailError = String(
+      error?.message || "Receipt email failed"
+    ).slice(0, 1000);
+
+    await paymentRecord.save();
+
+    console.error(
+      "Subscription receipt email failed:",
+      paymentRecord.reference,
+      error
+    );
+  }
+}
 /**
  * =========================================
  * HANDLE PAYSTACK SUBSCRIPTION WEBHOOK
@@ -445,6 +524,9 @@ if (action === "upgrade" && previousSubscription) {
 }
 
 await school.save();
+  // Email the receipt only after the payment and subscription
+// updates have been saved successfully.
+await sendVerifiedSubscriptionReceipt(paymentRecord, school);
 
   return {
     processed: true,
