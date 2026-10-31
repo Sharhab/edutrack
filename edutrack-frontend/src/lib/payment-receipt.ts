@@ -1,6 +1,6 @@
 
 import jsPDF from "jspdf";
-import type { PaymentRecord } from "@/types/billing";
+import type { PaymentRecord } from "../types/billing";
 
 function getSchoolName(payment: PaymentRecord): string {
   if (payment.schoolName) return payment.schoolName;
