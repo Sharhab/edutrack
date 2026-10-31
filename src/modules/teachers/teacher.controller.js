@@ -9,6 +9,7 @@ import {
   getTeacherById,
   listTeachers,
   updateTeacher,
+  resetTeacherPassword,
   bulkUpsertTeachers,
 } from "./teacher.service.js";
 
@@ -174,6 +175,41 @@ export async function bulkTeachersHandler(req, res, next) {
     res.json({
       success: true,
       message: "Teachers processed successfully",
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+export async function resetTeacherPasswordHandler(
+  req,
+  res,
+  next
+) {
+  try {
+    const { temporaryPassword } = req.body;
+
+    if (
+      typeof temporaryPassword !== "string" ||
+      temporaryPassword.length < 12 ||
+      temporaryPassword.length > 128
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Temporary password must be between 12 and 128 characters",
+      });
+    }
+
+    const data = await resetTeacherPassword(
+      req.params.id,
+      req.user.schoolId,
+      temporaryPassword
+    );
+
+    res.json({
+      success: true,
+      message: "Teacher password reset successfully",
       data,
     });
   } catch (error) {
