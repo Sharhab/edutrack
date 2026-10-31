@@ -123,17 +123,31 @@ function generateSecurePassword() {
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const lower = "abcdefghijkmnopqrstuvwxyz";
   const numbers = "23456789";
-  const symbols = "@#$!";
+  const symbols = "!@#$%&*";
 
   const all = upper + lower + numbers + symbols;
-  const random = new Uint32Array(16);
+  const randomValues = new Uint32Array(8);
+  crypto.getRandomValues(randomValues);
 
-  if (!globalThis.crypto?.getRandomValues) {
-    throw new Error(
-      "Secure password generation is unavailable in this browser."
-    );
+  const password = [
+    upper[randomValues[0] % upper.length],
+    lower[randomValues[1] % lower.length],
+    numbers[randomValues[2] % numbers.length],
+    symbols[randomValues[3] % symbols.length],
+    ...Array.from(
+      { length: 4 },
+      (_, i) => all[randomValues[i + 4] % all.length]
+    ),
+  ];
+
+  // Shuffle the characters
+  for (let i = password.length - 1; i > 0; i--) {
+    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
+    [password[i], password[j]] = [password[j], password[i]];
   }
 
+  return password.join("");
+}
   crypto.getRandomValues(random);
 
   const characters = Array.from(
