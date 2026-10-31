@@ -15,6 +15,7 @@ import {
   deleteTeacher,
   getTeachers,
   updateTeacher,
+  resetTeacherPassword,
 } from "../../../../lib/teachers";
 
 import {
@@ -31,6 +32,9 @@ import {
   Pencil,
   Trash2,
   Upload,
+  KeyRound,
+  Copy,
+  RefreshCw,
 } from "lucide-react";
 
 /* =========================
@@ -84,7 +88,20 @@ export default function TeachersPage() {
   const [selected, setSelected] = useState<Teacher | null>(null);
 
   const [form, setForm] = useState<TeacherFormValues>(initialForm);
+const [resetTarget, setResetTarget] =
+  useState<Teacher | null>(null);
 
+const [temporaryPassword, setTemporaryPassword] =
+  useState("");
+
+const [resetSubmitting, setResetSubmitting] =
+  useState(false);
+
+const [resetError, setResetError] =
+  useState("");
+
+const [resetSuccess, setResetSuccess] =
+  useState(false);
   /* =========================
      LOAD DATA
   ========================= */
@@ -233,6 +250,61 @@ export default function TeachersPage() {
     }
   }
 
+  function generateTemporaryPassword() {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$!";
+
+  const randomValues = new Uint32Array(16);
+  crypto.getRandomValues(randomValues);
+
+  const password = Array.from(
+    randomValues,
+    (value) => chars[value % chars.length]
+  ).join("");
+
+  setTemporaryPassword(password);
+  setResetError("");
+  setResetSuccess(false);
+}
+async function handleResetPassword() {
+  if (!resetTarget?._id || !temporaryPassword) {
+    setResetError("Generate a temporary password first.");
+    return;
+  }
+
+  if (temporaryPassword.length < 12) {
+    setResetError("Password must be at least 12 characters.");
+    return;
+  }
+
+  try {
+    setResetSubmitting(true);
+    setResetError("");
+    setResetSuccess(false);
+
+    await resetTeacherPassword(
+      resetTarget._id,
+      temporaryPassword
+    );
+
+    setResetSuccess(true);
+  } catch (err: any) {
+    setResetError(
+      err?.response?.data?.message ||
+      "Failed to reset teacher password."
+    );
+  } finally {
+    setResetSubmitting(false);
+  }
+}
+
+function closeResetModal() {
+  setResetTarget(null);
+  setTemporaryPassword("");
+  setResetError("");
+  setResetSuccess(false);
+}
+  
   /* =========================
      LOADING
   ========================= */
@@ -411,6 +483,19 @@ export default function TeachersPage() {
         <td className="p-3">
           <div className="flex justify-end gap-2">
             <button
+  type="button"
+  title="Reset Password"
+  onClick={() => {
+    setResetTarget(t);
+    setTemporaryPassword("");
+    setResetError("");
+    setResetSuccess(false);
+  }}
+  className="rounded-lg p-2 text-amber-400 hover:bg-amber-500/10"
+>
+  <KeyRound size={16} />
+</button>
+            <button
               onClick={() => openEdit(t)}
               className="rounded-lg p-2 text-blue-400 hover:bg-blue-500/10"
             >
@@ -455,6 +540,126 @@ export default function TeachersPage() {
 
         {actionError && <p className="text-red-400 mt-2">{actionError}</p>}
       </Modal>
+      <Modal
+  open={Boolean(resetTarget)}
+  title="Reset Teacher Password"
+  description="Generate a new password and hand it securely to the teacher."
+  onClose={closeResetModal}
+>
+  {resetTarget && (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="font-medium text-white">
+          {(() => {
+            const user = resetTarget.userId as any;
+
+            return `${user?.firstName || ""} ${
+              user?.lastName || ""
+            }`.trim();
+          })()}
+        </p>
+
+        <p className="text-sm text-slate-400">
+          {(resetTarget.userId as any)?.email || ""}
+        </p>
+      </div>
+
+      <div>
+        <label className="mb-2 block text-sm text-slate-300">
+          Temporary Password
+        </label>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            autoComplete="off"
+            value={temporaryPassword}
+            onChange={(e) => {
+              setTemporaryPassword(e.target.value);
+              setResetSuccess(false);
+              setResetError("");
+            }}
+            disabled={resetSubmitting || resetSuccess}
+            placeholder="Generate or enter a password"
+            className="input min-w-0 flex-1"
+          />
+
+          <button
+            type="button"
+            title="Generate password"
+            disabled={resetSubmitting || resetSuccess}
+            onClick={generateTemporaryPassword}
+            className="rounded-lg border border-white/10 px-3 text-cyan-400 hover:bg-white/5 disabled:opacity-50"
+          >
+            <RefreshCw size={18} />
+          </button>
+        </div>
+
+        <p className="mt-2 text-xs text-slate-400">
+          Use at least 12 characters. You can generate one
+          automatically or enter your own.
+        </p>
+      </div>
+
+      {resetError && (
+        <p className="text-sm text-red-400">
+          {resetError}
+        </p>
+      )}
+
+      {resetSuccess && (
+        <div className="rounded-xl border border-green-500/20 bg-green-500/10 p-4">
+          <p className="font-medium text-green-400">
+            Password reset successfully
+          </p>
+
+          <p className="mt-1 text-sm text-slate-300">
+            Give this new password to the teacher. Their old
+            password will no longer work.
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              GenUI.copy(temporaryPassword)
+            }
+            className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-white hover:bg-white/5"
+          >
+            <Copy size={16} />
+            Copy Temporary Password
+          </button>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3 pt-2">
+        <button
+          type="button"
+          onClick={closeResetModal}
+          disabled={resetSubmitting}
+          className="btn-secondary"
+        >
+          {resetSuccess ? "Done" : "Cancel"}
+        </button>
+
+        {!resetSuccess && (
+          <button
+            type="button"
+            onClick={handleResetPassword}
+            disabled={
+              resetSubmitting ||
+              temporaryPassword.length < 12
+            }
+            className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {resetSubmitting
+              ? "Resetting..."
+              : "Reset Password"}
+          </button>
+        )}
+      </div>
+    </div>
+  )}
+</Modal>
     </>
   );
 }
