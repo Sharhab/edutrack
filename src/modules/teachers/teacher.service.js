@@ -1075,3 +1075,50 @@ export async function bulkUpsertTeachers(
     results,
   };
 }
+/**
+ * RESET TEACHER PASSWORD
+ * School admins can reset only their own school's teachers.
+ */
+export async function resetTeacherPassword(
+  teacherId,
+  schoolId,
+  temporaryPassword
+) {
+  const teacher = await Teacher.findOne({
+    _id: teacherId,
+    schoolId,
+  });
+
+  if (!teacher) {
+    throw new ApiError(404, "Teacher not found");
+  }
+
+  const user = await User.findOne({
+    _id: teacher.userId,
+    schoolId,
+    role: "teacher",
+  });
+
+  if (!user) {
+    throw new ApiError(404, "Teacher account not found");
+  }
+
+  if (!user.isActive) {
+    throw new ApiError(
+      400,
+      "Cannot reset the password of an inactive teacher"
+    );
+  }
+
+  user.passwordHash = await hashPassword(temporaryPassword);
+  user.passwordChangedAt = new Date();
+
+  await user.save();
+
+  return {
+    teacherId: teacher._id,
+    email: user.email,
+    reset: true,
+  };
+}
+
