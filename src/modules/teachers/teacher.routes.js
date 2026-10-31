@@ -9,6 +9,7 @@ import {
   listTeachersHandler,
   updateTeacherHandler,
  bulkTeachersHandler,
+  resetTeacherPasswordHandler'
 } from "./teacher.controller.js";
 
 const router = express.Router();
@@ -24,6 +25,10 @@ router.post(
 );
 router.post("/", asyncHandler(createTeacherHandler));
 router.get("/", asyncHandler(listTeachersHandler));
+router.post(
+  "/:id/reset-password",
+  asyncHandler(resetTeacherPasswordHandler)
+);
 router.get("/:id", asyncHandler(getTeacherHandler));
 router.put("/:id", asyncHandler(updateTeacherHandler));
 router.delete("/:id", asyncHandler(deleteTeacherHandler));
