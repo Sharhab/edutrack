@@ -84,3 +84,15 @@ export async function deleteTeacher(id: string) {
   const { data } = await api.delete(`/teachers/${id}`);
   return data?.data || data;
 }
+
+export async function resetTeacherPassword(
+  id: string,
+  temporaryPassword: string
+) {
+  const { data } = await api.post(
+    `/teachers/${id}/reset-password`,
+    { temporaryPassword }
+  );
+
+  return data?.data ?? data;
+}
