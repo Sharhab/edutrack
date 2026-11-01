@@ -18,7 +18,19 @@ type PaymentsTableProps = {
 export default function PaymentsTable({
   data,
 }: PaymentsTableProps) {
-  async function handleShareReceipt(payment: PaymentRecord) {
+  async function handleDownloadReceipt(
+    payment: PaymentRecord,
+  ): Promise<void> {
+    try {
+      await downloadPaymentReceipt(payment);
+    } catch (error) {
+      console.error("Unable to download payment receipt:", error);
+    }
+  }
+
+  async function handleShareReceipt(
+    payment: PaymentRecord,
+  ): Promise<void> {
     try {
       await sharePaymentReceipt(payment);
     } catch (error) {
@@ -102,14 +114,7 @@ export default function PaymentsTable({
                 <button
                   type="button"
                   onClick={() => {
-                    try {
-                      downloadPaymentReceipt(row);
-                    } catch (error) {
-                      console.error(
-                        "Unable to download receipt:",
-                        error
-                      );
-                    }
+                    void handleDownloadReceipt(row);
                   }}
                   className="inline-flex items-center justify-center rounded-lg border border-cyan-500/30 px-3 py-2 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-500/10 dark:text-cyan-300"
                 >
@@ -136,3 +141,4 @@ export default function PaymentsTable({
     />
   );
 }
+
