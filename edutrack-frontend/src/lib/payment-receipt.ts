@@ -1,9 +1,68 @@
 
-
-
-
 import jsPDF from "jspdf";
 import type { PaymentRecord } from "../types/billing";
+
+let interFontsPromise:
+  | Promise<{ regular: string; bold: string }>
+  | undefined;
+
+async function loadInterFonts(): Promise<{
+  regular: string;
+  bold: string;
+}> {
+  if (!interFontsPromise) {
+    interFontsPromise = Promise.all([
+      fetch("/fonts/Inter-Regular.ttf"),
+      fetch("/fonts/Inter-Bold.ttf"),
+    ])
+      .then(async ([regularResponse, boldResponse]) => {
+        if (!regularResponse.ok || !boldResponse.ok) {
+          throw new Error(
+            "Failed to load Inter font files. Check public/fonts/.",
+          );
+        }
+
+        const [regularBuffer, boldBuffer] = await Promise.all([
+          regularResponse.arrayBuffer(),
+          boldResponse.arrayBuffer(),
+        ]);
+
+        function toBase64(buffer: ArrayBuffer): string {
+          const bytes = new Uint8Array(buffer);
+          let binary = "";
+
+          for (const byte of bytes) {
+            binary += String.fromCharCode(byte);
+          }
+
+          return btoa(binary);
+        }
+
+        return {
+          regular: toBase64(regularBuffer),
+          bold: toBase64(boldBuffer),
+        };
+      })
+      .catch((error: unknown) => {
+        interFontsPromise = undefined;
+        throw error;
+      });
+  }
+
+  return interFontsPromise;
+}
+
+export async function registerInterFont(doc: jsPDF): Promise<void> {
+  const fonts = await loadInterFonts();
+
+  doc.addFileToVFS("Inter-Regular.ttf", fonts.regular);
+  doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+
+  doc.addFileToVFS("Inter-Bold.ttf", fonts.bold);
+  doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+
+  doc.setFont("Inter", "normal");
+}
 
 const C = {
   navy: [13, 48, 69] as [number, number, number],
@@ -128,8 +187,8 @@ function drawSectionTitle(
   title: string,
   x: number,
   y: number,
-) {
-  doc.setFont("helvetica", "bold");
+): void {
+  doc.setFont("Inter", "bold");
   doc.setFontSize(12);
   doc.setTextColor(...C.navy);
   doc.text(title, x, y);
@@ -150,17 +209,17 @@ function drawInfoRow(
     bold?: boolean;
     valueColor?: RGB;
   } = {},
-) {
+): void {
   const labelWidth = width * 0.39;
   const valueX = x + labelWidth;
   const valueWidth = width - labelWidth;
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Inter", "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...C.muted);
   doc.text(label, x, y);
 
-  doc.setFont("helvetica", options.bold ? "bold" : "normal");
+  doc.setFont("Inter", options.bold ? "bold" : "normal");
   doc.setFontSize(10);
   doc.setTextColor(...(options.valueColor || C.text));
 
@@ -175,7 +234,7 @@ function drawInfoRow(
   doc.text(valueToDraw, valueX, y);
 }
 
-function buildReceipt(payment: PaymentRecord): jsPDF {
+async function buildReceipt(payment: PaymentRecord): Promise<jsPDF> {
   if (payment.status !== "success") {
     throw new Error(
       "A receipt can only be generated for a successful payment.",
@@ -189,6 +248,9 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
     compress: true,
   });
 
+  // Register the Inter fonts before drawing any receipt text.
+  await registerInterFont(doc);
+
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 14;
@@ -200,14 +262,15 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
   const cycle = getBillingCycle(payment);
   const reference = payment.reference || payment._id;
   const paidDate = formatDate(payment.paidAt || payment.createdAt);
-  const method = payment.paymentMethod || payment.method || "Online payment";
+  const method =
+    payment.paymentMethod || payment.method || "Online payment";
   const amount = formatAmount(payment);
 
   // Background.
   doc.setFillColor(...C.white);
   doc.rect(0, 0, W, H, "F");
 
-  // ── BRAND HEADER ──────────────────────────────────
+  // BRAND HEADER.
   doc.setFillColor(...C.navy);
   doc.rect(0, 0, W, 38, "F");
 
@@ -228,31 +291,31 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
   doc.line(25, 12, 25, 16);
   doc.line(17, 16, 25, 16);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(25);
   doc.setTextColor(...C.white);
   doc.text("EduTrack", 32, 15);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Inter", "normal");
   doc.setFontSize(9);
   doc.setTextColor(222, 239, 244);
   doc.text("SCHOOL MANAGEMENT PLATFORM", 32, 23);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(15);
   doc.setTextColor(...C.white);
   doc.text("PAYMENT RECEIPT", W - M, 15, {
     align: "right",
   });
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Inter", "normal");
   doc.setFontSize(8);
   doc.setTextColor(222, 239, 244);
   doc.text("OFFICIAL TRANSACTION RECORD", W - M, 23, {
     align: "right",
   });
 
-  // ── PAYMENT STATUS ────────────────────────────────
+  // PAYMENT STATUS.
   const statusY = 44;
   const statusH = 27;
 
@@ -270,12 +333,12 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
   doc.line(M + 5.8, statusY + 13.5, M + 7.5, statusY + 15.2);
   doc.line(M + 7.5, statusY + 15.2, M + 10.5, statusY + 11.8);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(12);
   doc.setTextColor(20, 100, 49);
   doc.text("Payment Successful", M + 16, statusY + 11);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Inter", "normal");
   doc.setFontSize(9);
   doc.setTextColor(51, 103, 71);
   doc.text(
@@ -284,14 +347,14 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
     statusY + 18,
   );
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(8);
   doc.setTextColor(...C.muted);
   doc.text("RECEIPT REFERENCE", W - M - 3, statusY + 9, {
     align: "right",
   });
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(8.5);
 
   const referenceText = fitText(doc, reference, 48, 8.5, 7);
@@ -299,7 +362,7 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
     align: "right",
   });
 
-  // ── AMOUNT PAID ───────────────────────────────────
+  // AMOUNT PAID.
   const amountY = 78;
   const amountH = 36;
 
@@ -310,7 +373,7 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
   doc.roundedRect(M, amountY, 43, amountH, 3, 3, "F");
   doc.rect(M + 39, amountY, 4, amountH, "F");
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(9);
   doc.setTextColor(...C.white);
   doc.text("AMOUNT", M + 6, amountY + 15);
@@ -320,14 +383,14 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
   const amountTextX = M + 49;
   const amountWidth = methodDividerX - amountTextX - 5;
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(25);
   doc.setTextColor(...C.navy);
 
   const fittedAmount = fitText(doc, amount, amountWidth, 25, 14);
   doc.text(fittedAmount, amountTextX, amountY + 18);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Inter", "normal");
   doc.setFontSize(9);
   doc.setTextColor(...C.muted);
   doc.text("Payment received", amountTextX, amountY + 27);
@@ -336,14 +399,14 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
   doc.setLineWidth(0.5);
   doc.line(methodDividerX, amountY + 5, methodDividerX, amountY + 31);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(8);
   doc.setTextColor(...C.navy);
   doc.text("METHOD", W - M - 3, amountY + 13, {
     align: "right",
   });
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Inter", "normal");
   doc.setFontSize(9);
 
   const methodText = fitText(doc, method, 36, 9, 7);
@@ -351,7 +414,7 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
     align: "right",
   });
 
-  // ── TWO-COLUMN INFORMATION CARDS ───────────────────
+  // TWO-COLUMN INFORMATION CARDS.
   const cardY = 122;
   const cardH = 52;
   const gap = 7;
@@ -365,7 +428,7 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
 
   drawSectionTitle(doc, "SCHOOL INFORMATION", leftX + 5, cardY + 10);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(12);
   doc.setTextColor(...C.navy);
 
@@ -425,7 +488,7 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
     { bold: true, valueColor: C.green },
   );
 
-  // ── TRANSACTION DETAILS ────────────────────────────
+  // TRANSACTION DETAILS.
   const detailsY = 190;
 
   drawSectionTitle(doc, "TRANSACTION DETAILS", M, detailsY);
@@ -455,19 +518,19 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
     });
   });
 
-  // ── THANK YOU ─────────────────────────────────────
+  // THANK YOU.
   const thankY = 253;
 
   doc.setDrawColor(...C.border);
   doc.setLineWidth(0.5);
   doc.line(M, thankY, W - M, thankY);
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(12);
   doc.setTextColor(...C.navy);
   doc.text("Thank you for choosing EduTrack.", M, thankY + 10);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Inter", "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...C.muted);
   doc.text(
@@ -483,7 +546,7 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
     thankY + 25,
   );
 
-  // ── BRANDED FOOTER ─────────────────────────────────
+  // BRANDED FOOTER.
   doc.setFillColor(222, 246, 245);
   doc.triangle(0, H - 23, 75, H - 23, 0, H - 10, "F");
 
@@ -493,19 +556,19 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
   doc.setFillColor(...C.navy);
   doc.rect(0, H - 12, W, 12, "F");
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...C.white);
   doc.text("EduTrack", M, H - 4.5);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont("Inter", "normal");
   doc.setFontSize(8);
   doc.setTextColor(220, 239, 243);
   doc.text("School management made simpler.", W / 2, H - 4.5, {
     align: "center",
   });
 
-  doc.setFont("helvetica", "bold");
+  doc.setFont("Inter", "bold");
   doc.setFontSize(8);
   doc.setTextColor(...C.white);
   doc.text("edutrack.cloud", W - M, H - 4.5, {
@@ -515,8 +578,10 @@ function buildReceipt(payment: PaymentRecord): jsPDF {
   return doc;
 }
 
-export function downloadPaymentReceipt(payment: PaymentRecord): void {
-  const doc = buildReceipt(payment);
+export async function downloadPaymentReceipt(
+  payment: PaymentRecord,
+): Promise<void> {
+  const doc = await buildReceipt(payment);
   const reference = payment.reference || payment._id;
 
   doc.save(`EduTrack-Receipt-${safeFileName(reference)}.pdf`);
@@ -525,7 +590,7 @@ export function downloadPaymentReceipt(payment: PaymentRecord): void {
 export async function sharePaymentReceipt(
   payment: PaymentRecord,
 ): Promise<void> {
-  const doc = buildReceipt(payment);
+  const doc = await buildReceipt(payment);
   const reference = payment.reference || payment._id;
   const filename = `EduTrack-Receipt-${safeFileName(reference)}.pdf`;
 
