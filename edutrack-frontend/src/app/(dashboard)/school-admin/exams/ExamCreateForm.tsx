@@ -54,10 +54,10 @@ export default function ExamCreateForm({
   // Only show subjects assigned to the selected class.
   // classId must be declared before this derived value.
   const availableSubjects = subjects.filter((subject) =>
-    (subject.classIds || []).some(
-      (id) => String(id) === String(classId)
-    )
-  );
+  (subject.classIds || []).some(
+    (id) => String(id) === String(classId)
+  )
+);
 
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
