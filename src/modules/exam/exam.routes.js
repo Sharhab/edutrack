@@ -8,6 +8,8 @@ import { authorize } from "../../middlewares/role.middleware.js";
 import {
   createExamHandler,
   listExamsHandler,
+  publishExamHandler,
+  closeExamHandler,
 } from "./exam.controller.js";
 
 import {
@@ -31,6 +33,17 @@ router.get(
   "/",
   authorize("school_admin"),
   listExamsHandler
+);
+router.patch(
+  "/:examId/publish",
+  authorize("school_admin"),
+  publishExamHandler
+);
+
+router.patch(
+  "/:examId/close",
+  authorize("school_admin"),
+  closeExamHandler
 );
 
 // Student exam attempts
