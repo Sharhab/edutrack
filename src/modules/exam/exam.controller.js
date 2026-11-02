@@ -200,3 +200,123 @@ export async function listExamsHandler(req, res, next) {
     next(error);
   }
 }
+
+export async function publishExamHandler(req, res, next) {
+  try {
+    const { examId } = req.params;
+    const schoolId = req.user.schoolId;
+
+    if (!mongoose.Types.ObjectId.isValid(examId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid exam ID.",
+      });
+    }
+
+    const exam = await Exam.findOne({
+      _id: examId,
+      schoolId,
+    });
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found.",
+      });
+    }
+
+    if (exam.status !== "draft") {
+      return res.status(409).json({
+        success: false,
+        message: "Only draft exams can be published.",
+      });
+    }
+
+    if (!exam.questions.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Add questions before publishing.",
+      });
+    }
+
+    if (new Date(exam.endsAt) <= new Date(exam.startsAt)) {
+      return res.status(400).json({
+        success: false,
+        message: "The exam schedule is invalid.",
+      });
+    }
+
+    if (new Date(exam.endsAt) <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: "The exam end time has already passed.",
+      });
+    }
+
+    exam.status = "published";
+    await exam.save();
+
+    return res.json({
+      success: true,
+      message: "Exam published successfully.",
+      data: {
+        _id: exam._id,
+        title: exam.title,
+        status: exam.status,
+        startsAt: exam.startsAt,
+        endsAt: exam.endsAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function closeExamHandler(req, res, next) {
+  try {
+    const { examId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(examId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid exam ID.",
+      });
+    }
+
+    const exam = await Exam.findOne({
+      _id: examId,
+      schoolId: req.user.schoolId,
+    });
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found.",
+      });
+    }
+
+    if (exam.status !== "published") {
+      return res.status(409).json({
+        success: false,
+        message: "Only published exams can be closed.",
+      });
+    }
+
+    exam.status = "closed";
+    await exam.save();
+
+    return res.json({
+      success: true,
+      message: "Exam closed successfully.",
+      data: {
+        _id: exam._id,
+        title: exam.title,
+        status: exam.status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
