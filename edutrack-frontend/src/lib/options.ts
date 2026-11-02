@@ -7,6 +7,7 @@ export type OptionItem = {
   label?: string;
   value?: string;
   isCurrent?: boolean;
+  classIds?: string[];
 };
 
 function normalizeOption(item: any): OptionItem {
@@ -14,6 +15,11 @@ function normalizeOption(item: any): OptionItem {
     _id: item?._id || item?.value || "",
     name: item?.name || item?.label || "",
     isCurrent: item?.isCurrent ?? false,
+    classIds: Array.isArray(item?.classIds)
+      ? item.classIds.map(
+          (id: any) => String(id?._id || id)
+        )
+      : [],
   };
 }
 
