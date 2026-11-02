@@ -89,16 +89,23 @@ export async function getTermOptions(schoolId) {
     isCurrent: item.isCurrent,
   }));
 }
-
 export async function getSubjectOptions(schoolId) {
-  const items = await SubjectModel.find({ schoolId, isActive: true })
+  const items = await SubjectModel.find({
+    schoolId,
+    isActive: true,
+  })
     .sort({ name: 1 })
-    .select("_id name code");
+    .select("_id name code classIds");
 
   return items.map((item) => ({
     value: item._id,
-    label: item.code ? `${item.name} (${item.code})` : item.name,
+    label: item.code
+      ? `${item.name} (${item.code})`
+      : item.name,
     name: item.name,
     code: item.code,
+    classIds: (item.classIds || []).map(
+      (id) => String(id)
+    ),
   }));
 }
