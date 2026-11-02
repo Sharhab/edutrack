@@ -20,6 +20,7 @@ import {
   Sparkles,
   ClipboardCheck,
   ClipboardList,
+  FileQuestion,
 } from "lucide-react";
 import clsx from "clsx";
 import { UserRole } from "../../types/auth";
@@ -94,7 +95,11 @@ const navByRole: Record<
     href: "/school-admin/timetable/print",
     icon: FileText,
   },
-
+  {
+  label: "CBT Exams",
+  href: "/school-admin/exams",
+  icon: FileQuestion,
+},
   { label: "Results", href: "/school-admin/results", icon: BookOpen },
    {
   label: "Results Scheme",
