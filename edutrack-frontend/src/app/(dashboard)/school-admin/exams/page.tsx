@@ -104,7 +104,7 @@ export default function ExamsPage() {
     setError("");
 
     try {
-      const response = await api.get("/exams");
+      const response = await api.get("/cbt/exams");
 
       const data = response.data?.data;
       setExams(Array.isArray(data) ? data : []);
@@ -155,7 +155,7 @@ export default function ExamsPage() {
 
     try {
       const response = await api.patch(
-        `/exams/${exam._id}/${action}`
+        `/cbt/exams/${exam._id}/${action}`
       );
 
       setNotice(
