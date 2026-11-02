@@ -164,7 +164,7 @@ router.use("/results", resultRoutes);
 router.use("/grading-scale", gradingScaleRoutes);
 router.use("/result-scheme", resultSchemeRoutes);
 router.use("/announcements", announcementRoutes);
-router.use("/cbt/exams", cbtRoutes);
+router.use("/cbt/exams", examRoutes);
 /**
  * DASHBOARD
  */
