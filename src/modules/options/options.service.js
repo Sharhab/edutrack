@@ -90,13 +90,51 @@ export async function getTermOptions(schoolId) {
   }));
 }
 
+
 export async function getSubjectOptions(schoolId) {
   const items = await SubjectModel.find({
     schoolId,
     isActive: true,
   })
     .sort({ name: 1 })
-    .select("_id name code classIds");
+    .select("_id name code");
+
+  // Read teacher assignments for this school.
+  const teachers = await Teacher.find({ schoolId })
+    .select("subjectIds classIds assignments")
+    .lean();
+
+  const classIdsBySubject = new Map();
+
+  function addClassForSubject(subjectId, classId) {
+    if (!subjectId || !classId) return;
+
+    const key = String(subjectId);
+
+    if (!classIdsBySubject.has(key)) {
+      classIdsBySubject.set(key, new Set());
+    }
+
+    classIdsBySubject.get(key).add(String(classId));
+  }
+
+  for (const teacher of teachers) {
+    // Preferred: explicit class-subject assignment pairs.
+    for (const assignment of teacher.assignments || []) {
+      addClassForSubject(
+        assignment.subjectId,
+        assignment.classId
+      );
+    }
+
+    // Backward compatibility with separate teacher arrays.
+    // This assumes the teacher's subjects apply to their listed classes.
+    for (const subjectId of teacher.subjectIds || []) {
+      for (const classId of teacher.classIds || []) {
+        addClassForSubject(subjectId, classId);
+      }
+    }
+  }
 
   return items.map((item) => ({
     value: String(item._id),
@@ -105,6 +143,8 @@ export async function getSubjectOptions(schoolId) {
       : item.name,
     name: item.name,
     code: item.code,
-    classIds: (item.classIds || []).map(String),
+    classIds: Array.from(
+      classIdsBySubject.get(String(item._id)) || []
+    ),
   }));
 }
