@@ -1,6 +1,6 @@
 
 import express from "express";
-import cbtRoutes from "../modules/cbt/exam.routes.js";
+import examRoutes from "../modules/exam/exam.routes.js";
 import { subdomainMiddleware } from "../middlewares/subdomain.middleware.js";
 import { tenantContextMiddleware } from "../middlewares/tenantContex.middleware.js";
 import { protect } from "../middlewares/auth.middleware.js";
