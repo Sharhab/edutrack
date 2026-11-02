@@ -1,17 +1,20 @@
 
 
+
 import mongoose from "mongoose";
 import { Exam } from "./exam.model.js";
 import { ClassModel } from "../classes/class.model.js";
 import { SubjectModel } from "../subjects/subject.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
+import { Teacher } from "../teachers/teacher.model.js";
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 export async function createExamHandler(req, res, next) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.user?.schoolId;
+
     const {
       title,
       instructions = "",
@@ -35,12 +38,14 @@ export async function createExamHandler(req, res, next) {
     }
 
     if (
-      !title?.trim() ||
+      typeof title !== "string" ||
+      !title.trim() ||
       ![classId, subjectId, sessionId, termId].every(isValidId)
     ) {
       return res.status(400).json({
         success: false,
-        message: "Title, class, subject, session, and term are required.",
+        message:
+          "Title, class, subject, session, and term are required.",
       });
     }
 
@@ -76,13 +81,15 @@ export async function createExamHandler(req, res, next) {
     // Validate every question before saving.
     for (const question of questions) {
       if (
+        !question ||
         typeof question.text !== "string" ||
         !question.text.trim() ||
         !Array.isArray(question.options) ||
         question.options.length < 2 ||
         question.options.length > 6 ||
         question.options.some(
-          (option) => typeof option !== "string" || !option.trim()
+          (option) =>
+            typeof option !== "string" || !option.trim()
         ) ||
         !Number.isInteger(question.correctOptionIndex) ||
         question.correctOptionIndex < 0 ||
@@ -92,39 +99,79 @@ export async function createExamHandler(req, res, next) {
       ) {
         return res.status(400).json({
           success: false,
-          message: "One or more questions have invalid options, answer, or marks.",
+          message:
+            "One or more questions have invalid options, answer, or marks.",
         });
       }
     }
 
-    // Verify all academic records belong to this tenant.
+    // Verify that all academic records belong to this school.
     const [classDoc, subjectDoc, sessionDoc, termDoc] =
       await Promise.all([
-        ClassModel.findOne({ _id: classId, schoolId }).select("_id"),
+        ClassModel.findOne({
+          _id: classId,
+          schoolId,
+        }).select("_id"),
+
         SubjectModel.findOne({
           _id: subjectId,
           schoolId,
           isActive: true,
-        }).select("_id classIds"),
-        Session.findOne({ _id: sessionId, schoolId }).select("_id"),
-        Term.findOne({ _id: termId, schoolId }).select("_id"),
+        }).select("_id"),
+
+        Session.findOne({
+          _id: sessionId,
+          schoolId,
+        }).select("_id"),
+
+        Term.findOne({
+          _id: termId,
+          schoolId,
+        }).select("_id"),
       ]);
 
     if (!classDoc || !subjectDoc || !sessionDoc || !termDoc) {
       return res.status(400).json({
         success: false,
-        message: "Class, subject, session, or term is invalid for this school.",
+        message:
+          "Class, subject, session, or term is invalid for this school.",
       });
     }
 
-    const subjectHasClass = (subjectDoc.classIds || []).some(
-      (id) => String(id) === String(classId)
-    );
+    // Confirm that a teacher is assigned to this class and subject.
+    // Prefer explicit class-subject assignment pairs.
+    const explicitAssignment = await Teacher.findOne({
+      schoolId,
+      assignments: {
+        $elemMatch: {
+          classId: new mongoose.Types.ObjectId(classId),
+          subjectId: new mongoose.Types.ObjectId(subjectId),
+        },
+      },
+    })
+      .select("_id")
+      .lean();
 
-    if (!subjectHasClass) {
+    // Backward compatibility for teachers using separate arrays.
+    // This fallback assumes each listed subject applies to each
+    // listed class for that teacher.
+    let legacyAssignment = null;
+
+    if (!explicitAssignment) {
+      legacyAssignment = await Teacher.findOne({
+        schoolId,
+        subjectIds: new mongoose.Types.ObjectId(subjectId),
+        classIds: new mongoose.Types.ObjectId(classId),
+      })
+        .select("_id")
+        .lean();
+    }
+
+    if (!explicitAssignment && !legacyAssignment) {
       return res.status(400).json({
         success: false,
-        message: "This subject is not assigned to the selected class.",
+        message:
+          "No teacher is assigned to teach this subject in the selected class. Check teacher assignments.",
       });
     }
 
@@ -158,31 +205,49 @@ export async function createExamHandler(req, res, next) {
 
 export async function listExamsHandler(req, res, next) {
   try {
-    const schoolId = req.user.schoolId;
+    const schoolId = req.user?.schoolId;
+
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: "School context is missing.",
+      });
+    }
+
     const filter = { schoolId };
 
-    for (const field of ["classId", "subjectId", "sessionId", "termId", "status"]) {
-      if (req.query[field]) {
-        if (
-          ["classId", "subjectId", "sessionId", "termId"].includes(field) &&
-          !isValidId(req.query[field])
-        ) {
-          return res.status(400).json({
-            success: false,
-            message: `Invalid ${field}.`,
-          });
-        }
+    for (const field of [
+      "classId",
+      "subjectId",
+      "sessionId",
+      "termId",
+      "status",
+    ]) {
+      const value = req.query[field];
 
-        if (field === "status" &&
-          !["draft", "published", "closed"].includes(req.query.status)) {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid exam status.",
-          });
-        }
+      if (!value) continue;
 
-        filter[field] = req.query[field];
+      if (
+        ["classId", "subjectId", "sessionId", "termId"].includes(field) &&
+        !isValidId(value)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid ${field}.`,
+        });
       }
+
+      if (
+        field === "status" &&
+        !["draft", "published", "closed"].includes(value)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid exam status.",
+        });
+      }
+
+      filter[field] = value;
     }
 
     const exams = await Exam.find(filter)
@@ -204,12 +269,19 @@ export async function listExamsHandler(req, res, next) {
 export async function publishExamHandler(req, res, next) {
   try {
     const { examId } = req.params;
-    const schoolId = req.user.schoolId;
+    const schoolId = req.user?.schoolId;
 
-    if (!mongoose.Types.ObjectId.isValid(examId)) {
+    if (!isValidId(examId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid exam ID.",
+      });
+    }
+
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: "School context is missing.",
       });
     }
 
@@ -239,17 +311,14 @@ export async function publishExamHandler(req, res, next) {
       });
     }
 
-    if (new Date(exam.endsAt) <= new Date(exam.startsAt)) {
+    if (
+      new Date(exam.endsAt) <= new Date(exam.startsAt) ||
+      new Date(exam.endsAt) <= new Date()
+    ) {
       return res.status(400).json({
         success: false,
-        message: "The exam schedule is invalid.",
-      });
-    }
-
-    if (new Date(exam.endsAt) <= new Date()) {
-      return res.status(400).json({
-        success: false,
-        message: "The exam end time has already passed.",
+        message:
+          "The exam schedule is invalid or the end time has already passed.",
       });
     }
 
@@ -275,17 +344,25 @@ export async function publishExamHandler(req, res, next) {
 export async function closeExamHandler(req, res, next) {
   try {
     const { examId } = req.params;
+    const schoolId = req.user?.schoolId;
 
-    if (!mongoose.Types.ObjectId.isValid(examId)) {
+    if (!isValidId(examId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid exam ID.",
       });
     }
 
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: "School context is missing.",
+      });
+    }
+
     const exam = await Exam.findOne({
       _id: examId,
-      schoolId: req.user.schoolId,
+      schoolId,
     });
 
     if (!exam) {
@@ -318,5 +395,3 @@ export async function closeExamHandler(req, res, next) {
     next(error);
   }
 }
-
-
