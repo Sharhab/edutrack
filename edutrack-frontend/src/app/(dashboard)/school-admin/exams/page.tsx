@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import api from "../../../../lib/axios";
-
+import ExamCreateForm from "./ExamCreateForm";
 type ExamStatus = "draft" | "published" | "closed";
 
 type Exam = {
@@ -44,7 +44,7 @@ export default function ExamsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-
+ const [showCreateForm, setShowCreateForm] = useState(false);
   const loadExams = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -118,18 +118,14 @@ export default function ExamsPage() {
             Create, schedule, publish, and manage school exams.
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            window.alert(
-              "The exam creation form is the next step."
-            );
-          }}
-          className="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
-        >
-          + Create exam
-        </button>
+<button
+  type="button"
+  onClick={() => setShowCreateForm(true)}
+  className="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+>
+  + Create exam
+</button>
+      
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
