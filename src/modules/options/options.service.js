@@ -89,6 +89,7 @@ export async function getTermOptions(schoolId) {
     isCurrent: item.isCurrent,
   }));
 }
+
 export async function getSubjectOptions(schoolId) {
   const items = await SubjectModel.find({
     schoolId,
@@ -98,14 +99,12 @@ export async function getSubjectOptions(schoolId) {
     .select("_id name code classIds");
 
   return items.map((item) => ({
-    value: item._id,
+    value: String(item._id),
     label: item.code
       ? `${item.name} (${item.code})`
       : item.name,
     name: item.name,
     code: item.code,
-    classIds: (item.classIds || []).map(
-      (id) => String(id)
-    ),
+    classIds: (item.classIds || []).map(String),
   }));
 }
