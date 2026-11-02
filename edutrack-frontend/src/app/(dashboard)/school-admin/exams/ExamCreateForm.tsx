@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import api from "../../../../lib/axios";
 import {
   getClassOptions,
@@ -206,7 +206,7 @@ export default function ExamCreateForm({
     );
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
