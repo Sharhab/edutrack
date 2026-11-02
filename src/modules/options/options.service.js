@@ -34,7 +34,13 @@ export async function getParentOptions(schoolId) {
 }
 
 export async function getTeacherOptions(schoolId) {
-  const items = await Teacher.find({ schoolId })
+const items = await Teacher.find({
+  schoolId,
+  isActive: true,
+  status: "active",
+})
+  .select("subjectIds classIds assignments")
+  .lean();
     .populate("userId", "firstName lastName email phone")
     .sort({ createdAt: -1 });
 
