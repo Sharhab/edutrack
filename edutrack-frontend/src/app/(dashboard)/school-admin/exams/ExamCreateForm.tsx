@@ -51,6 +51,14 @@ export default function ExamCreateForm({
   const [sessionId, setSessionId] = useState("");
   const [termId, setTermId] = useState("");
 
+  // Only show subjects assigned to the selected class.
+  // classId must be declared before this derived value.
+  const availableSubjects = subjects.filter((subject) =>
+    (subject.classIds || []).some(
+      (id) => String(id) === String(classId)
+    )
+  );
+
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(30);
@@ -117,6 +125,7 @@ export default function ExamCreateForm({
 
     if (!sessionId) {
       setLoadingTerms(false);
+
       return () => {
         active = false;
       };
@@ -147,7 +156,7 @@ export default function ExamCreateForm({
 
             return (
               !linkedSession ||
-              String(linkedSession) === sessionId
+              String(linkedSession) === String(sessionId)
             );
           })
           .map((term: any) => ({
@@ -155,7 +164,9 @@ export default function ExamCreateForm({
             name: String(term.name || term.label || ""),
             isCurrent: Boolean(term.isCurrent),
           }))
-          .filter((term: TermOption) => term._id && term.name);
+          .filter(
+            (term: TermOption) => term._id && term.name
+          );
 
         setTerms(options);
 
@@ -163,7 +174,9 @@ export default function ExamCreateForm({
           (term) => term.isCurrent
         );
 
-        setTermId(currentTerm?._id || options[0]?._id || "");
+        setTermId(
+          currentTerm?._id || options[0]?._id || ""
+        );
       } catch (err: any) {
         if (active) setError(errorMessage(err));
       } finally {
@@ -206,12 +219,40 @@ export default function ExamCreateForm({
     );
   }
 
-async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
     setError("");
 
+    if (!title.trim()) {
+      setError("Enter an exam title.");
+      return;
+    }
+
     if (!classId || !subjectId || !sessionId || !termId) {
       setError("Select a class, subject, session, and term.");
+      return;
+    }
+
+    // Guard against stale or invalid subject selections.
+    const subjectBelongsToClass = availableSubjects.some(
+      (subject) => String(subject._id) === String(subjectId)
+    );
+
+    if (!subjectBelongsToClass) {
+      setError(
+        "The selected subject is not assigned to this class. Select an assigned subject or update the subject's class assignments."
+      );
+      return;
+    }
+
+    if (
+      !Number.isInteger(Number(durationMinutes)) ||
+      Number(durationMinutes) < 1 ||
+      Number(durationMinutes) > 300
+    ) {
+      setError("Exam duration must be between 1 and 300 minutes.");
       return;
     }
 
@@ -220,21 +261,42 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
       return;
     }
 
-    if (new Date(endsAt) <= new Date(startsAt)) {
+    const startDate = new Date(startsAt);
+    const endDate = new Date(endsAt);
+
+    if (
+      Number.isNaN(startDate.getTime()) ||
+      Number.isNaN(endDate.getTime()) ||
+      endDate <= startDate
+    ) {
       setError("The end time must be after the start time.");
       return;
     }
 
-    if (questions.some((question) =>
-      !question.text.trim() ||
-      question.options.some((option) => !option.trim()) ||
-      question.correctOptionIndex < 0 ||
-      question.correctOptionIndex >= question.options.length ||
-      !Number.isInteger(Number(question.marks)) ||
-      Number(question.marks) < 1
-    )) {
+    if (questions.length === 0 || questions.length > 200) {
+      setError("An exam must have between 1 and 200 questions.");
+      return;
+    }
+
+    const invalidQuestion = questions.some((question) => {
+      const options = question.options;
+
+      return (
+        !question.text.trim() ||
+        options.length < 2 ||
+        options.length > 6 ||
+        options.some((option) => !option.trim()) ||
+        !Number.isInteger(question.correctOptionIndex) ||
+        question.correctOptionIndex < 0 ||
+        question.correctOptionIndex >= options.length ||
+        !Number.isInteger(Number(question.marks)) ||
+        Number(question.marks) < 1
+      );
+    });
+
+    if (invalidQuestion) {
       setError(
-        "Complete every question and option, select the correct answer, and use marks of at least 1."
+        "Complete every question and its 2–6 options, select a valid correct answer, and use whole-number marks of at least 1."
       );
       return;
     }
@@ -250,14 +312,16 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         sessionId,
         termId,
         durationMinutes: Number(durationMinutes),
-        startsAt: new Date(startsAt).toISOString(),
-        endsAt: new Date(endsAt).toISOString(),
+        startsAt: startDate.toISOString(),
+        endsAt: endDate.toISOString(),
         shuffleQuestions,
         shuffleOptions,
         questions: questions.map((question) => ({
           ...question,
           text: question.text.trim(),
-          options: question.options.map((option) => option.trim()),
+          options: question.options.map((option) =>
+            option.trim()
+          ),
           marks: Number(question.marks),
         })),
       });
@@ -323,7 +387,7 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
           <label className={labelClass}>Exam title</label>
           <input
             required
-            maxLength={150}
+            maxLength={160}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             className={fieldClass}
@@ -336,7 +400,10 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
           <select
             required
             value={classId}
-            onChange={(event) => setClassId(event.target.value)}
+            onChange={(event) => {
+              setClassId(event.target.value);
+              setSubjectId("");
+            }}
             className={fieldClass}
           >
             <option value="">Select class</option>
@@ -354,17 +421,28 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
             required
             value={subjectId}
             onChange={(event) => setSubjectId(event.target.value)}
+            disabled={!classId}
             className={fieldClass}
           >
-            <option value="">Select subject</option>
-            {subjects.map((item) => (
+            <option value="">
+              {!classId
+                ? "Select a class first"
+                : "Select subject"}
+            </option>
+
+            {availableSubjects.map((item) => (
               <option key={item._id} value={item._id}>
                 {item.name}
               </option>
             ))}
           </select>
+
           <p className="mt-1 text-xs text-slate-500">
-            The backend will verify that the subject belongs to the selected class.
+            {!classId
+              ? "Select a class first to see its assigned subjects."
+              : availableSubjects.length
+                ? "Showing subjects assigned to this class."
+                : "No subjects are assigned to this class. Assign subjects in Subject Settings first."}
           </p>
         </div>
 
@@ -379,7 +457,8 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
             <option value="">Select session</option>
             {sessions.map((item) => (
               <option key={item._id} value={item._id}>
-                {item.name}{item.isCurrent ? " (Current)" : ""}
+                {item.name}
+                {item.isCurrent ? " (Current)" : ""}
               </option>
             ))}
           </select>
@@ -399,7 +478,8 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
             </option>
             {terms.map((item) => (
               <option key={item._id} value={item._id}>
-                {item.name}{item.isCurrent ? " (Current)" : ""}
+                {item.name}
+                {item.isCurrent ? " (Current)" : ""}
               </option>
             ))}
           </select>
@@ -412,6 +492,7 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
             type="number"
             min={1}
             max={300}
+            step={1}
             value={durationMinutes}
             onChange={(event) =>
               setDurationMinutes(Number(event.target.value))
@@ -443,11 +524,16 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         </div>
 
         <div className="md:col-span-2">
-          <label className={labelClass}>Instructions (optional)</label>
+          <label className={labelClass}>
+            Instructions (optional)
+          </label>
           <textarea
             rows={3}
+            maxLength={5000}
             value={instructions}
-            onChange={(event) => setInstructions(event.target.value)}
+            onChange={(event) =>
+              setInstructions(event.target.value)
+            }
             className={fieldClass}
             placeholder="Instructions students should read before starting."
           />
@@ -486,7 +572,7 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 
           <button
             type="button"
-            disabled={questions.length >= 200}
+            disabled={questions.length >= 200 || saving}
             onClick={() =>
               setQuestions((current) => [
                 ...current,
@@ -512,12 +598,15 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
               {questions.length > 1 && (
                 <button
                   type="button"
+                  disabled={saving}
                   onClick={() =>
                     setQuestions((current) =>
-                      current.filter((_, i) => i !== questionIndex)
+                      current.filter(
+                        (_, i) => i !== questionIndex
+                      )
                     )
                   }
-                  className="text-sm text-red-300 hover:text-red-200"
+                  className="text-sm text-red-300 hover:text-red-200 disabled:opacity-40"
                 >
                   Remove
                 </button>
@@ -570,7 +659,9 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
                   value={question.correctOptionIndex}
                   onChange={(event) =>
                     updateQuestion(questionIndex, {
-                      correctOptionIndex: Number(event.target.value),
+                      correctOptionIndex: Number(
+                        event.target.value
+                      ),
                     })
                   }
                   className={fieldClass}
@@ -616,7 +707,14 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 
         <button
           type="submit"
-          disabled={saving || loadingTerms || !terms.length}
+          disabled={
+            saving ||
+            loadingTerms ||
+            !terms.length ||
+            !availableSubjects.some(
+              (subject) => String(subject._id) === String(subjectId)
+            )
+          }
           className="rounded-xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? "Saving exam…" : "Save as draft"}
