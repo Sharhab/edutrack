@@ -242,7 +242,7 @@ async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     setSaving(true);
 
     try {
-      await api.post("/exams", {
+      await api.post("/cbt/exams", {
         title: title.trim(),
         instructions: instructions.trim(),
         classId,
