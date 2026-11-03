@@ -8,12 +8,8 @@ import TenantGuard from "../../components/tenant/TenantGuard";
 import { useAuth } from "../../components/providers/AuthProvider";
 import { getDashboardRoute } from "../../lib/auth";
 
-type UserRole = 
-  "super_admin"
-  | "school_admin" 
-  | "teacher" 
-  | "parent" 
-  | "student";
+
+type UserRole = "super_admin" | "school_admin" | "teacher" | "parent" | "student";
 
 const config: Record<
   string,
@@ -39,14 +35,13 @@ const config: Record<
     title: "Parent Dashboard",
     subtitle: "Monitor your child’s progress, attendance, and updates.",
   },
-};
-
   "/student": {
     role: "student",
     title: "Student Dashboard",
     subtitle:
       "View your academic progress, timetable, attendance, and school updates.",
   },
+};
 
 
 export default function DashboardLayout({
