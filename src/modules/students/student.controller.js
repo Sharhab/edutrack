@@ -10,6 +10,7 @@ import {
   listStudents,
   updateStudent,
    bulkUpsertStudents,
+  generateMissingStudentLoginAccounts,
 } from "./student.service.js";
 
 
@@ -38,7 +39,17 @@ console.log("==========================================");
     next(error);
   }
 }
+export async function generateStudentLoginAccountsHandler(req, res) {
+  const data = await generateMissingStudentLoginAccounts(
+    req.user.schoolId
+  );
 
+  return res.status(200).json({
+    success: true,
+    message: "Student login account generation completed",
+    data,
+  });
+}
 export async function createStudentHandler(req, res) {
   const parsed = createStudentSchema.parse(req.body);
   const data = await createStudent(parsed, req.user.schoolId);
