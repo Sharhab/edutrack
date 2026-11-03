@@ -8,7 +8,12 @@ import TenantGuard from "../../components/tenant/TenantGuard";
 import { useAuth } from "../../components/providers/AuthProvider";
 import { getDashboardRoute } from "../../lib/auth";
 
-type UserRole = "super_admin" | "school_admin" | "teacher" | "parent";
+type UserRole = 
+  "super_admin"
+  | "school_admin" 
+  | "teacher" 
+  | "parent" 
+  | "student";
 
 const config: Record<
   string,
@@ -53,10 +58,21 @@ export default function DashboardLayout({
   const router = useRouter();
   const { user, hydrated } = useAuth();
 
+
+
   const current = useMemo(() => {
-    if (pathname.startsWith("/super-admin")) return config["/super-admin"];
-    if (pathname.startsWith("/school-admin")) return config["/school-admin"];
-    if (pathname.startsWith("/teacher")) return config["/teacher"];
+    if (pathname.startsWith("/super-admin")) {
+      return config["/super-admin"];
+    }
+    if (pathname.startsWith("/school-admin")) {
+      return config["/school-admin"];
+    }
+    if (pathname.startsWith("/teacher")) {
+      return config["/teacher"];
+    }
+    if (pathname.startsWith("/student")) {
+      return config["/student"];
+    }
     return config["/parent"];
   }, [pathname]);
 
