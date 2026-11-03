@@ -11,6 +11,7 @@ import {
   updateStudentHandler,
   listStudentsByClassHandler,
   bulkUpsertStudentsHandler,
+  generateStudentLoginAccountsHandler,
 } from "./student.controller.js";
 
 import {
@@ -68,7 +69,10 @@ router.get(
   "/",
   asyncHandler(listStudentsHandler)
 );
-
+router.post(
+  "/login-accounts/generate",
+  asyncHandler(generateStudentLoginAccountsHandler)
+);
 /**
  * GET STUDENTS BY CLASS
  *
