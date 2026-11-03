@@ -92,3 +92,31 @@ function normalizeStudentPayload(payload: StudentFormValues) {
     status: (payload as any).status || "active",
   };
 }
+
+
+export type StudentLoginCredential = {
+  studentId: string;
+  admissionNumber: string;
+  student: string;
+  accountCreated: boolean;
+  credentials?: {
+    admissionNumber: string;
+    temporaryPassword: string;
+    loginMethod: "admissionNumber";
+  };
+  message?: string;
+};
+
+export type GenerateStudentLoginsResponse = {
+  processed: number;
+  created: number;
+  failed: number;
+  hasMore: boolean;
+  remaining: number;
+  results: StudentLoginCredential[];
+};
+
+export async function generateStudentLoginAccounts(): Promise<GenerateStudentLoginsResponse> {
+  const { data } = await api.post("/students/login-accounts/generate");
+  return data.data;
+}
