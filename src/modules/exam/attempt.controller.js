@@ -330,3 +330,108 @@ export async function submitExamHandler(req, res, next) {
     next(error);
   }
 }
+export async function listStudentExamsHandler(req, res, next) {
+  try {
+    const student = await getStudent(req);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student profile not found.",
+      });
+    }
+
+    if (!student.classId) {
+      return res.status(400).json({
+        success: false,
+        message: "No class has been assigned to this student.",
+      });
+    }
+
+    const now = new Date();
+
+    // Only published exams belonging to this student's school and class.
+    // Keep upcoming exams visible, but exclude exams whose end time passed.
+    const exams = await Exam.find({
+      schoolId: req.user.schoolId,
+      classId: student.classId,
+      status: "published",
+      endsAt: { $gt: now },
+    })
+      .select(
+        "_id title instructions durationMinutes startsAt endsAt"
+      )
+      .sort({ startsAt: 1 })
+      .lean();
+
+    const examIds = exams.map((exam) => exam._id);
+
+    const attempts = examIds.length
+      ? await ExamAttempt.find({
+          schoolId: req.user.schoolId,
+          studentId: student._id,
+          examId: { $in: examIds },
+        })
+          .select("examId status startedAt submittedAt score totalMarks")
+          .lean()
+      : [];
+
+    const attemptsByExam = new Map(
+      attempts.map((attempt) => [
+        String(attempt.examId),
+        attempt,
+      ])
+    );
+
+    const data = exams.map((exam) => {
+      const attempt = attemptsByExam.get(String(exam._id));
+      const startsAt = new Date(exam.startsAt);
+      const endsAt = new Date(exam.endsAt);
+
+      const isOpen = now >= startsAt && now < endsAt;
+
+      let availability = "upcoming";
+
+      if (isOpen) {
+        availability = "available";
+      }
+
+      if (attempt?.status === "submitted") {
+        availability = "submitted";
+      } else if (attempt?.status === "in_progress") {
+        availability = "in_progress";
+      }
+
+      return {
+        _id: exam._id,
+        title: exam.title,
+        instructions: exam.instructions,
+        durationMinutes: exam.durationMinutes,
+        startsAt: exam.startsAt,
+        endsAt: exam.endsAt,
+        availability,
+        attemptId: attempt?._id || null,
+        startedAt: attempt?.startedAt || null,
+        submittedAt: attempt?.submittedAt || null,
+        score: attempt?.status === "submitted"
+          ? attempt.score
+          : null,
+        totalMarks: attempt?.status === "submitted"
+          ? attempt.totalMarks
+          : null,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: data.length,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+
+
