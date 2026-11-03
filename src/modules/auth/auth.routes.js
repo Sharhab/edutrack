@@ -1,5 +1,6 @@
 
 import express from "express";
+import { studentLogin } from "./student-auth.controller.js";
 import {
   login,
   logout,
@@ -14,5 +15,6 @@ router.post("/login", login);
 router.get("/me", protect, me);
 router.post("/logout", protect, logout);
 router.post("/change-password", protect, changePassword);
+router.post("/student-login", studentLogin);
 
 export default router;
