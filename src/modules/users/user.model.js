@@ -33,6 +33,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["school_admin", "teacher", "student", "parent", "super_admin"],
     },
+    
+    studentId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Student",
+  default: null,
+  index: true,
+},
 
     isActive: {
       type: Boolean,
