@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const announcementSchema = new mongoose.Schema(
@@ -20,8 +21,9 @@ const announcementSchema = new mongoose.Schema(
     },
     audience: {
       type: String,
-      enum: ["all", "teachers", "parents"],
+      enum: ["all", "teachers", "parents", "students"],
       default: "all",
+      index: true,
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -32,4 +34,9 @@ const announcementSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export const Announcement = mongoose.model("Announcement", announcementSchema);
+announcementSchema.index({ schoolId: 1, audience: 1, createdAt: -1 });
+
+export const Announcement = mongoose.model(
+  "Announcement",
+  announcementSchema
+);
