@@ -1,4 +1,5 @@
 
+
 import crypto from "node:crypto";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
@@ -131,7 +132,10 @@ function escapeRegex(value) {
 }
 
 async function getSchool(schoolId) {
-  if (!schoolId || !mongoose.Types.ObjectId.isValid(String(schoolId))) {
+  if (
+    !schoolId ||
+    !mongoose.Types.ObjectId.isValid(String(schoolId))
+  ) {
     throw new ApiError(403, "Valid school context is required");
   }
 
@@ -236,10 +240,11 @@ async function synchronizeParentLinks(
 /**
  * Creates a student login account.
  *
- * The password is generated randomly, hashed before storage,
- * and returned only once when the account is newly created.
+ * The password is generated randomly and hashed before storage.
+ * The temporary password is returned only when a new account
+ * is created successfully.
  *
- * Existing linked accounts are never assigned a new password here.
+ * Existing accounts are never given a new password here.
  */
 async function createStudentLoginAccount(student, school) {
   if (school.settings?.allowStudentLogin === false) {
@@ -257,7 +262,6 @@ async function createStudentLoginAccount(student, school) {
   });
 
   if (existingAccount) {
-    // Keep the account status consistent with the student's status.
     const shouldBeActive = isActiveStudent(student);
 
     if (existingAccount.isActive !== shouldBeActive) {
@@ -290,13 +294,13 @@ async function createStudentLoginAccount(student, school) {
     PASSWORD_HASH_ROUNDS
   );
 
-  // User.email is required by the existing User schema.
-  // The reserved .invalid domain prevents this from being a real mailbox.
+  // User.email is required by the current User schema.
+  // The reserved .invalid domain is not a real email destination.
   const internalEmail =
     `student.${student._id}@students.edutrack.invalid`;
 
   try {
-    await User.create({
+    const createdUser = await User.create({
       schoolId: student.schoolId,
       studentId: student._id,
       firstName: student.firstName,
@@ -310,6 +314,7 @@ async function createStudentLoginAccount(student, school) {
     return {
       enabled: true,
       created: true,
+      userId: createdUser._id,
       credentials: {
         admissionNumber: student.admissionNumber,
         temporaryPassword,
@@ -317,8 +322,8 @@ async function createStudentLoginAccount(student, school) {
       },
     };
   } catch (error) {
-    // A concurrent request may have created the account first.
-    // Never overwrite that account's password.
+    // A concurrent enrollment may have created the account first.
+    // Do not overwrite that account or generate replacement credentials.
     const racedAccount = await User.findOne({
       schoolId: student.schoolId,
       studentId: student._id,
@@ -354,7 +359,7 @@ async function synchronizeStudentAccountStatus(student) {
 }
 
 function buildStudentDocument(payload, schoolId, classId, parentIds) {
-  const studentData = {
+  return {
     schoolId,
     classId,
     parentIds,
@@ -381,15 +386,14 @@ function buildStudentDocument(payload, schoolId, classId, parentIds) {
     status: payload.status || "active",
     photo: payload.photo || "",
   };
-
-  return studentData;
 }
 
 /**
  * CREATE STUDENT
  *
- * Preserves the existing student response fields and adds
- * loginCredentials when a new login account is created.
+ * Creates the student and, when enabled, the login account.
+ * If enrollment fails after account creation, only the account
+ * created by this operation is removed.
  */
 export async function createStudent(payload, schoolId) {
   const input = validateStudentInput(payload);
@@ -408,12 +412,14 @@ export async function createStudent(payload, schoolId) {
   }
 
   const classId = await validateClassId(input.classId, schoolId);
+
   const parentIds = await validateParentIds(
     input.parentIds || [],
     schoolId
   );
 
   let student;
+  let createdAccountId = null;
 
   try {
     student = await Student.create(
@@ -421,6 +427,10 @@ export async function createStudent(payload, schoolId) {
     );
 
     const account = await createStudentLoginAccount(student, school);
+
+    if (account.created && account.userId) {
+      createdAccountId = account.userId;
+    }
 
     await linkStudentToParents(student._id, parentIds, schoolId);
 
@@ -430,7 +440,10 @@ export async function createStudent(payload, schoolId) {
     );
 
     if (!populated) {
-      throw new ApiError(500, "Student was created but could not be loaded");
+      throw new ApiError(
+        500,
+        "Student was created but could not be loaded"
+      );
     }
 
     return {
@@ -442,12 +455,25 @@ export async function createStudent(payload, schoolId) {
       loginCredentials: account.credentials,
     };
   } catch (error) {
-    // If account provisioning fails during new enrollment, remove the
-    // incomplete student record so a retry can safely create both.
+    // Delete only the account created during this enrollment attempt.
+    if (createdAccountId && student?._id) {
+      await User.deleteOne({
+        _id: createdAccountId,
+        schoolId,
+        studentId: student._id,
+        role: STUDENT_ROLE,
+      }).catch(() => {});
+    }
+
     if (student?._id) {
       await Parent.updateMany(
-        { schoolId, studentIds: student._id },
-        { $pull: { studentIds: student._id } }
+        {
+          schoolId,
+          studentIds: student._id,
+        },
+        {
+          $pull: { studentIds: student._id },
+        }
       ).catch(() => {});
 
       await Student.deleteOne({
@@ -488,9 +514,7 @@ export async function listStudents(schoolId, query = {}) {
       .filter(Boolean);
 
     if (
-      classIds.some(
-        (id) => !mongoose.Types.ObjectId.isValid(id)
-      )
+      classIds.some((id) => !mongoose.Types.ObjectId.isValid(id))
     ) {
       throw new ApiError(400, "Invalid class IDs filter");
     }
@@ -552,8 +576,8 @@ export async function getStudentById(id, schoolId) {
 /**
  * UPDATE STUDENT
  *
- * Only updates fields supplied by the caller.
- * Passwords are never changed by student-profile updates.
+ * Updates only supplied fields and synchronizes the linked account.
+ * Profile updates do not reset student passwords.
  */
 export async function updateStudent(id, payload, schoolId) {
   if (!mongoose.Types.ObjectId.isValid(String(id))) {
@@ -681,8 +705,8 @@ export async function updateStudent(id, payload, schoolId) {
 /**
  * DELETE STUDENT
  *
- * Keeps the existing hard-delete behavior, removes parent links,
- * and disables any linked student account before deleting the record.
+ * Preserves the existing hard-delete behavior and disables
+ * any linked student login before removing the student.
  */
 export async function deleteStudent(id, schoolId) {
   if (!mongoose.Types.ObjectId.isValid(String(id))) {
@@ -731,10 +755,10 @@ export async function deleteStudent(id, schoolId) {
  * BULK UPSERT STUDENTS
  *
  * - Validates each row independently.
- * - Never resets the password for an existing linked account.
- * - Provisions missing accounts for existing students when enabled.
- * - Returns newly generated credentials only for accounts created
- *   during this operation.
+ * - Does not reset existing student passwords.
+ * - Creates missing accounts when student login is enabled.
+ * - Returns credentials only for newly created accounts.
+ * - Rolls back newly created accounts if that row fails.
  */
 export async function bulkUpsertStudents(rows, schoolId) {
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -751,7 +775,9 @@ export async function bulkUpsertStudents(rows, schoolId) {
 
   for (const row of rows) {
     let student;
+    let account;
     let isNewStudent = false;
+    let action;
 
     try {
       const input = validateStudentInput(row);
@@ -771,10 +797,8 @@ export async function bulkUpsertStudents(rows, schoolId) {
         admissionNumber: input.admissionNumber,
       });
 
-      let action;
-
       if (student) {
-        // Update only the fields that the import actually supplied.
+        // Update only the fields that the import supplied.
         student.firstName = input.firstName;
         student.lastName = input.lastName;
 
@@ -837,7 +861,7 @@ export async function bulkUpsertStudents(rows, schoolId) {
         created++;
       }
 
-      const account = await createStudentLoginAccount(
+      account = await createStudentLoginAccount(
         student,
         school
       );
@@ -861,9 +885,18 @@ export async function bulkUpsertStudents(rows, schoolId) {
         loginCredentials: account.credentials,
       });
     } catch (error) {
-      // Roll back only a newly created student if provisioning failed.
-      // Never delete an existing student because an import row failed.
+      // Roll back a login account only if this row created it.
+      // Never delete an existing student's account or student record.
       if (isNewStudent && student?._id) {
+        if (account?.created && account?.userId) {
+          await User.deleteOne({
+            _id: account.userId,
+            schoolId,
+            studentId: student._id,
+            role: STUDENT_ROLE,
+          }).catch(() => {});
+        }
+
         await Parent.updateMany(
           {
             schoolId,
@@ -880,10 +913,6 @@ export async function bulkUpsertStudents(rows, schoolId) {
         }).catch(() => {});
 
         created--;
-      } else if (student?._id) {
-        // The student may have been updated before a later step failed.
-        // Report the row error rather than deleting the existing record.
-        updated = Math.max(0, updated);
       }
 
       failed++;
@@ -894,9 +923,10 @@ export async function bulkUpsertStudents(rows, schoolId) {
           row?.lastName || ""
         }`.trim(),
         action: "failed",
-        error: error?.code === 11000
-          ? "A student with this admission number already exists"
-          : error?.message || "Unable to process student",
+        error:
+          error?.code === 11000
+            ? "A student with this admission number already exists"
+            : error?.message || "Unable to process student",
       });
     }
   }
