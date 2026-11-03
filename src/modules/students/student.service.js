@@ -1,344 +1,565 @@
+
+import crypto from "node:crypto";
+import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
+
 import { Student } from "./student.model.js";
 import { ClassModel } from "../classes/class.model.js";
 import { Parent } from "../parents/parent.model.js";
+import { User } from "../users/user.model.js";
+import { School } from "../schools/school.model.js";
 import { ApiError } from "../../utils/apiError.js";
-import { Session } from "../sessions/session.model.js";
-import { Term } from "../terms/term.model.js";
+
+const STUDENT_ROLE = "student";
+const PASSWORD_HASH_ROUNDS = 12;
+
+const STUDENT_STATUSES = new Set([
+  "active",
+  "inactive",
+  "suspended",
+  "graduated",
+]);
+
+const ENTRY_TYPES = new Set([
+  "new",
+  "transfer",
+  "promotion",
+  "reentry",
+]);
+
+const STUDENT_FIELDS = [
+  "admissionNumber",
+  "firstName",
+  "middleName",
+  "lastName",
+  "gender",
+  "dateOfBirth",
+  "enrollmentDate",
+  "entryType",
+  "previousSchool",
+  "stateOfOrigin",
+  "lga",
+  "address",
+  "email",
+  "phone",
+  "emergencyName",
+  "emergencyPhone",
+  "bloodGroup",
+  "genotype",
+  "nin",
+  "birthCertificateNo",
+  "photo",
+];
+
+function normalizeText(value) {
+  return typeof value === "string" ? value.trim() : value;
+}
+
+function normalizeAdmissionNumber(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeParentIds(parentIds = []) {
+  if (!Array.isArray(parentIds)) {
+    throw new ApiError(400, "Parent IDs must be an array");
+  }
+
+  const ids = [...new Set(parentIds.map(String))];
+
+  for (const id of ids) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new ApiError(400, "One or more parent IDs are invalid");
+    }
+  }
+
+  return ids;
+}
+
+function validateStudentInput(payload) {
+  const admissionNumber = normalizeAdmissionNumber(
+    payload.admissionNumber
+  );
+
+  if (!admissionNumber) {
+    throw new ApiError(400, "Admission number is required");
+  }
+
+  if (!normalizeText(payload.firstName)) {
+    throw new ApiError(400, "First name is required");
+  }
+
+  if (!normalizeText(payload.lastName)) {
+    throw new ApiError(400, "Last name is required");
+  }
+
+  if (
+    payload.status !== undefined &&
+    !STUDENT_STATUSES.has(payload.status)
+  ) {
+    throw new ApiError(400, "Invalid student status");
+  }
+
+  if (
+    payload.entryType !== undefined &&
+    !ENTRY_TYPES.has(payload.entryType)
+  ) {
+    throw new ApiError(400, "Invalid student entry type");
+  }
+
+  if (
+    payload.gender !== undefined &&
+    !["male", "female"].includes(payload.gender)
+  ) {
+    throw new ApiError(400, "Invalid student gender");
+  }
+
+  return {
+    ...payload,
+    admissionNumber,
+    firstName: normalizeText(payload.firstName),
+    middleName: normalizeText(payload.middleName ?? ""),
+    lastName: normalizeText(payload.lastName),
+  };
+}
+
+function isActiveStudent(student) {
+  return student.status === "active";
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function getSchool(schoolId) {
+  if (!schoolId || !mongoose.Types.ObjectId.isValid(String(schoolId))) {
+    throw new ApiError(403, "Valid school context is required");
+  }
+
+  const school = await School.findById(schoolId).select(
+    "_id isActive settings.allowStudentLogin"
+  );
+
+  if (!school || school.isActive === false) {
+    throw new ApiError(404, "School not found or inactive");
+  }
+
+  return school;
+}
 
 async function validateClassId(classId, schoolId) {
+  if (
+    !classId ||
+    !mongoose.Types.ObjectId.isValid(String(classId))
+  ) {
+    throw new ApiError(400, "A valid class is required");
+  }
+
   const classDoc = await ClassModel.findOne({
     _id: classId,
     schoolId,
-  });
+  }).select("_id");
 
   if (!classDoc) {
     throw new ApiError(400, "Selected class is invalid");
   }
+
+  return classDoc._id;
 }
 
 async function validateParentIds(parentIds, schoolId) {
-  if (!parentIds?.length) return;
+  const ids = normalizeParentIds(parentIds);
+
+  if (!ids.length) return ids;
 
   const count = await Parent.countDocuments({
-    _id: { $in: parentIds },
+    _id: { $in: ids },
     schoolId,
   });
 
-  if (count !== parentIds.length) {
-    throw new ApiError(400, "One or more parent IDs are invalid");
+  if (count !== ids.length) {
+    throw new ApiError(
+      400,
+      "One or more parent IDs are invalid for this school"
+    );
+  }
+
+  return ids;
+}
+
+async function getPopulatedStudent(studentId, schoolId) {
+  return Student.findOne({
+    _id: studentId,
+    schoolId,
+  })
+    .populate("classId", "name level")
+    .populate({
+      path: "parentIds",
+      populate: {
+        path: "userId",
+        select: "firstName lastName email phone",
+      },
+    });
+}
+
+async function linkStudentToParents(studentId, parentIds, schoolId) {
+  if (!parentIds.length) return;
+
+  await Parent.updateMany(
+    {
+      _id: { $in: parentIds },
+      schoolId,
+    },
+    {
+      $addToSet: { studentIds: studentId },
+    }
+  );
+}
+
+async function synchronizeParentLinks(
+  studentId,
+  parentIds,
+  schoolId
+) {
+  await Parent.updateMany(
+    {
+      schoolId,
+      studentIds: studentId,
+    },
+    {
+      $pull: { studentIds: studentId },
+    }
+  );
+
+  await linkStudentToParents(studentId, parentIds, schoolId);
+}
+
+/**
+ * Creates a student login account.
+ *
+ * The password is generated randomly, hashed before storage,
+ * and returned only once when the account is newly created.
+ *
+ * Existing linked accounts are never assigned a new password here.
+ */
+async function createStudentLoginAccount(student, school) {
+  if (school.settings?.allowStudentLogin === false) {
+    return {
+      enabled: false,
+      created: false,
+      credentials: null,
+    };
+  }
+
+  const existingAccount = await User.findOne({
+    schoolId: student.schoolId,
+    studentId: student._id,
+    role: STUDENT_ROLE,
+  });
+
+  if (existingAccount) {
+    // Keep the account status consistent with the student's status.
+    const shouldBeActive = isActiveStudent(student);
+
+    if (existingAccount.isActive !== shouldBeActive) {
+      existingAccount.isActive = shouldBeActive;
+      await existingAccount.save();
+    }
+
+    return {
+      enabled: true,
+      created: false,
+      credentials: null,
+    };
+  }
+
+  if (!isActiveStudent(student)) {
+    return {
+      enabled: true,
+      created: false,
+      credentials: null,
+      reason: "Student is not active",
+    };
+  }
+
+  const temporaryPassword = crypto
+    .randomBytes(12)
+    .toString("base64url");
+
+  const passwordHash = await bcrypt.hash(
+    temporaryPassword,
+    PASSWORD_HASH_ROUNDS
+  );
+
+  // User.email is required by the existing User schema.
+  // The reserved .invalid domain prevents this from being a real mailbox.
+  const internalEmail =
+    `student.${student._id}@students.edutrack.invalid`;
+
+  try {
+    await User.create({
+      schoolId: student.schoolId,
+      studentId: student._id,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      email: internalEmail,
+      passwordHash,
+      role: STUDENT_ROLE,
+      isActive: true,
+    });
+
+    return {
+      enabled: true,
+      created: true,
+      credentials: {
+        admissionNumber: student.admissionNumber,
+        temporaryPassword,
+        loginMethod: "admissionNumber",
+      },
+    };
+  } catch (error) {
+    // A concurrent request may have created the account first.
+    // Never overwrite that account's password.
+    const racedAccount = await User.findOne({
+      schoolId: student.schoolId,
+      studentId: student._id,
+      role: STUDENT_ROLE,
+    });
+
+    if (racedAccount) {
+      return {
+        enabled: true,
+        created: false,
+        credentials: null,
+      };
+    }
+
+    throw error;
   }
 }
 
+async function synchronizeStudentAccountStatus(student) {
+  const account = await User.findOne({
+    schoolId: student.schoolId,
+    studentId: student._id,
+    role: STUDENT_ROLE,
+  });
+
+  if (!account) return;
+
+  account.firstName = student.firstName;
+  account.lastName = student.lastName;
+  account.isActive = isActiveStudent(student);
+
+  await account.save();
+}
+
+function buildStudentDocument(payload, schoolId, classId, parentIds) {
+  const studentData = {
+    schoolId,
+    classId,
+    parentIds,
+    admissionNumber: payload.admissionNumber,
+    firstName: payload.firstName,
+    middleName: payload.middleName || "",
+    lastName: payload.lastName,
+    gender: payload.gender || "male",
+    dateOfBirth: payload.dateOfBirth || null,
+    enrollmentDate: payload.enrollmentDate || new Date(),
+    entryType: payload.entryType || "new",
+    previousSchool: payload.previousSchool || "",
+    stateOfOrigin: payload.stateOfOrigin || "",
+    lga: payload.lga || "",
+    address: payload.address || "",
+    email: payload.email || "",
+    phone: payload.phone || "",
+    emergencyName: payload.emergencyName || "",
+    emergencyPhone: payload.emergencyPhone || "",
+    bloodGroup: payload.bloodGroup || "",
+    genotype: payload.genotype || "",
+    nin: payload.nin || "",
+    birthCertificateNo: payload.birthCertificateNo || "",
+    status: payload.status || "active",
+    photo: payload.photo || "",
+  };
+
+  return studentData;
+}
+
+/**
+ * CREATE STUDENT
+ *
+ * Preserves the existing student response fields and adds
+ * loginCredentials when a new login account is created.
+ */
 export async function createStudent(payload, schoolId) {
+  const input = validateStudentInput(payload);
+  const school = await getSchool(schoolId);
+
   const existing = await Student.findOne({
     schoolId,
-    admissionNumber: payload.admissionNumber,
-  });
+    admissionNumber: input.admissionNumber,
+  }).select("_id");
 
   if (existing) {
     throw new ApiError(
-      400,
+      409,
       "Student with this admission number already exists"
     );
   }
 
-  // Safe defaults
-  payload.parentIds ??= [];
-  payload.status ??= "active";
-  payload.entryType ??= "new";
-
-  await validateClassId(
-    payload.classId,
+  const classId = await validateClassId(input.classId, schoolId);
+  const parentIds = await validateParentIds(
+    input.parentIds || [],
     schoolId
   );
 
-  await validateParentIds(
-    payload.parentIds,
-    schoolId
-  );
+  let student;
 
-  const student = await Student.create({
-    /**
-     * SCHOOL
-     */
-    schoolId,
-
-    /**
-     * ADMISSION
-     */
-    admissionNumber:
-      payload.admissionNumber,
-
-    enrollmentDate:
-      payload.enrollmentDate ||
-      new Date(),
-
-    entryType:
-      payload.entryType,
-
-    previousSchool:
-      payload.previousSchool || "",
-
-    /**
-     * PERSONAL INFORMATION
-     */
-    firstName:
-      payload.firstName,
-
-    middleName:
-      payload.middleName || "",
-
-    lastName:
-      payload.lastName,
-
-    gender:
-      payload.gender || "male",
-
-    dateOfBirth:
-      payload.dateOfBirth || null,
-
-    /**
-     * LOCATION
-     */
-    stateOfOrigin:
-      payload.stateOfOrigin || "",
-
-    lga:
-      payload.lga || "",
-
-    address:
-      payload.address || "",
-
-    /**
-     * CONTACT
-     */
-    email:
-      payload.email || "",
-
-    phone:
-      payload.phone || "",
-
-    /**
-     * CLASS
-     */
-    classId:
-      payload.classId,
-
-    /**
-     * PARENTS
-     */
-    parentIds:
-      payload.parentIds || [],
-
-    /**
-     * EMERGENCY
-     */
-    emergencyName:
-      payload.emergencyName || "",
-
-    emergencyPhone:
-      payload.emergencyPhone || "",
-
-    /**
-     * HEALTH
-     */
-    bloodGroup:
-      payload.bloodGroup || "",
-
-    genotype:
-      payload.genotype || "",
-
-    /**
-     * DOCUMENTS
-     */
-    nin:
-      payload.nin || "",
-
-    birthCertificateNo:
-      payload.birthCertificateNo || "",
-
-    /**
-     * SYSTEM
-     */
-    status:
-      payload.status,
-
-    photo:
-      payload.photo || "",
-  });
-
-  /**
-   * LINK STUDENT TO PARENTS
-   */
-  if (payload.parentIds?.length) {
-    await Parent.updateMany(
-      {
-        _id: {
-          $in: payload.parentIds,
-        },
-        schoolId,
-      },
-      {
-        $addToSet: {
-          studentIds: student._id,
-        },
-      }
+  try {
+    student = await Student.create(
+      buildStudentDocument(input, schoolId, classId, parentIds)
     );
+
+    const account = await createStudentLoginAccount(student, school);
+
+    await linkStudentToParents(student._id, parentIds, schoolId);
+
+    const populated = await getPopulatedStudent(
+      student._id,
+      schoolId
+    );
+
+    if (!populated) {
+      throw new ApiError(500, "Student was created but could not be loaded");
+    }
+
+    return {
+      ...populated.toObject(),
+      loginAccount: {
+        enabled: account.enabled,
+        created: account.created,
+      },
+      loginCredentials: account.credentials,
+    };
+  } catch (error) {
+    // If account provisioning fails during new enrollment, remove the
+    // incomplete student record so a retry can safely create both.
+    if (student?._id) {
+      await Parent.updateMany(
+        { schoolId, studentIds: student._id },
+        { $pull: { studentIds: student._id } }
+      ).catch(() => {});
+
+      await Student.deleteOne({
+        _id: student._id,
+        schoolId,
+      }).catch(() => {});
+    }
+
+    if (error?.code === 11000) {
+      throw new ApiError(
+        409,
+        "A student with this admission number already exists"
+      );
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * LIST STUDENTS
+ */
+export async function listStudents(schoolId, query = {}) {
+  const filter = { schoolId };
+
+  if (query.classId) {
+    if (!mongoose.Types.ObjectId.isValid(String(query.classId))) {
+      throw new ApiError(400, "Invalid class filter");
+    }
+
+    filter.classId = query.classId;
   }
 
-  /**
-   * RETURN POPULATED STUDENT
-   */
-  return Student.findById(student._id)
-    .populate(
-      "classId",
-      "name level"
-    )
-    .populate({
-      path: "parentIds",
-      populate: {
-        path: "userId",
-        select:
-          "firstName lastName email phone",
-      },
-    });
-}
+  if (query.classIds) {
+    const classIds = String(query.classIds)
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
 
-export async function listStudents(
-  schoolId,
-  query = {}
-) {
-  const filter = {
-    schoolId,
-  };
+    if (
+      classIds.some(
+        (id) => !mongoose.Types.ObjectId.isValid(id)
+      )
+    ) {
+      throw new ApiError(400, "Invalid class IDs filter");
+    }
 
-  /**
-   * =========================
-   * CLASS FILTER
-   * =========================
-   */
- if (query.classId) {
-  filter.classId = query.classId;
-}
+    filter.classId = { $in: classIds };
+  }
 
-if (query.classIds) {
-  const classIds = query.classIds
-    .split(",")
-    .filter(Boolean);
-
-  filter.classId = {
-    $in: classIds,
-  };
-}
-  /**
-   * =========================
-   * STATUS FILTER
-   * =========================
-   */
   if (query.status) {
+    if (!STUDENT_STATUSES.has(query.status)) {
+      throw new ApiError(400, "Invalid student status filter");
+    }
+
     filter.status = query.status;
   }
 
-  /**
-   * =========================
-   * SEARCH
-   * =========================
-   */
   if (query.search?.trim()) {
-    const search =
-      query.search.trim();
+    const search = escapeRegex(query.search.trim());
+    const searchRegex = { $regex: search, $options: "i" };
 
     filter.$or = [
-      {
-        firstName: {
-          $regex: search,
-          $options: "i",
-        },
-      },
-      {
-        middleName: {
-          $regex: search,
-          $options: "i",
-        },
-      },
-      {
-        lastName: {
-          $regex: search,
-          $options: "i",
-        },
-      },
-      {
-        admissionNumber: {
-          $regex: search,
-          $options: "i",
-        },
-      },
-      {
-        phone: {
-          $regex: search,
-          $options: "i",
-        },
-      },
-      {
-        email: {
-          $regex: search,
-          $options: "i",
-        },
-      },
+      { firstName: searchRegex },
+      { middleName: searchRegex },
+      { lastName: searchRegex },
+      { admissionNumber: searchRegex },
+      { phone: searchRegex },
+      { email: searchRegex },
     ];
   }
 
   return Student.find(filter)
-    .populate(
-      "classId",
-      "name level"
-    )
+    .populate("classId", "name level")
     .populate({
       path: "parentIds",
       populate: {
         path: "userId",
-        select:
-          "firstName lastName email phone",
+        select: "firstName lastName email phone",
       },
     })
-    .sort({
-      createdAt: -1,
-    });
+    .sort({ createdAt: -1 });
 }
 
-export async function getStudentById(
-  id,
-  schoolId
-) {
-  const student =
-    await Student.findOne({
-      _id: id,
-      schoolId,
-    })
-      .populate(
-        "classId",
-        "name level"
-      )
-      .populate({
-        path: "parentIds",
-        populate: {
-          path: "userId",
-          select:
-            "firstName lastName email phone",
-        },
-      });
+/**
+ * GET ONE STUDENT
+ */
+export async function getStudentById(id, schoolId) {
+  if (!mongoose.Types.ObjectId.isValid(String(id))) {
+    throw new ApiError(404, "Student not found");
+  }
+
+  const student = await getPopulatedStudent(id, schoolId);
 
   if (!student) {
-    throw new ApiError(
-      404,
-      "Student not found"
-    );
+    throw new ApiError(404, "Student not found");
   }
 
   return student;
 }
 
+/**
+ * UPDATE STUDENT
+ *
+ * Only updates fields supplied by the caller.
+ * Passwords are never changed by student-profile updates.
+ */
 export async function updateStudent(id, payload, schoolId) {
+  if (!mongoose.Types.ObjectId.isValid(String(id))) {
+    throw new ApiError(404, "Student not found");
+  }
+
   const student = await Student.findOne({
     _id: id,
     schoolId,
@@ -348,484 +569,336 @@ export async function updateStudent(id, payload, schoolId) {
     throw new ApiError(404, "Student not found");
   }
 
-  /**
-   * =========================================
-   * ADMISSION NUMBER VALIDATION
-   * =========================================
-   */
-  if (
-    payload.admissionNumber &&
-    payload.admissionNumber !== student.admissionNumber
-  ) {
-    const existing = await Student.findOne({
-      schoolId,
-      admissionNumber: payload.admissionNumber,
-      _id: { $ne: id },
-    });
+  const input = { ...payload };
 
-    if (existing) {
+  if (input.admissionNumber !== undefined) {
+    input.admissionNumber = normalizeAdmissionNumber(
+      input.admissionNumber
+    );
+
+    if (!input.admissionNumber) {
+      throw new ApiError(400, "Admission number is required");
+    }
+
+    const duplicate = await Student.findOne({
+      schoolId,
+      admissionNumber: input.admissionNumber,
+      _id: { $ne: student._id },
+    }).select("_id");
+
+    if (duplicate) {
       throw new ApiError(
-        400,
+        409,
         "Another student already uses this admission number"
       );
     }
   }
 
-  /**
-   * =========================================
-   * CLASS
-   * =========================================
-   */
-  if (payload.classId !== undefined) {
-    await validateClassId(
-      payload.classId,
+  if (input.classId !== undefined) {
+    student.classId = await validateClassId(
+      input.classId,
       schoolId
     );
-
-    student.classId = payload.classId;
   }
 
-  /**
-   * =========================================
-   * PARENTS
-   * =========================================
-   */
-  if (payload.parentIds !== undefined) {
-    await validateParentIds(
-      payload.parentIds,
+  let updatedParentIds;
+
+  if (input.parentIds !== undefined) {
+    updatedParentIds = await validateParentIds(
+      input.parentIds,
       schoolId
     );
 
-    await Parent.updateMany(
-      {
-        studentIds: student._id,
-        schoolId,
-      },
-      {
-        $pull: {
-          studentIds: student._id,
-        },
-      }
-    );
+    student.parentIds = updatedParentIds;
+  }
 
-    if (payload.parentIds.length) {
-      await Parent.updateMany(
-        {
-          _id: {
-            $in: payload.parentIds,
-          },
-          schoolId,
-        },
-        {
-          $addToSet: {
-            studentIds: student._id,
-          },
-        }
-      );
+  for (const field of STUDENT_FIELDS) {
+    if (input[field] === undefined) continue;
+
+    if (field === "admissionNumber") {
+      student[field] = input[field];
+    } else if (field === "dateOfBirth") {
+      student[field] = input[field] || null;
+    } else if (field === "enrollmentDate") {
+      student[field] = input[field] || student.enrollmentDate;
+    } else {
+      student[field] = input[field];
+    }
+  }
+
+  if (input.isActive !== undefined) {
+    const value = input.isActive;
+
+    if (value === true || value === "true") {
+      student.status = "active";
+    } else if (value === false || value === "false") {
+      student.status = "inactive";
+    } else {
+      throw new ApiError(400, "Invalid isActive value");
+    }
+  }
+
+  if (input.status !== undefined) {
+    if (!STUDENT_STATUSES.has(input.status)) {
+      throw new ApiError(400, "Invalid student status");
     }
 
-    student.parentIds =
-      payload.parentIds;
+    student.status = input.status;
   }
 
-  /**
-   * =========================================
-   * BASIC INFORMATION
-   * =========================================
-   */
-  if (payload.admissionNumber !== undefined) {
-    student.admissionNumber =
-      payload.admissionNumber;
-  }
+  if (input.entryType !== undefined) {
+    if (!ENTRY_TYPES.has(input.entryType)) {
+      throw new ApiError(400, "Invalid student entry type");
+    }
 
-  if (payload.firstName !== undefined) {
-    student.firstName =
-      payload.firstName;
-  }
-
-  if (payload.middleName !== undefined) {
-    student.middleName =
-      payload.middleName;
-  }
-
-  if (payload.lastName !== undefined) {
-    student.lastName =
-      payload.lastName;
-  }
-
-  if (payload.gender !== undefined) {
-    student.gender =
-      payload.gender;
-  }
-
-  if (payload.dateOfBirth !== undefined) {
-    student.dateOfBirth =
-      payload.dateOfBirth || null;
-  }
-
-  /**
-   * =========================================
-   * FRONTEND isActive SUPPORT
-   * =========================================
-   */
-  if (payload.isActive !== undefined) {
-    student.status =
-      payload.isActive === "true"
-        ? "active"
-        : "inactive";
-  }
-
-  /**
-   * =========================================
-   * DIRECT STATUS SUPPORT
-   * =========================================
-   */
-  if (payload.status !== undefined) {
-    student.status =
-      payload.status;
-  }
-
-  /**
-   * =========================================
-   * ENROLLMENT
-   * =========================================
-   */
-  if (payload.enrollmentDate !== undefined) {
-    student.enrollmentDate =
-      payload.enrollmentDate ||
-      student.enrollmentDate;
-  }
-
-  /**
-   * =========================================
-   * CONTACT
-   * =========================================
-   */
-  if (payload.email !== undefined) {
-    student.email = payload.email;
-  }
-
-  if (payload.phone !== undefined) {
-    student.phone = payload.phone;
-  }
-
-  if (payload.address !== undefined) {
-    student.address =
-      payload.address;
-  }
-
-  /**
-   * =========================================
-   * ACADEMIC
-   * =========================================
-   */
-  if (payload.entryType !== undefined) {
-    student.entryType =
-      payload.entryType;
-  }
-
-  if (
-    payload.previousSchool !==
-    undefined
-  ) {
-    student.previousSchool =
-      payload.previousSchool;
-  }
-
-  /**
-   * =========================================
-   * LOCATION
-   * =========================================
-   */
-  if (
-    payload.stateOfOrigin !==
-    undefined
-  ) {
-    student.stateOfOrigin =
-      payload.stateOfOrigin;
-  }
-
-  if (payload.lga !== undefined) {
-    student.lga = payload.lga;
-  }
-
-  /**
-   * =========================================
-   * EMERGENCY
-   * =========================================
-   */
-  if (
-    payload.emergencyName !==
-    undefined
-  ) {
-    student.emergencyName =
-      payload.emergencyName;
-  }
-
-  if (
-    payload.emergencyPhone !==
-    undefined
-  ) {
-    student.emergencyPhone =
-      payload.emergencyPhone;
-  }
-
-  /**
-   * =========================================
-   * HEALTH
-   * =========================================
-   */
-  if (
-    payload.bloodGroup !==
-    undefined
-  ) {
-    student.bloodGroup =
-      payload.bloodGroup;
-  }
-
-  if (
-    payload.genotype !==
-    undefined
-  ) {
-    student.genotype =
-      payload.genotype;
-  }
-
-  /**
-   * =========================================
-   * DOCUMENTS
-   * =========================================
-   */
-  if (payload.nin !== undefined) {
-    student.nin = payload.nin;
-  }
-
-  if (
-    payload.birthCertificateNo !==
-    undefined
-  ) {
-    student.birthCertificateNo =
-      payload.birthCertificateNo;
-  }
-
-  /**
-   * =========================================
-   * PHOTO
-   * =========================================
-   */
-  if (payload.photo !== undefined) {
-    student.photo =
-      payload.photo;
+    student.entryType = input.entryType;
   }
 
   await student.save();
 
-  return Student.findById(
-    student._id
-  )
-    .populate(
-      "classId",
-      "name level"
-    )
-    .populate({
-      path: "parentIds",
-      populate: {
-        path: "userId",
-        select:
-          "firstName lastName email phone",
-      },
-    });
+  if (updatedParentIds !== undefined) {
+    await synchronizeParentLinks(
+      student._id,
+      updatedParentIds,
+      schoolId
+    );
+  }
+
+  await synchronizeStudentAccountStatus(student);
+
+  const updatedStudent = await getPopulatedStudent(
+    student._id,
+    schoolId
+  );
+
+  if (!updatedStudent) {
+    throw new ApiError(404, "Student not found after update");
+  }
+
+  return updatedStudent;
 }
 
+/**
+ * DELETE STUDENT
+ *
+ * Keeps the existing hard-delete behavior, removes parent links,
+ * and disables any linked student account before deleting the record.
+ */
 export async function deleteStudent(id, schoolId) {
-  const student = await Student.findOne({ _id: id, schoolId });
+  if (!mongoose.Types.ObjectId.isValid(String(id))) {
+    throw new ApiError(404, "Student not found");
+  }
+
+  const student = await Student.findOne({
+    _id: id,
+    schoolId,
+  });
 
   if (!student) {
     throw new ApiError(404, "Student not found");
   }
 
-  await Parent.updateMany(
-    { studentIds: student._id, schoolId },
-    { $pull: { studentIds: student._id } }
+  await User.updateMany(
+    {
+      schoolId,
+      studentId: student._id,
+      role: STUDENT_ROLE,
+    },
+    {
+      $set: { isActive: false },
+    }
   );
 
-  await Student.deleteOne({ _id: id });
+  await Parent.updateMany(
+    {
+      schoolId,
+      studentIds: student._id,
+    },
+    {
+      $pull: { studentIds: student._id },
+    }
+  );
 
-  return { deleted: true };
-}
-/**
- * BULK UPSERT STUDENTS (MIGRATION SAFE)
- */
-
-/**
- * =========================================
- * RESOLVE CLASS BY NAME (ENTERPRISE SAFE)
- * =========================================
- */
-async function resolveClassId({ schoolId, classId }) {
-  console.log("========== RESOLVE CLASS ==========");
-  console.log("schoolId:", schoolId);
-  console.log("classId:", classId);
-  console.log("classId type:", typeof classId);
-  console.log("===================================");
-
-  if (!classId) {
-    throw new ApiError(400, "classId is required");
-  }
-
-  const classDoc = await ClassModel.findOne({
-    _id: classId,
+  await Student.deleteOne({
+    _id: student._id,
     schoolId,
   });
 
-  if (!classDoc) {
-    throw new ApiError(400, "Selected class is invalid");
-  }
-
-  return classDoc._id;
+  return { deleted: true };
 }
 
 /**
- * =========================================
- * BULK UPSERT STUDENTS (ENTERPRISE)
- * =========================================
+ * BULK UPSERT STUDENTS
+ *
+ * - Validates each row independently.
+ * - Never resets the password for an existing linked account.
+ * - Provisions missing accounts for existing students when enabled.
+ * - Returns newly generated credentials only for accounts created
+ *   during this operation.
  */
 export async function bulkUpsertStudents(rows, schoolId) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new ApiError(400, "At least one student row is required");
+  }
+
+  const school = await getSchool(schoolId);
+
   let created = 0;
   let updated = 0;
   let failed = 0;
 
   const results = [];
 
-  const currentSession = await Session.findOne({
-    schoolId,
-    isCurrent: true,
-  });
-
-  const currentTerm = currentSession
-    ? await Term.findOne({
-        schoolId,
-        sessionId: currentSession._id,
-        isCurrent: true,
-      })
-    : null;
-
   for (const row of rows) {
+    let student;
+    let isNewStudent = false;
+
     try {
-      console.log("🚨 BULK ROW BEFORE CLASS RESOLUTION:", row);
-console.log("🚨 ROW CLASS ID:", row.classId);
+      const input = validateStudentInput(row);
 
-const classId = await resolveClassId({
-  schoolId,
-  classId: row.classId,
-});
-   
-      const existing = await Student.findOne({
+      const classId = await validateClassId(
+        input.classId,
+        schoolId
+      );
+
+      const parentIds = await validateParentIds(
+        input.parentIds || [],
+        schoolId
+      );
+
+      student = await Student.findOne({
         schoolId,
-        admissionNumber: row.admissionNumber,
+        admissionNumber: input.admissionNumber,
       });
-      
-      if (!row.admissionNumber) {
-  throw new Error(
-    "Admission number is required"
-  );
-}
 
-if (!row.firstName) {
-  throw new Error(
-    "First name is required"
-  );
-}
+      let action;
 
-if (!row.lastName) {
-  throw new Error(
-    "Last name is required"
-  );
-}
-      if (existing) {
-       existing.firstName =
-  row.firstName ?? existing.firstName;
+      if (student) {
+        // Update only the fields that the import actually supplied.
+        student.firstName = input.firstName;
+        student.lastName = input.lastName;
 
-existing.middleName =
-  row.middleName ?? existing.middleName;
+        if (input.middleName !== undefined) {
+          student.middleName = input.middleName || "";
+        }
 
-existing.lastName =
-  row.lastName ?? existing.lastName;
+        if (input.gender !== undefined) {
+          student.gender = input.gender;
+        }
 
-existing.gender =
-  row.gender ?? existing.gender;
+        if (input.dateOfBirth !== undefined) {
+          student.dateOfBirth = input.dateOfBirth || null;
+        }
 
-existing.dateOfBirth =
-  row.dateOfBirth || existing.dateOfBirth;
+        if (input.phone !== undefined) {
+          student.phone = input.phone || "";
+        }
 
-existing.phone =
-  row.phone ?? existing.phone;
+        if (input.entryType !== undefined) {
+          student.entryType = input.entryType;
+        }
 
-existing.entryType =
-  row.entryType ?? existing.entryType;
+        if (input.status !== undefined) {
+          student.status = input.status;
+        }
 
-existing.status =
-  row.status ?? existing.status;
+        student.classId = classId;
 
-existing.classId = classId;
-        await existing.save();
+        if (input.parentIds !== undefined) {
+          student.parentIds = parentIds;
+        }
 
+        await student.save();
+
+        if (input.parentIds !== undefined) {
+          await synchronizeParentLinks(
+            student._id,
+            parentIds,
+            schoolId
+          );
+        }
+
+        await synchronizeStudentAccountStatus(student);
+
+        action = "updated";
         updated++;
-
-        results.push({
-          admissionNumber: row.admissionNumber,
-          action: "updated",
-        });
       } else {
-        await Student.create({
-  schoolId,
+        student = await Student.create(
+          buildStudentDocument(
+            input,
+            schoolId,
+            classId,
+            parentIds
+          )
+        );
 
-  admissionNumber:
-    row.admissionNumber,
-
-  firstName:
-    row.firstName,
-
-  middleName:
-    row.middleName || "",
-
-  lastName:
-    row.lastName,
-
-  gender:
-    row.gender || "male",
-
-  dateOfBirth:
-    row.dateOfBirth || null,
-
-  phone:
-    row.phone || "",
-
-  entryType:
-    row.entryType || "new",
-
-  classId,
-
-  status:
-    row.status || "active",
-});
+        isNewStudent = true;
+        action = "created";
         created++;
-
-        results.push({
-          admissionNumber: row.admissionNumber,
-          action: "created",
-        });
       }
-  } catch (error) {
-  failed++;
 
-  results.push({
-    admissionNumber: row.admissionNumber,
-    student: `${row.firstName} ${row.lastName}`,
-    action: "failed",
-    error: error?.message || "Unknown error",
-  });
-}
+      const account = await createStudentLoginAccount(
+        student,
+        school
+      );
+
+      if (isNewStudent && parentIds.length) {
+        await linkStudentToParents(
+          student._id,
+          parentIds,
+          schoolId
+        );
+      }
+
+      results.push({
+        admissionNumber: student.admissionNumber,
+        student: `${student.firstName} ${student.lastName}`.trim(),
+        action,
+        loginAccount: {
+          enabled: account.enabled,
+          created: account.created,
+        },
+        loginCredentials: account.credentials,
+      });
+    } catch (error) {
+      // Roll back only a newly created student if provisioning failed.
+      // Never delete an existing student because an import row failed.
+      if (isNewStudent && student?._id) {
+        await Parent.updateMany(
+          {
+            schoolId,
+            studentIds: student._id,
+          },
+          {
+            $pull: { studentIds: student._id },
+          }
+        ).catch(() => {});
+
+        await Student.deleteOne({
+          _id: student._id,
+          schoolId,
+        }).catch(() => {});
+
+        created--;
+      } else if (student?._id) {
+        // The student may have been updated before a later step failed.
+        // Report the row error rather than deleting the existing record.
+        updated = Math.max(0, updated);
+      }
+
+      failed++;
+
+      results.push({
+        admissionNumber: row?.admissionNumber || "",
+        student: `${row?.firstName || ""} ${
+          row?.lastName || ""
+        }`.trim(),
+        action: "failed",
+        error: error?.code === 11000
+          ? "A student with this admission number already exists"
+          : error?.message || "Unable to process student",
+      });
+    }
   }
 
   return {
