@@ -57,6 +57,45 @@ export async function getTeacherOptions(schoolId) {
   }));
 }
 
+export async function getStudentOptions(schoolId) {
+  const items = await Student.find({
+    schoolId,
+    status: "active",
+  })
+    .populate("classId", "name level")
+    .sort({ firstName: 1, lastName: 1 })
+    .select("_id admissionNumber firstName middleName lastName classId");
+
+  return items.map((item) => {
+    const fullName = [
+      item.firstName,
+      item.middleName,
+      item.lastName,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const className = item.classId
+      ? item.classId.level
+        ? `${item.classId.name} (${item.classId.level})`
+        : item.classId.name
+      : "";
+
+    return {
+      value: String(item._id),
+      label: className
+        ? `${fullName} — ${className}`
+        : fullName,
+      name: fullName,
+      admissionNumber: item.admissionNumber,
+      classId: item.classId?._id
+        ? String(item.classId._id)
+        : null,
+      className,
+    };
+  });
+}
+
 
 export async function getSessionOptions(schoolId) {
   const items = await Session.find({ schoolId })
