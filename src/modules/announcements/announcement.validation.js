@@ -1,13 +1,21 @@
+
 import { z } from "zod";
 
+const audienceSchema = z.enum([
+  "all",
+  "teachers",
+  "parents",
+  "students",
+]);
+
 export const createAnnouncementSchema = z.object({
-  title: z.string().min(2, "Title is required"),
-  message: z.string().min(2, "Message is required"),
-  audience: z.enum(["all", "teachers", "parents"]).optional().default("all"),
+  title: z.string().trim().min(2, "Title is required"),
+  message: z.string().trim().min(2, "Message is required"),
+  audience: audienceSchema.optional().default("all"),
 });
 
 export const updateAnnouncementSchema = z.object({
-  title: z.string().min(2).optional(),
-  message: z.string().min(2).optional(),
-  audience: z.enum(["all", "teachers", "parents"]).optional(),
+  title: z.string().trim().min(2).optional(),
+  message: z.string().trim().min(2).optional(),
+  audience: audienceSchema.optional(),
 });
