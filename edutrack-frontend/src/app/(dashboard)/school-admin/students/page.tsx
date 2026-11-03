@@ -14,11 +14,14 @@ import {
   deleteStudent,
   getStudents,
   updateStudent,
+  generateStudentLoginAccounts,
+  StudentLoginCredential,
 } from "../../../../lib/students";
+
 import { getClassOptions, getParentOptions } from "../../../../lib/options";
 import { Student, StudentFormValues } from "../../../../types/student";
 import { ClassOption, ParentOption } from "../../../../types/options";
-import { Plus, Search, Upload } from "lucide-react";
+import { Plus, Search, Upload, KeyRound, Printer  } from "lucide-react";
 import Link from "next/link";
 
 const initialForm: StudentFormValues = {
@@ -62,7 +65,13 @@ export default function SchoolAdminStudentsPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
-
+  const [generatingLogins, setGeneratingLogins] = useState(false);
+const [loginError, setLoginError] = useState("");
+const [loginMessage, setLoginMessage] = useState("");
+const [loginCredentials, setLoginCredentials] = useState<
+  StudentLoginCredential[]
+>([]);
+const [hasMoreLogins, setHasMoreLogins] = useState(false);
   const [form, setForm] = useState<StudentFormValues>(initialForm);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
@@ -88,6 +97,45 @@ export default function SchoolAdminStudentsPage() {
       setLoading(false);
     }
   }
+  async function handleGenerateStudentLogins() {
+  try {
+    setGeneratingLogins(true);
+    setLoginError("");
+    setLoginMessage("");
+
+    const result = await generateStudentLoginAccounts();
+
+    setLoginCredentials((previous) => {
+      const combined = [...previous, ...result.results];
+
+      // Avoid duplicate displayed entries across batches.
+      return combined.filter(
+        (item, index, array) =>
+          array.findIndex(
+            (candidate) =>
+              candidate.studentId === item.studentId
+          ) === index
+      );
+    });
+
+    setHasMoreLogins(result.hasMore);
+    setLoginMessage(
+      `${result.created} new account(s) created. ` +
+      `${result.failed} failed. ${result.remaining} student(s) remain without accounts.`
+    );
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      setLoginError(
+        error.response?.data?.message ||
+          "Could not generate student login accounts."
+      );
+    } else {
+      setLoginError("Could not generate student login accounts.");
+    }
+  } finally {
+    setGeneratingLogins(false);
+  }
+}
 
   async function loadOptions() {
     try {
@@ -321,6 +369,17 @@ rightAction={
       <Plus size={16} className="mr-2" />
       Add Student
     </button>
+    <button
+  type="button"
+  onClick={handleGenerateStudentLogins}
+  disabled={generatingLogins}
+  className="btn-secondary inline-flex items-center justify-center disabled:opacity-60"
+>
+  <KeyRound size={16} className="mr-2" />
+  {generatingLogins
+    ? "Generating..."
+    : "Generate Student Logins"}
+</button>
   </div>
 }
 
@@ -349,6 +408,77 @@ rightAction={
             onDelete={openDeleteModal}
           />
         </SectionCard>
+        
+{loginError && (
+  <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
+    {loginError}
+  </div>
+)}
+
+{loginMessage && (
+  <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+    {loginMessage}
+  </div>
+)}
+
+{loginCredentials.length > 0 && (
+  <SectionCard
+    title="New Student Login Credentials"
+    subtitle="Temporary passwords are shown only for accounts created in this generation session."
+    rightAction={
+      <button
+        type="button"
+        onClick={() => window.print()}
+        className="btn-primary inline-flex items-center"
+      >
+        <Printer size={16} className="mr-2" />
+        Print Login Slips
+      </button>
+    }
+  >
+    <div id="student-login-slips" className="grid gap-4 sm:grid-cols-2">
+      {loginCredentials
+        .filter((item) => item.accountCreated && item.credentials)
+        .map((item) => (
+          <div
+            key={item.studentId}
+            className="student-login-slip rounded-xl border border-slate-300 bg-white p-5 text-slate-900"
+          >
+            <h3 className="text-lg font-bold">EduTrack Student Login</h3>
+            <p className="mt-3">
+              <strong>Student:</strong> {item.student}
+            </p>
+            <p>
+              <strong>Admission number:</strong>{" "}
+              {item.credentials?.admissionNumber}
+            </p>
+            <p className="break-all">
+              <strong>Temporary password:</strong>{" "}
+              {item.credentials?.temporaryPassword}
+            </p>
+            <p className="mt-3 text-sm">
+              Log in using your school’s student login page. Change
+              your temporary password after your first login.
+            </p>
+          </div>
+        ))}
+    </div>
+
+    {hasMoreLogins && (
+      <button
+        type="button"
+        onClick={handleGenerateStudentLogins}
+        disabled={generatingLogins}
+        className="btn-secondary mt-5"
+      >
+        {generatingLogins
+          ? "Generating..."
+          : "Generate Next Batch"}
+      </button>
+    )}
+  </SectionCard>
+)}
+
       </div>
 
       <Modal
