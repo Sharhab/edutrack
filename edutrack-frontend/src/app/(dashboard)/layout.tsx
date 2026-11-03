@@ -36,6 +36,14 @@ const config: Record<
   },
 };
 
+  "/student": {
+    role: "student",
+    title: "Student Dashboard",
+    subtitle:
+      "View your academic progress, timetable, attendance, and school updates.",
+  },
+
+
 export default function DashboardLayout({
   children,
 }: {
