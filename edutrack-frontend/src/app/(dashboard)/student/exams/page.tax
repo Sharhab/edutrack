@@ -1,0 +1,263 @@
+
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  AlertCircle,
+  BookOpen,
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  PlayCircle,
+  RefreshCw,
+} from "lucide-react";
+import api from "../../../../lib/axios";
+
+type ExamAvailability =
+  | "upcoming"
+  | "available"
+  | "in_progress"
+  | "submitted";
+
+type StudentExam = {
+  _id: string;
+  title: string;
+  instructions?: string;
+  durationMinutes: number;
+  startsAt: string;
+  endsAt: string;
+  availability: ExamAvailability;
+  attemptId: string | null;
+  startedAt: string | null;
+  submittedAt: string | null;
+  score: number | null;
+  totalMarks: number | null;
+};
+
+type ApiResponse = {
+  success: boolean;
+  data: StudentExam[];
+  message?: string;
+};
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function statusLabel(status: ExamAvailability) {
+  switch (status) {
+    case "available":
+      return "Available now";
+    case "in_progress":
+      return "In progress";
+    case "submitted":
+      return "Submitted";
+    default:
+      return "Upcoming";
+  }
+}
+
+export default function StudentExamsPage() {
+  const router = useRouter();
+
+  const [exams, setExams] = useState<StudentExam[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [startingId, setStartingId] = useState<string | null>(null);
+
+  const loadExams = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await api.get<ApiResponse>("/cbt/exams/student");
+      setExams(Array.isArray(response.data.data) ? response.data.data : []);
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          "Unable to load your exams. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadExams();
+  }, [loadExams]);
+
+  async function startExam(exam: StudentExam) {
+    setStartingId(exam._id);
+    setError("");
+
+    try {
+      const response = await api.post(
+        `/cbt/exams/${exam._id}/start`
+      );
+
+      const attemptId = response.data?.data?.attemptId;
+
+      if (!attemptId) {
+        throw new Error("The API did not return an exam attempt ID.");
+      }
+
+      // The exam-taking page will use this attempt ID to load the attempt.
+      router.push(`/student/exams/${exam._id}/take?attemptId=${attemptId}`);
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not start the exam."
+      );
+      await loadExams();
+    } finally {
+      setStartingId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-3xl border border-white/10 bg-slate-950 p-6 text-white">
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl bg-cyan-400/10 p-3 text-cyan-300">
+            <BookOpen size={26} />
+          </div>
+
+          <div>
+            <h1 className="text-2xl font-bold">My CBT Exams</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              View upcoming exams and continue available attempts.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200"
+        >
+          <AlertCircle className="mt-0.5 shrink-0" size={18} />
+          <p>{error}</p>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-400">
+          {loading ? "Loading exams…" : `${exams.length} exam(s) found`}
+        </p>
+
+        <button
+          type="button"
+          onClick={() => void loadExams()}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/5 disabled:opacity-50"
+        >
+          <RefreshCw size={16} />
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-3 rounded-2xl border border-white/10 p-12 text-slate-300">
+          <Loader2 className="animate-spin" size={20} />
+          Loading your exams…
+        </div>
+      ) : exams.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/15 p-10 text-center">
+          <BookOpen className="mx-auto mb-3 text-slate-500" size={32} />
+          <h2 className="font-semibold text-white">No exams available</h2>
+          <p className="mt-2 text-sm text-slate-400">
+            Published exams for your class will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {exams.map((exam) => {
+            const submitted = exam.availability === "submitted";
+            const upcoming = exam.availability === "upcoming";
+            const busy = startingId === exam._id;
+
+            return (
+              <article
+                key={exam._id}
+                className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold text-white">
+                      {exam.title}
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-400">
+                      {exam.instructions || "Follow the instructions shown when the exam begins."}
+                    </p>
+                  </div>
+
+                  <span className="shrink-0 rounded-full border border-white/10 px-3 py-1 text-xs text-slate-200">
+                    {statusLabel(exam.availability)}
+                  </span>
+                </div>
+
+                <div className="mt-5 space-y-3 text-sm text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <Clock size={16} className="text-cyan-300" />
+                    {exam.durationMinutes} minutes
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <CalendarClock size={16} className="mt-0.5 text-cyan-300" />
+                    <div>
+                      <p>Starts: {formatDate(exam.startsAt)}</p>
+                      <p className="mt-1">Ends: {formatDate(exam.endsAt)}</p>
+                    </div>
+                  </div>
+
+                  {submitted && exam.score !== null && (
+                    <div className="flex items-center gap-2 text-emerald-300">
+                      <CheckCircle2 size={16} />
+                      Score: {exam.score}
+                      {exam.totalMarks !== null ? ` / ${exam.totalMarks}` : ""}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5">
+                  {submitted ? (
+                    <div className="rounded-xl bg-emerald-400/10 px-4 py-3 text-center text-sm text-emerald-200">
+                      Exam submitted
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={upcoming || busy || startingId !== null}
+                      onClick={() => void startExam(exam)}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <Loader2 className="animate-spin" size={18} />
+                      ) : (
+                        <PlayCircle size={18} />
+                      )}
+                      {busy
+                        ? "Opening exam…"
+                        : exam.availability === "in_progress"
+                          ? "Continue Exam"
+                          : upcoming
+                            ? "Not Open Yet"
+                            : "Start Exam"}
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
