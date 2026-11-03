@@ -1,7 +1,9 @@
+
 import express from "express";
 import { protect } from "../../middlewares/auth.middleware.js";
 import { authorize } from "../../middlewares/role.middleware.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
+
 import {
   createAnnouncementHandler,
   deleteAnnouncementHandler,
@@ -22,13 +24,13 @@ router.post(
 
 router.get(
   "/",
-  authorize("school_admin", "teacher", "parent"),
+  authorize("school_admin", "teacher", "parent", "student"),
   asyncHandler(listAnnouncementsHandler)
 );
 
 router.get(
   "/:id",
-  authorize("school_admin", "teacher", "parent"),
+  authorize("school_admin", "teacher", "parent", "student"),
   asyncHandler(getAnnouncementHandler)
 );
 
