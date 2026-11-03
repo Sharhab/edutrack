@@ -33,20 +33,23 @@ export async function getParentOptions(schoolId) {
   }));
 }
 
+
 export async function getTeacherOptions(schoolId) {
-const items = await Teacher.find({
-  schoolId,
-  isActive: true,
-  status: "active",
-})
-  .select("subjectIds classIds assignments")
-  .lean();
+  const items = await Teacher.find({
+    schoolId,
+    isActive: true,
+    status: "active",
+  })
     .populate("userId", "firstName lastName email phone")
-    .sort({ createdAt: -1 });
+    .select("userId employeeId subjectIds classIds assignments")
+    .sort({ createdAt: -1 })
+    .lean();
 
   return items.map((item) => ({
     value: item._id,
-    label: `${item.userId?.firstName || ""} ${item.userId?.lastName || ""}`.trim(),
+    label: `${item.userId?.firstName || ""} ${
+      item.userId?.lastName || ""
+    }`.trim(),
     email: item.userId?.email || "",
     phone: item.userId?.phone || "",
     employeeId: item.employeeId,
@@ -54,19 +57,6 @@ const items = await Teacher.find({
   }));
 }
 
-export async function getStudentOptions(schoolId) {
-  const items = await Student.find({ schoolId })
-    .populate("classId", "name level")
-    .sort({ firstName: 1, lastName: 1 });
-
-  return items.map((item) => ({
-    value: item._id,
-    label: `${item.firstName} ${item.lastName}`.trim(),
-    admissionNumber: item.admissionNumber,
-    className: item.classId?.name || "",
-    classLevel: item.classId?.level || "",
-  }));
-}
 
 export async function getSessionOptions(schoolId) {
   const items = await Session.find({ schoolId })
