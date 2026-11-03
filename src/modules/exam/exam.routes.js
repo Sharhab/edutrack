@@ -15,6 +15,7 @@ import {
 import {
   startExamHandler,
   saveAnswersHandler,
+  listStudentExamsHandler,
   submitExamHandler,
 } from "./attempt.controller.js";
 
@@ -22,6 +23,11 @@ const router = express.Router();
 
 router.use(protect);
 
+router.get(
+  "/student",
+  authorize("student"),
+  listStudentExamsHandler
+);
 // Staff exam management
 router.post(
   "/",
