@@ -119,6 +119,16 @@ console.log("PATH:", pathname);
         new URL("/login", req.url)
       );
     }
+    
+    if (
+      pathname.startsWith("/student") &&
+      role !== "student"
+    ) {
+      return NextResponse.redirect(
+        new URL("/login?role=student", req.url)
+      );
+    }
+
 
     if (
       pathname.startsWith("/parent") &&
