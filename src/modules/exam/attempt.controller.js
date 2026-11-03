@@ -23,14 +23,27 @@ function studentSafeExam(exam) {
   };
 }
 
+
 async function getStudent(req) {
-  // Confirm the actual Student-to-User relationship in your schema.
+  // Student login accounts are linked through User.studentId.
+  // The protect middleware loads the authenticated User document
+  // into req.user, so we can use its trusted studentId.
+  if (
+    !req.user ||
+    req.user.role !== "student" ||
+    !req.user.schoolId ||
+    !req.user.studentId
+  ) {
+    return null;
+  }
+
   return Student.findOne({
+    _id: req.user.studentId,
     schoolId: req.user.schoolId,
-    userId: req.user._id,
     status: "active",
   }).select("_id classId");
 }
+
 
 function deadlineFor(exam, attempt) {
   return new Date(
