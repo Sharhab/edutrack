@@ -172,10 +172,11 @@ icon: CalendarDays,
  student: [
   { label: "Dashboard", href: "/student", icon: LayoutDashboard },
   { label: "My Classes", href: "/student/classes", icon: GraduationCap },
-
   { label: "My Timetable", href: "/student/timetable", icon: CalendarDays },
   { label: "Results", href: "/student/results", icon: BookOpen },
+   { label: "CBT Exams", href: "/student/exams", icon: FileQuestion },
   { label: "Announcements", href: "/student/announcements", icon: Bell },
+     { label: "Account Security", href: "/account-security", icon: Shield },
 ],
 };
 
