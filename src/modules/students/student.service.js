@@ -938,3 +938,101 @@ export async function bulkUpsertStudents(rows, schoolId) {
     results,
   };
 }
+
+/**
+ * Generate login accounts for existing active students who
+ * do not yet have one. Existing passwords are never reset.
+ *
+ * Processes at most 200 students per request.
+ */
+export async function generateMissingStudentLoginAccounts(schoolId) {
+  const school = await getSchool(schoolId);
+
+  if (school.settings?.allowStudentLogin === false) {
+    throw new ApiError(
+      403,
+      "Student login is disabled for this school"
+    );
+  }
+
+  const existingStudentIds = await User.distinct("studentId", {
+    schoolId,
+    role: STUDENT_ROLE,
+    studentId: { $ne: null },
+  });
+
+  const filter = {
+    schoolId,
+    status: "active",
+    _id: { $nin: existingStudentIds },
+  };
+
+  const students = await Student.find(filter)
+    .select("_id schoolId admissionNumber firstName lastName status")
+    .sort({ createdAt: 1 })
+    .limit(200);
+
+  const results = [];
+  let created = 0;
+  let failed = 0;
+
+  for (const student of students) {
+    try {
+      const account = await createStudentLoginAccount(student, school);
+
+      if (account.created && account.credentials) {
+        created++;
+
+        // Plain-text temporary passwords are returned once only.
+        // Do not log these credentials.
+        results.push({
+          studentId: String(student._id),
+          admissionNumber: student.admissionNumber,
+          student: `${student.firstName} ${student.lastName}`.trim(),
+          accountCreated: true,
+          credentials: account.credentials,
+        });
+      } else {
+        results.push({
+          studentId: String(student._id),
+          admissionNumber: student.admissionNumber,
+          student: `${student.firstName} ${student.lastName}`.trim(),
+          accountCreated: false,
+          message: "Account was not created; check the student's account status",
+        });
+      }
+    } catch {
+      failed++;
+
+      results.push({
+        studentId: String(student._id),
+        admissionNumber: student.admissionNumber,
+        student: `${student.firstName} ${student.lastName}`.trim(),
+        accountCreated: false,
+        message: "Unable to create this student's login account",
+      });
+    }
+  }
+
+  const remaining = await Student.countDocuments({
+    schoolId,
+    status: "active",
+    _id: {
+      $nin: await User.distinct("studentId", {
+        schoolId,
+        role: STUDENT_ROLE,
+        studentId: { $ne: null },
+      }),
+    },
+  });
+
+  return {
+    processed: students.length,
+    created,
+    failed,
+    hasMore: remaining > 0,
+    remaining,
+    results,
+  };
+}
+
