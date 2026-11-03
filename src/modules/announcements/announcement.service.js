@@ -1,5 +1,34 @@
+
 import { Announcement } from "./announcement.model.js";
 import { ApiError } from "../../utils/apiError.js";
+
+function getAnnouncementFilter(user) {
+  const filter = {
+    schoolId: user.schoolId,
+  };
+
+  switch (user.role) {
+    case "school_admin":
+      break;
+
+    case "teacher":
+      filter.audience = { $in: ["all", "teachers"] };
+      break;
+
+    case "parent":
+      filter.audience = { $in: ["all", "parents"] };
+      break;
+
+    case "student":
+      filter.audience = { $in: ["all", "students"] };
+      break;
+
+    default:
+      throw new ApiError(403, "You cannot access announcements");
+  }
+
+  return filter;
+}
 
 export async function createAnnouncement(payload, user) {
   return Announcement.create({
@@ -12,28 +41,19 @@ export async function createAnnouncement(payload, user) {
 }
 
 export async function listAnnouncements(user) {
-  const filter = {
-    schoolId: user.schoolId,
-  };
-
-  if (user.role === "teacher") {
-    filter.audience = { $in: ["all", "teachers"] };
-  }
-
-  if (user.role === "parent") {
-    filter.audience = { $in: ["all", "parents"] };
-  }
-
-  return Announcement.find(filter)
+  return Announcement.find(getAnnouncementFilter(user))
     .populate("createdBy", "firstName lastName role")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 }
 
 export async function getAnnouncementById(id, user) {
   const doc = await Announcement.findOne({
+    ...getAnnouncementFilter(user),
     _id: id,
-    schoolId: user.schoolId,
-  }).populate("createdBy", "firstName lastName role");
+  })
+    .populate("createdBy", "firstName lastName role")
+    .lean();
 
   if (!doc) {
     throw new ApiError(404, "Announcement not found");
