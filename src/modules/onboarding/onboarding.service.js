@@ -14,6 +14,7 @@ from "../billing/paystack.service.js";
 import {
   sendSchoolWelcomeEmail,
 } from "../../services/email.service.js";
+import cloudinary from "../../../cloudinary.js";
 /**
  * =========================
  * HELPERS
@@ -75,6 +76,34 @@ async function verifyExistingSchoolAdmin(school, payload) {
   return admin;
 }
 
+async function uploadOnboardingSchoolLogo(file, schoolId) {
+  if (!file) return null;
+
+  if (!file.buffer || !file.mimetype?.startsWith("image/")) {
+    throw new ApiError(400, "Invalid school logo image.");
+  }
+
+  const result = await new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "edutrack/school-logos",
+        resource_type: "image",
+        public_id: `school-${schoolId}`,
+        overwrite: true,
+        invalidate: true,
+      },
+      (error, uploaded) => {
+        if (error) return reject(error);
+        resolve(uploaded);
+      }
+    );
+
+    stream.on("error", reject);
+    stream.end(file.buffer);
+  });
+
+  return result.secure_url;
+}
 
 async function ensureUniqueSchool({ slug: requestedSlug, adminEmail }) {
   const slug = slugify(requestedSlug || "", {
@@ -442,6 +471,17 @@ const domain = `${slug}.edutrack.cloud`;
       },
     });
 
+        // Upload and save the school logo, if provided.
+    if (payload.schoolLogoFile) {
+      const logoUrl = await uploadOnboardingSchoolLogo(
+        payload.schoolLogoFile,
+        school._id
+      );
+
+      school.logo = logoUrl;
+      await school.save();
+    }
+    
     const hashedPassword =
       await bcrypt.hash(
         payload.adminPassword,
