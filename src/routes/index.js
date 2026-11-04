@@ -68,6 +68,8 @@ import {
 import paystackRoutes from "../modules/finance/payments/paystack.routes.js";
 
 // Portals
+import studentPortalRoutes from
+  "../modules/student-portal/student-portal.routes.js";
 import parentPortalRoutes from "../modules/parent-portal/parent-portal.routes.js";
 import teacherPortalRoutes from "../modules/teacher-portal/teacher-portal.routes.js";
 
