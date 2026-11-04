@@ -446,5 +446,104 @@ export async function listStudentExamsHandler(req, res, next) {
 }
 
 
+export async function listExamResultsHandler(req, res, next) {
+  try {
+    const { examId } = req.params;
+    const schoolId = req.user?.schoolId;
+
+    if (!mongoose.Types.ObjectId.isValid(examId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid exam ID.",
+      });
+    }
+
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: "School context is missing.",
+      });
+    }
+
+    // Confirm the exam belongs to the authenticated school.
+    const exam = await Exam.findOne({
+      _id: examId,
+      schoolId,
+    })
+      .select("_id title classId subjectId sessionId termId")
+      .populate("classId", "name level")
+      .populate("subjectId", "name code")
+      .lean();
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found.",
+      });
+    }
+
+    const attempts = await ExamAttempt.find({
+      schoolId,
+      examId: exam._id,
+    })
+      .populate("studentId", "firstName lastName admissionNumber")
+      .sort({ submittedAt: -1, startedAt: -1 })
+      .lean();
+
+    const results = attempts.map((attempt) => {
+      const student =
+        attempt.studentId &&
+        typeof attempt.studentId === "object"
+          ? attempt.studentId
+          : null;
+
+      const score =
+        attempt.status === "submitted" &&
+        typeof attempt.score === "number"
+          ? attempt.score
+          : null;
+
+      const totalMarks = attempt.totalMarks ?? 0;
+
+      return {
+        attemptId: attempt._id,
+        studentId: student?._id ?? null,
+        studentName: student
+          ? `${student.firstName || ""} ${student.lastName || ""}`.trim()
+          : "Student record unavailable",
+        admissionNumber: student?.admissionNumber ?? "",
+        status: attempt.status,
+        score,
+        totalMarks,
+        percentage:
+          score !== null && totalMarks > 0
+            ? Math.round((score / totalMarks) * 10000) / 100
+            : null,
+        startedAt: attempt.startedAt,
+        submittedAt: attempt.submittedAt,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        exam,
+        summary: {
+          totalAttempts: results.length,
+          submitted: results.filter(
+            (item) => item.status === "submitted"
+          ).length,
+          inProgress: results.filter(
+            (item) => item.status === "in_progress"
+          ).length,
+        },
+        results,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 
 
