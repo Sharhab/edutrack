@@ -207,6 +207,7 @@ router.get("/invoices", getSchoolInvoices);
 /**
  * PORTALS
  */
+router.use("/student-portal", studentPortalRoutes);
 router.use("/parent", parentPortalRoutes);
 router.use("/teacher", teacherPortalRoutes);
 router.use("/lesson-notes", lessonNoteRoutes);
