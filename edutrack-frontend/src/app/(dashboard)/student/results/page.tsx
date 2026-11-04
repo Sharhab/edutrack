@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import api from "../../../../lib/axios";
 import { AlertCircle, BookOpen, Loader2 } from "lucide-react";
-import { useAuth } from "../../../../../components/providers/AuthProvider";
+import { useAuth } from "../../../../components/providers/AuthProvider";
 
 type StudentUser = {
   studentId?: string;
