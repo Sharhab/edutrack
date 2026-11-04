@@ -76,7 +76,10 @@ export async function onboardingWebhookHandler(req, res) {
 
 export async function onboardingTrialHandler(req, res) {
   try {
-    const data = await activateOnboardingTrial(req.body);
+const data = await activateOnboardingTrial({
+  ...req.body,
+  schoolLogoFile: req.file || null,
+});
 
     return res.status(200).json({
       success: true,
@@ -118,9 +121,10 @@ export async function onboardingHandler(req, res) {
  */
 export async function onboardingInitializeHandler(req, res) {
   try {
-    const data = await initializeOnboardingPayment(
-      req.body
-    );
+  const data = await initializeOnboardingPayment({
+  ...req.body,
+  schoolLogoFile: req.file || null,
+});
 
     return res.status(200).json({
       success: true,
