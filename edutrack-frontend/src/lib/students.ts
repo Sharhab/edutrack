@@ -120,3 +120,16 @@ export async function generateStudentLoginAccounts(): Promise<GenerateStudentLog
   const { data } = await api.post("/students/login-accounts/generate");
   return data.data;
 }
+
+export async function resetStudentPassword(
+  id: string,
+  temporaryPassword: string
+) {
+  const { data } = await api.post(
+    `/students/${id}/reset-password`,
+    { temporaryPassword }
+  );
+
+  return data?.data ?? data;
+}
+
