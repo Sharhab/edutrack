@@ -64,15 +64,23 @@ function formatDate(value: string | null) {
   return date.toLocaleString();
 }
 
+
 function getReferenceName(
-  value: ExamInfo["classId"] | ExamInfo["subjectId"]
-) {
+  value:
+    | { name?: string; level?: string; code?: string }
+    | string
+    | null
+    | undefined
+): string {
   if (value && typeof value === "object") {
-    return value.name || value.level || "—";
+    return value.name || value.level || value.code || "—";
   }
 
-  return "—";
+  return typeof value === "string" && value.trim()
+    ? value
+    : "—";
 }
+
 
 function escapeCsv(value: unknown) {
   const text = String(value ?? "");
