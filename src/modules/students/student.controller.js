@@ -11,6 +11,7 @@ import {
   updateStudent,
    bulkUpsertStudents,
   generateMissingStudentLoginAccounts,
+  resetStudentPassword,
 } from "./student.service.js";
 
 
@@ -116,3 +117,41 @@ export async function deleteStudentHandler(req, res) {
     data,
   });
 }
+
+export async function resetStudentPasswordHandler(
+  req,
+  res,
+  next
+) {
+  try {
+    const { temporaryPassword } = req.body;
+
+    if (
+      typeof temporaryPassword !== "string" ||
+      temporaryPassword.length < 12 ||
+      temporaryPassword.length > 128
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Temporary password must be between 12 and 128 characters",
+      });
+    }
+
+    const data = await resetStudentPassword(
+      req.params.id,
+      req.user.schoolId,
+      temporaryPassword
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Student password reset successfully",
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
