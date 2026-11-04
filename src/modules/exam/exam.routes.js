@@ -10,7 +10,6 @@ import {
   listExamsHandler,
   publishExamHandler,
   closeExamHandler,
-  listExamResultsHandler,
 } from "./exam.controller.js";
 
 import {
@@ -18,6 +17,7 @@ import {
   saveAnswersHandler,
   listStudentExamsHandler,
   submitExamHandler,
+  listExamResultsHandler,
 } from "./attempt.controller.js";
 
 const router = express.Router();
