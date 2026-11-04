@@ -9,7 +9,7 @@ import {
   onboardingWebhookHandler,
   onboardingTrialHandler,
 } from "./onboarding.controller.js";
-
+import { uploadLogo } from "../../utils/upload.js";
 
 const router = express.Router();
 
@@ -24,16 +24,18 @@ router.post(
 /**
  * INITIALIZE PAYSTACK PAYMENT
  */
-router.post(
-  "/paystack/initialize",
-  asyncHandler(onboardingInitializeHandler)
-);
 
 router.post(
   "/trial",
+  uploadLogo.single("logo"),
   asyncHandler(onboardingTrialHandler)
 );
 
+router.post(
+  "/paystack/initialize",
+  uploadLogo.single("logo"),
+  asyncHandler(onboardingInitializeHandler)
+);
 /**
  * VERIFY PAYMENT
  * PUBLIC
