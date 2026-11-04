@@ -1,25 +1,28 @@
+
 "use client";
 
 import DataTable from "../../components/ui/DataTable";
 import Badge from "../../components/ui/Badge";
 import EmptyState from "../../components/ui/EmptyState";
-import { Student } from "../../types/student";
+import type { Student } from "../../types/student";
 import { formatDate } from "../../lib/utils";
-import { Pencil, Trash2 } from "lucide-react";
+import { KeyRound, Pencil, Trash2 } from "lucide-react";
 
 type StudentsTableProps = {
   data: Student[];
   onEdit: (student: Student) => void;
   onDelete: (student: Student) => void;
+  onResetPassword: (student: Student) => void;
 };
 
-function displayName(value: unknown) {
+function displayName(value: unknown): string {
   if (!value) return "-";
 
   if (typeof value === "string") return value;
 
   if (typeof value === "object" && value !== null) {
     const obj = value as {
+      _id?: string;
       name?: string;
       firstName?: string;
       lastName?: string;
@@ -36,18 +39,26 @@ function displayName(value: unknown) {
   return String(value);
 }
 
-function getStudentFullName(row: Student) {
-  const middle = (row as any).middleName
-    ? ` ${(row as any).middleName} `
-    : " ";
+function getStudentFullName(row: Student): string {
+  const middleName = (row as any).middleName;
 
-  return `${row.firstName}${middle}${row.lastName}`;
+  return [row.firstName, middleName, row.lastName]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isStudentActive(student: Student): boolean {
+  return (
+    student.status !== "inactive" &&
+    student.status !== "suspended"
+  );
 }
 
 export default function StudentsTable({
   data,
   onEdit,
   onDelete,
+  onResetPassword,
 }: StudentsTableProps) {
   if (!data.length) {
     return (
@@ -62,7 +73,7 @@ export default function StudentsTable({
     <DataTable<Student>
       data={data}
       columns={[
-        // ================= STUDENT =================
+        // STUDENT
         {
           key: "student",
           title: "Student",
@@ -83,7 +94,7 @@ export default function StudentsTable({
           ),
         },
 
-        // ================= CLASS =================
+        // CLASS
         {
           key: "className",
           title: "Class",
@@ -91,7 +102,7 @@ export default function StudentsTable({
             row.className || displayName(row.classId),
         },
 
-        // ================= PARENT =================
+        // PARENT
         {
           key: "parent",
           title: "Parent",
@@ -99,21 +110,21 @@ export default function StudentsTable({
             row.parentName || displayName(row.parentId),
         },
 
-        // ================= GENDER =================
+        // GENDER
         {
           key: "gender",
           title: "Gender",
           render: (row) => row.gender || "-",
         },
 
-        // ================= ENTRY TYPE (NEW ADDITION) =================
+        // ENTRY TYPE
         {
           key: "entryType",
           title: "Entry",
           render: (row) => (row as any).entryType || "-",
         },
 
-        // ================= STATUS =================
+        // STATUS
         {
           key: "status",
           title: "Status",
@@ -131,36 +142,63 @@ export default function StudentsTable({
           ),
         },
 
-        // ================= CREATED DATE =================
+        // CREATED DATE
         {
           key: "createdAt",
           title: "Created",
           render: (row) => formatDate(row.createdAt),
         },
 
-        // ================= ACTIONS =================
+        // ACTIONS
         {
           key: "actions",
           title: "Actions",
-          render: (row) => (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onEdit(row)}
-                className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
-              >
-                <Pencil size={16} />
-              </button>
+          render: (row) => {
+            const active = isStudentActive(row);
+            const studentName = getStudentFullName(row);
 
-              <button
-                type="button"
-                onClick={() => onDelete(row)}
-                className="rounded-xl border border-red-400/20 bg-red-500/10 p-2 text-red-300 transition hover:bg-red-500/20"
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ),
+            return (
+              <div className="flex items-center justify-end gap-1">
+                <button
+                  type="button"
+                  title={
+                    active
+                      ? "Reset student password"
+                      : "Activate student before resetting password"
+                  }
+                  aria-label={`Reset password for ${studentName}`}
+                  onClick={() => onResetPassword(row)}
+                  className={`rounded-lg p-2 transition ${
+                    active
+                      ? "text-amber-300 hover:bg-amber-500/10"
+                      : "text-slate-500 hover:bg-white/5"
+                  }`}
+                >
+                  <KeyRound size={17} />
+                </button>
+
+                <button
+                  type="button"
+                  title="Edit student"
+                  aria-label={`Edit ${studentName}`}
+                  onClick={() => onEdit(row)}
+                  className="rounded-lg p-2 text-cyan-300 transition hover:bg-cyan-500/10"
+                >
+                  <Pencil size={17} />
+                </button>
+
+                <button
+                  type="button"
+                  title="Delete student"
+                  aria-label={`Delete ${studentName}`}
+                  onClick={() => onDelete(row)}
+                  className="rounded-lg p-2 text-red-300 transition hover:bg-red-500/10"
+                >
+                  <Trash2 size={17} />
+                </button>
+              </div>
+            );
+          },
         },
       ]}
     />
