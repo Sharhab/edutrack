@@ -81,24 +81,54 @@ export default function OnboardingForm({
     <div className="space-y-6">
       {step === 1 && (
         <>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormInput
-              label="School Name"
-              name="schoolName"
-              value={values.schoolName || ""}
-              placeholder="Your school name"
-              onChange={(value) => onChange("schoolName", value)}
-            />
+       
+<div className="grid gap-4 md:grid-cols-2">
+  <FormInput
+    label="School Name"
+    name="schoolName"
+    value={values.schoolName || ""}
+    placeholder="Al-Huda Academy"
+    onChange={(value) => onChange("schoolName", value)}
+  />
 
-            <FormInput
-              label="School Slug"
-              name="slug"
-              value={values.slug || ""}
-              placeholder="your-school"
-              onChange={(value) => onChange("slug", value)}
-            />
-          </div>
+  <FormInput
+    label="Choose Your School Portal Address"
+    name="slug"
+    value={values.slug || ""}
+    placeholder="al-huda-academy"
+    onChange={(value) =>
+      onChange(
+        "slug",
+        value
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9-]+/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "")
+      )
+    }
+  />
 
+  <div className="md:col-span-2 rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-4">
+    <p className="text-sm font-semibold text-cyan-200">
+      Your school’s public portal URL
+    </p>
+
+    <p className="mt-2 break-all text-lg font-bold text-white">
+      {values.slug?.trim()
+        ? `${values.slug.trim()}.edutrack.cloud`
+        : "your-school.edutrack.cloud"}
+    </p>
+
+    <p className="mt-2 text-sm leading-6 text-slate-300">
+      Choose a short, memorable address. You can share this link
+      with parents and students to access your school portal.
+      The address must be available before registration can finish.
+    </p>
+  </div>
+</div>
+
+      
           <div className="grid gap-4 md:grid-cols-2">
             <FormInput
               label="Admin First Name"
