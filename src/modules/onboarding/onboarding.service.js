@@ -9,7 +9,6 @@ import { User } from "../users/user.model.js";
 import { bootstrapSchoolData } from "./bootstrap.service.js";
 import { ApiError } from "../../utils/apiError.js";
 import { initializePaystackPayment } from "../billing/paystack.service.js";
-import { generateUniqueSlug } from "../../utils/slug.js";
 import { verifyPaystackPayment }
 from "../billing/paystack.service.js";
 import {
@@ -76,8 +75,9 @@ async function verifyExistingSchoolAdmin(school, payload) {
   return admin;
 }
 
-async function ensureUniqueSchool({ schoolName, adminEmail }) {
-  const slug = slugify(schoolName || "", {
+
+async function ensureUniqueSchool({ slug: requestedSlug, adminEmail }) {
+  const slug = slugify(requestedSlug || "", {
     lower: true,
     strict: true,
     trim: true,
@@ -85,10 +85,28 @@ async function ensureUniqueSchool({ schoolName, adminEmail }) {
 
   const email = normalizeEmail(adminEmail);
 
+  if (!slug) {
+    throw new ApiError(400, "School portal address is required.");
+  }
+
+  if (
+    slug.length < 3 ||
+    slug.length > 50 ||
+    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)
+  ) {
+    throw new ApiError(
+      400,
+      "School portal address must be 3–50 characters, using lowercase letters, numbers, and single hyphens."
+    );
+  }
+
   const existingSchool = await School.findOne({ slug });
 
   if (existingSchool) {
-    throw new ApiError(400, "School already exists");
+    throw new ApiError(
+      409,
+      "This school portal address is already taken. Please choose another."
+    );
   }
 
   const existingUser = await User.findOne({ email });
@@ -98,8 +116,7 @@ async function ensureUniqueSchool({ schoolName, adminEmail }) {
   }
 
   // Only clean up an orphaned school-admin account.
-  // Do not remove super admins, teachers, students, parents,
-  // or admins whose school still exists.
+  // Never delete an account linked to an existing school.
   if (
     existingUser.role === "school_admin" &&
     existingUser.schoolId
@@ -115,7 +132,6 @@ async function ensureUniqueSchool({ schoolName, adminEmail }) {
         schoolId: existingUser.schoolId,
       });
 
-      // Confirm the email is now free before onboarding continues.
       const remainingUser = await User.findOne({ email });
 
       if (!remainingUser) {
@@ -326,18 +342,22 @@ export async function activateOnboardingTrial(payload) {
 
   await school.save();
 
-  return {
-    school: {
-      _id: school._id,
-      name: school.name,
-      slug: school.slug,
-      domain: school.domain,
-      onboardingStatus: school.onboardingStatus,
-      billingStatus: school.billingStatus,
-    },
-    message: "Your school account is ready on the 7-day free trial.",
-    loginUrl: `https://${school.slug}.edutrack.cloud/login`,
-  };
+  const publicUrl = `https://${school.slug}.edutrack.cloud`;
+
+return {
+  school: {
+    _id: school._id,
+    name: school.name,
+    slug: school.slug,
+    domain: school.domain,
+    onboardingStatus: school.onboardingStatus,
+    billingStatus: school.billingStatus,
+  },
+  message: "Your school account is ready on the 7-day free trial.",
+  publicUrl,
+  landingPage: publicUrl,
+  loginUrl: `${publicUrl}/login`,
+};
 }
 
 export async function completeOnboarding(payload) {
@@ -353,11 +373,13 @@ export async function completeOnboarding(payload) {
 
     const email = normalizeEmail(payload.adminEmail);
 
-    const slug = await generateUniqueSlug(
-      payload.schoolName
-    );
+    const slug = slugify(payload.slug || "", {
+  lower: true,
+  strict: true,
+  trim: true,
+});
 
-    const domain = `${slug}.edutrack.cloud`;
+const domain = `${slug}.edutrack.cloud`;
 
     const selectedPlan = [
       "starter",
@@ -535,9 +557,9 @@ return {
       subscription.trialEndsAt,
   },
 
-  tenantBaseUrl,
-
-  landingPage: tenantBaseUrl,
+ tenantBaseUrl,
+publicUrl: tenantBaseUrl,
+landingPage: tenantBaseUrl,
 
   loginUrl: `${tenantBaseUrl}/login`,
 
