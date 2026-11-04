@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import api from "@/lib/axios";
+import api from "../../../../lib/axios";
 import { AlertCircle, BookOpen, Loader2 } from "lucide-react";
 
 type StudentProfile = {
