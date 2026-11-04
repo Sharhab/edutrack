@@ -10,6 +10,7 @@ import {
   listExamsHandler,
   publishExamHandler,
   closeExamHandler,
+  listExamResultsHandler,
 } from "./exam.controller.js";
 
 import {
@@ -39,6 +40,11 @@ router.get(
   "/",
   authorize("school_admin"),
   listExamsHandler
+);
+router.get(
+  "/:examId/results",
+  authorize("school_admin"),
+  listExamResultsHandler
 );
 router.patch(
   "/:examId/publish",
