@@ -164,17 +164,20 @@ export default function LoginPageClient() {
         .join(" ");
 
       const user: AuthUser = {
-        _id: String(rawUser._id),
-        schoolId: rawUser.schoolId
-          ? String(rawUser.schoolId)
-          : null,
-        role: rawUser.role,
-        firstName: rawUser.firstName,
-        lastName: rawUser.lastName,
-        name: rawUser.name || fullName || undefined,
-        email: rawUser.email,
-        isActive: rawUser.isActive,
-      };
+  _id: String(rawUser._id),
+  schoolId: rawUser.schoolId
+    ? String(rawUser.schoolId)
+    : null,
+  studentId: rawUser.studentId
+    ? String(rawUser.studentId)
+    : null,
+  role: rawUser.role,
+  firstName: rawUser.firstName,
+  lastName: rawUser.lastName,
+  name: rawUser.name || fullName || undefined,
+  email: rawUser.email,
+  isActive: rawUser.isActive,
+};
 
       setSession(token, user);
 
