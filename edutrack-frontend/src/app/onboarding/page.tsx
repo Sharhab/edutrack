@@ -1,5 +1,6 @@
 
 
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -38,6 +39,11 @@ const pricing: Record<BillingCycle, Record<Plan, number>> = {
 };
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
+const ALLOWED_LOGO_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+];
 
 export default function OnboardingPage() {
   const { clearTenant } = useTenant();
@@ -61,6 +67,9 @@ export default function OnboardingPage() {
   const [error, setError] = useState("");
   const [isTrial, setIsTrial] = useState(false);
 
+  // Keep the actual file for multipart upload and a data URL for preview.
+  const [schoolLogoFile, setSchoolLogoFile] =
+    useState<File | null>(null);
   const [logoDataUrl, setLogoDataUrl] = useState("");
   const [logoFileName, setLogoFileName] = useState("");
   const [logoError, setLogoError] = useState("");
@@ -79,9 +88,10 @@ export default function OnboardingPage() {
     }));
   }
 
-  const amount = useMemo(() => {
-    return pricing[form.billingCycle][form.plan];
-  }, [form.plan, form.billingCycle]);
+  const amount = useMemo(
+    () => pricing[form.billingCycle][form.plan],
+    [form.plan, form.billingCycle]
+  );
 
   function validateStep1() {
     if (!form.schoolName.trim()) {
@@ -133,6 +143,20 @@ export default function OnboardingPage() {
     return "";
   }
 
+  function clearSelectedLogo() {
+    setSchoolLogoFile(null);
+    setLogoDataUrl("");
+    setLogoFileName("");
+
+    const input = document.getElementById(
+      "school-logo"
+    ) as HTMLInputElement | null;
+
+    if (input) {
+      input.value = "";
+    }
+  }
+
   async function handleLogoChange(
     event: React.ChangeEvent<HTMLInputElement>
   ) {
@@ -140,17 +164,18 @@ export default function OnboardingPage() {
 
     setLogoError("");
 
+    // If the user cancels the picker, preserve the existing selection.
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setLogoError("Please select an image file.");
-      event.target.value = "";
+    if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
+      setLogoError("Choose a PNG, JPG, or WebP image.");
+      clearSelectedLogo();
       return;
     }
 
     if (file.size > MAX_LOGO_SIZE) {
       setLogoError("Logo must be 2 MB or smaller.");
-      event.target.value = "";
+      clearSelectedLogo();
       return;
     }
 
@@ -175,38 +200,29 @@ export default function OnboardingPage() {
         }
       );
 
+      setSchoolLogoFile(file);
       setLogoDataUrl(dataUrl);
       setLogoFileName(file.name);
     } catch {
+      clearSelectedLogo();
       setLogoError("Could not load this image. Please try another.");
-      setLogoDataUrl("");
-      setLogoFileName("");
-      event.target.value = "";
     }
   }
 
   function removeLogo() {
-    setLogoDataUrl("");
-    setLogoFileName("");
+    clearSelectedLogo();
     setLogoError("");
-
-    const input = document.getElementById(
-      "school-logo"
-    ) as HTMLInputElement | null;
-
-    if (input) input.value = "";
   }
 
   function next() {
     setError("");
 
-    if (step === 1) {
-      const validationError = validateStep1();
+    const validationError =
+      step === 1 ? validateStep1() : "";
 
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
+    if (validationError) {
+      setError(validationError);
+      return;
     }
 
     setStep((current) => Math.min(current + 1, 3));
@@ -217,18 +233,59 @@ export default function OnboardingPage() {
     setStep((current) => Math.max(current - 1, 1));
   }
 
+  function buildOnboardingFormData() {
+    const formData = new FormData();
+
+    formData.append("schoolName", form.schoolName.trim());
+    formData.append("slug", form.slug.trim());
+    formData.append(
+      "adminFirstName",
+      form.adminFirstName.trim()
+    );
+    formData.append(
+      "adminLastName",
+      form.adminLastName.trim()
+    );
+    formData.append(
+      "adminEmail",
+      form.adminEmail.trim().toLowerCase()
+    );
+    formData.append("adminPassword", form.adminPassword);
+    formData.append("phone", form.phone.trim());
+    formData.append("address", form.address.trim());
+    formData.append("plan", form.plan);
+    formData.append("billingCycle", form.billingCycle);
+    formData.append("amount", String(amount));
+    formData.append("isTrial", String(isTrial));
+    formData.append(
+      "callbackUrl",
+      `${window.location.origin}/onboarding/success`
+    );
+
+    // Must match uploadLogo.single("logo") on the backend.
+    if (schoolLogoFile) {
+      formData.append("logo", schoolLogoFile);
+    }
+
+    return formData;
+  }
+
   async function submit() {
-    const validationError = validateStep1() || validateStep3();
+    if (submitting) return;
 
-    if (validationError) {
-      setError(validationError);
+    const step1Error = validateStep1();
 
-      if (validateStep1()) {
-        setStep(1);
-      } else {
-        setStep(3);
-      }
+    if (step1Error) {
+      setError(step1Error);
+      setStep(1);
+      return;
+    }
 
+    const step3Error = validateStep3();
+
+    if (step3Error) {
+      setError(step3Error);
+      setStep(3);
       return;
     }
 
@@ -242,29 +299,12 @@ export default function OnboardingPage() {
       setSubmitting(true);
       setError("");
 
-      const payload = {
-        schoolName: form.schoolName.trim(),
-        slug: form.slug.trim(),
-        adminFirstName: form.adminFirstName.trim(),
-        adminLastName: form.adminLastName.trim(),
-        adminEmail: form.adminEmail.trim().toLowerCase(),
-        adminPassword: form.adminPassword,
-        phone: form.phone.trim(),
-        address: form.address.trim(),
-        plan: form.plan,
-        billingCycle: form.billingCycle,
-        amount,
-        isTrial,
-        callbackUrl: `${window.location.origin}/onboarding/success`,
-
-        // The backend must be updated to save this field.
-        schoolLogo: logoDataUrl || undefined,
-      };
+      const formData = buildOnboardingFormData();
 
       if (isTrial) {
         const response = await api.post(
           "/onboarding/trial",
-          payload
+          formData
         );
 
         const publicUrl =
@@ -273,7 +313,7 @@ export default function OnboardingPage() {
 
         if (!publicUrl) {
           throw new Error(
-            "School was created, but its public portal URL was not returned."
+            "School was created, but its portal URL was not returned."
           );
         }
 
@@ -283,31 +323,34 @@ export default function OnboardingPage() {
 
       const response = await api.post(
         "/onboarding/paystack/initialize",
-        payload
+        formData
       );
 
-      const checkoutUrl = response.data?.authorizationUrl;
+      const checkoutUrl =
+        response.data?.authorizationUrl ||
+        response.data?.data?.authorizationUrl;
 
       if (!checkoutUrl) {
-        throw new Error("Paystack checkout URL was not returned.");
+        throw new Error(
+          "Paystack checkout URL was not returned."
+        );
       }
 
       window.location.assign(checkoutUrl);
     } catch (err: unknown) {
-      const errorObject = err as {
-        response?: {
-          data?: {
-            message?: string;
-          };
-        };
-        message?: string;
-      };
-
-      setError(
-        errorObject.response?.data?.message ||
-          errorObject.message ||
+      if (axios.isAxiosError(err)) {
+        setError(
+          err.response?.data?.message ||
+            err.message ||
+            "Registration could not continue. Please try again."
+        );
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(
           "Registration could not continue. Please try again."
-      );
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -340,6 +383,7 @@ export default function OnboardingPage() {
           </div>
         )}
 
+        {/* School logo */}
         <section className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/[0.05]">
@@ -365,9 +409,9 @@ export default function OnboardingPage() {
               </h2>
 
               <p className="mt-1 text-sm leading-6 text-slate-400">
-                Use your school’s official logo to help identify
-                your school on its portal and school documents.
-                PNG, JPG, and WebP images up to 2 MB are supported.
+                Add your official school logo for your portal and
+                school documents. PNG, JPG, and WebP images up to
+                2 MB are supported.
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -410,16 +454,19 @@ export default function OnboardingPage() {
               )}
 
               <p className="mt-2 text-xs text-slate-500">
-                You can continue without a logo and add one later.
+                Optional — you can add a logo later.
               </p>
             </div>
           </div>
         </section>
 
+        {/* Free trial */}
         <section className="mb-6 rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="font-semibold">Start a 7-Day Free Trial</h2>
+              <h2 className="font-semibold">
+                Start a 7-Day Free Trial
+              </h2>
               <p className="mt-1 text-sm text-slate-400">
                 Create your school account without paying now.
               </p>
@@ -443,10 +490,14 @@ export default function OnboardingPage() {
           </div>
         </section>
 
+        {/* Onboarding steps */}
         <section className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-6">
           <div className="mb-6 flex items-center gap-2">
             {[1, 2, 3].map((number) => (
-              <div key={number} className="flex flex-1 items-center gap-2">
+              <div
+                key={number}
+                className="flex flex-1 items-center gap-2"
+              >
                 <div
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
                     step >= number
