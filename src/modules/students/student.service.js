@@ -1036,3 +1036,67 @@ export async function generateMissingStudentLoginAccounts(schoolId) {
   };
 }
 
+
+/**
+ * RESET STUDENT PASSWORD
+ * School admins can reset passwords only for active
+ * student accounts belonging to their own school.
+ */
+export async function resetStudentPassword(
+  studentId,
+  schoolId,
+  temporaryPassword
+) {
+  const student = await Student.findOne({
+    _id: studentId,
+    schoolId,
+  });
+
+  if (!student) {
+    throw new ApiError(404, "Student not found");
+  }
+
+  if (student.status !== "active") {
+    throw new ApiError(
+      400,
+      "Cannot reset the password of an inactive student"
+    );
+  }
+
+  const user = await User.findOne({
+    schoolId,
+    studentId: student._id,
+    role: STUDENT_ROLE,
+  });
+
+  if (!user) {
+    throw new ApiError(
+      404,
+      "Student login account not found. Generate the student's login account first."
+    );
+  }
+
+  if (!user.isActive) {
+    throw new ApiError(
+      400,
+      "Cannot reset the password of an inactive student account"
+    );
+  }
+
+  user.passwordHash = await bcrypt.hash(
+    temporaryPassword,
+    PASSWORD_HASH_ROUNDS
+  );
+
+  user.passwordChangedAt = new Date();
+
+  await user.save();
+
+  return {
+    studentId: student._id,
+    admissionNumber: student.admissionNumber,
+    reset: true,
+  };
+}
+
+
