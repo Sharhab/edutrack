@@ -56,11 +56,6 @@ export default function PublicTenantHero({ data }: PublicTenantHeroProps) {
             </div>
           </div>
 
-          {tenant.motto && (
-            <p className="mt-5 text-lg font-medium italic text-slate-600">
-              “{tenant.motto}”
-            </p>
-          )}
 
           <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">
             Find school information, stay informed about announcements, and
