@@ -575,14 +575,31 @@ landingPage: tenantBaseUrl,
   studentPortal:
     `${tenantBaseUrl}/login?role=student`,
 };
-  } catch (error) {
-    console.error(
-      "❌ COMPLETE ONBOARDING ERROR:",
-      error
-    );
+ } catch (error) {
+  console.error("❌ COMPLETE ONBOARDING ERROR:", error);
 
-    throw error;
+  if (error?.code === 11000) {
+    const duplicateField = Object.keys(
+      error.keyPattern || {}
+    )[0];
+
+    if (duplicateField === "slug" || duplicateField === "domain") {
+      throw new ApiError(
+        409,
+        "This school portal address is already taken. Please choose another."
+      );
+    }
+
+    if (duplicateField === "email") {
+      throw new ApiError(
+        409,
+        "A school with this email already exists."
+      );
+    }
   }
+
+  throw error;
+}
 }
 /**
  * =========================
