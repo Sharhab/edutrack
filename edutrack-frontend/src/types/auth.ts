@@ -16,7 +16,7 @@ export interface AuthTenant {
 
 export interface AuthUser {
   _id: string;
-
+   studentId?: string | null;
   schoolId?: string | null;
 
   role: UserRole;
