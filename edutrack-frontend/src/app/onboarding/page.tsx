@@ -145,17 +145,24 @@ async function submit() {
       callbackUrl: `${window.location.origin}/onboarding/success`,
     };
 
-    if (isTrial) {
-      const response = await api.post("/onboarding/trial", payload);
+    
+if (isTrial) {
+  const response = await api.post("/onboarding/trial", payload);
 
-      setError(
-        response.data?.message ||
-          "Your school account is ready on the free trial. Redirecting to login..."
-      );
+  const publicUrl =
+    response.data?.data?.publicUrl ||
+    response.data?.data?.landingPage;
 
-      window.location.assign("/login");
-      return;
-    }
+  if (!publicUrl) {
+    throw new Error(
+      "School created, but its public portal URL was not returned."
+    );
+  }
+
+  window.location.assign(publicUrl);
+  return;
+}
+
 
     const response = await api.post(
       "/onboarding/paystack/initialize",
