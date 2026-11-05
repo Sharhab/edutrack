@@ -147,92 +147,28 @@ function mapTenantPayload(school) {
  * TENANT VALIDATION
  * =====================================
  */
-function ensureTenantIsUsable(
-  school
-) {
+
+function ensureTenantIsUsable(school) {
   if (!school) {
-    throw new ApiError(
-      404,
-      "School not found"
-    );
+    throw new ApiError(404, "School not found");
   }
 
-  if (!school.isActive) {
-    throw new ApiError(
-      403,
-      "School workspace is inactive"
-    );
-  }
-
+  // Only deactivated or platform-suspended schools
+  // should be hidden from public tenant resolution.
   if (
-    school.onboardingStatus ===
-    "suspended"
+    !school.isActive ||
+    school.onboardingStatus === "suspended"
   ) {
-    throw new ApiError(
-      403,
-      "School account suspended"
-    );
+    throw new ApiError(404, "School page not found");
   }
 
-  if (
-    school.billingStatus ===
-    "blocked"
-  ) {
-    throw new ApiError(
-      403,
-      "Subscription blocked"
-    );
-  }
-
-  if (
-    school.billingStatus ===
-    "expired"
-  ) {
-    throw new ApiError(
-      403,
-      "Subscription expired"
-    );
-  }
-
-  const allowedBillingStatuses = [
-    "trial",
-    "active",
-    "pending_payment",
-  ];
-
-  if (
-    school.billingStatus &&
-    !allowedBillingStatuses.includes(
-      school.billingStatus
-    )
-  ) {
-    throw new ApiError(
-      403,
-      "School access restricted"
-    );
-  }
-
-  const allowedSubscriptionStatuses =
-    [
-      "trial",
-      "pending",
-      "active",
-    ];
-
-  if (
-    school.subscriptionStatus &&
-    !allowedSubscriptionStatuses.includes(
-      school.subscriptionStatus
-    )
-  ) {
-    throw new ApiError(
-      403,
-      "Subscription inactive"
-    );
-  }
+  // Do not reject expired, pending or cancelled billing
+  // here. These are public tenant-resolution endpoints.
+  // Protected dashboard access is enforced separately.
 
   return true;
 }
+
 
 /**
  * =====================================
