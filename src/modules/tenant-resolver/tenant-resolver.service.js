@@ -301,67 +301,55 @@ export async function resolveTenantByDomain(
  * PUBLIC TENANT PAGE
  * =====================================
  */
-export async function getPublicTenantPage(
-  slug
-) {
-  const normalizedSlug =
-    normalize(slug);
 
-  const school =
-    await School.findOne({
-      slug: normalizedSlug,
-    });
+export async function getPublicTenantPage(slug) {
+  const normalizedSlug = normalize(slug);
 
-  ensureTenantIsUsable(school);
+  // Validate the school slug
+  if (!normalizedSlug) {
+    throw new ApiError(400, "School slug is required");
+  }
 
-  const tenant =
-    mapTenantPayload(school);
+  // Find school by public slug
+  const school = await School.findOne({
+    slug: normalizedSlug,
+  });
+
+  // School must exist
+  if (!school) {
+    throw new ApiError(404, "School not found");
+  }
+
+  // Hide only deactivated or platform-suspended schools.
+  // Trial and subscription expiry must NOT block public pages.
+  if (
+    !school.isActive ||
+    school.onboardingStatus === "suspended"
+  ) {
+    throw new ApiError(404, "School page not found");
+  }
+
+  // Map school information for public display
+  const tenant = mapTenantPayload(school);
 
   return {
     tenant,
 
     page: {
-      schoolName:
-        tenant.schoolName,
-
-      logoUrl:
-        tenant.logoUrl,
-
-      faviconUrl:
-        tenant.faviconUrl,
-
-      themeColor:
-        tenant.themeColor,
-
-      email:
-        tenant.email,
-
-      phone:
-        tenant.phone,
-
-      address:
-        tenant.address,
-
-      principalName:
-        tenant.principalName,
-
-      currentSession:
-        tenant.currentSession,
-
-      currentTerm:
-        tenant.currentTerm,
-
-      domain:
-        tenant.domain,
-
-      fullDomain:
-        tenant.fullDomain,
-
-      customDomain:
-        tenant.customDomain,
-
-      motto:
-        tenant.motto,
+      schoolName: tenant.schoolName,
+      logoUrl: tenant.logoUrl,
+      faviconUrl: tenant.faviconUrl,
+      themeColor: tenant.themeColor,
+      email: tenant.email,
+      phone: tenant.phone,
+      address: tenant.address,
+      principalName: tenant.principalName,
+      currentSession: tenant.currentSession,
+      currentTerm: tenant.currentTerm,
+      domain: tenant.domain,
+      fullDomain: tenant.fullDomain,
+      customDomain: tenant.customDomain,
+      motto: tenant.motto,
     },
   };
 }
