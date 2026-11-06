@@ -235,14 +235,6 @@ if (action === "upgrade") {
   }
 }
 
-  // For schools without an active/trial subscription,
-  // use their latest pending subscription.
-  if (!currentSubscription) {
-    currentSubscription = await Subscription.findOne({
-      schoolId: school._id,
-      status: "pending",
-    }).sort({ createdAt: -1 });
-  }
 
   const plan = String(
     payload.plan ||
