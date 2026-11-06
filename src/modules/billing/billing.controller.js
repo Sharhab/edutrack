@@ -59,16 +59,43 @@ export async function initializePaystackHandler(req, res) {
 }
 
 // Preserve the existing verification handler.
-
 export async function verifyPaystackHandler(req, res) {
   const reference = String(req.params.reference || "").trim();
 
   if (!reference) {
-    return res.status(400).json({
-      success: false,
-      message: "Payment reference is required",
-    });
+    throw new ApiError(400, "Payment reference is required");
   }
+
+  // Verify directly with Paystack first.
+  const verification = await verifyPaystackPayment(reference);
+  const transaction = verification?.data;
+
+  if (
+    verification?.status !== true ||
+    transaction?.status !== "success" ||
+    String(transaction?.reference) !== reference
+  ) {
+    throw new ApiError(
+      400,
+      "Payment has not been confirmed as successful"
+    );
+  }
+
+  // Pass the full verified transaction, including metadata.
+  const result = await handlePaystackWebhook({
+    event: "charge.success",
+    data: transaction,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: result.alreadyProcessed
+      ? "Payment was already verified and processed"
+      : "Payment verified and subscription reconciled successfully",
+    data: result,
+  });
+}
+
 
   // The service verifies the transaction directly with Paystack,
   // validates the recorded payment, and reconciles the subscription.
