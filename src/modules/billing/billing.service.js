@@ -235,19 +235,7 @@ if (action === "upgrade") {
   }
 }
 
-  // Only an active, paid, unexpired subscription can be upgraded.
-  if (
-    !currentSubscription ||
-    currentSubscription.isTrial === true ||
-    !currentSubscription.expiresAt ||
-    new Date(currentSubscription.expiresAt) <= now
-  ) {
-    throw new ApiError(
-      400,
-      "Only an active paid subscription can be upgraded. Please choose a subscription plan first."
-    );
-  }
-
+  // 
   // Prevent multiple unresolved upgrade checkouts.
   const pendingUpgradePayment = await SubPayment.findOne({
     schoolId: school._id,
