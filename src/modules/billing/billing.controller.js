@@ -1,10 +1,13 @@
+
 import { initializePaystackSchema } from "./paystack.validation.js";
 
 import {
   initializePaystackPayment,
+  verifyPaystackPayment,
   handlePaystackWebhook,
 } from "./paystack.service.js";
 
+import { ApiError } from "../../utils/apiError.js";
 
 import {
   createInvoiceSchema,
@@ -35,7 +38,6 @@ import {
  * PAYSTACK
  */
 
-// Existing subscription renewal initialization.
 export async function initializeBillingPaymentHandler(req, res) {
   const data = await initializeRenewalPayment(req.user, req.body);
 
@@ -46,7 +48,6 @@ export async function initializeBillingPaymentHandler(req, res) {
   });
 }
 
-// Preserve the existing Paystack initialization handler.
 export async function initializePaystackHandler(req, res) {
   const parsed = initializePaystackSchema.parse(req.body);
   const data = await initializePaystackPayment(parsed);
@@ -58,7 +59,6 @@ export async function initializePaystackHandler(req, res) {
   });
 }
 
-// Preserve the existing verification handler.
 export async function verifyPaystackHandler(req, res) {
   const reference = String(req.params.reference || "").trim();
 
@@ -66,7 +66,6 @@ export async function verifyPaystackHandler(req, res) {
     throw new ApiError(400, "Payment reference is required");
   }
 
-  // Verify directly with Paystack first.
   const verification = await verifyPaystackPayment(reference);
   const transaction = verification?.data;
 
@@ -81,27 +80,9 @@ export async function verifyPaystackHandler(req, res) {
     );
   }
 
-  // Pass the full verified transaction, including metadata.
   const result = await handlePaystackWebhook({
     event: "charge.success",
     data: transaction,
-  });
-
-  return res.status(200).json({
-    success: true,
-    message: result.alreadyProcessed
-      ? "Payment was already verified and processed"
-      : "Payment verified and subscription reconciled successfully",
-    data: result,
-  });
-}
-
-
-  // The service verifies the transaction directly with Paystack,
-  // validates the recorded payment, and reconciles the subscription.
-  const result = await handlePaystackWebhook({
-    event: "charge.success",
-    data: { reference },
   });
 
   return res.status(200).json({
@@ -135,8 +116,6 @@ export async function listSubscriptionsHandler(req, res) {
     (payment) => payment.status === "pending"
   ).length;
 
-  // Count only payments recorded as successful.
-  // This avoids treating the value of an active subscription as cash received.
   const totalRevenue = payments
     .filter((payment) => payment.status === "success")
     .reduce(
