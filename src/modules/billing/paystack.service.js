@@ -305,7 +305,29 @@ export async function handlePaystackWebhook(event) {
   }
 
   // Load the original payment.
-  const initialPayment = await SubPayment.findOne({ reference });
+const eventMetadata = event?.data?.metadata || {};
+
+const paymentId = String(
+  eventMetadata.paymentId || ""
+).trim();
+
+let initialPayment = await SubPayment.findOne({
+  reference,
+});
+
+if (!initialPayment && paymentId && mongoose.isValidObjectId(paymentId)) {
+  initialPayment = await SubPayment.findOne({
+    _id: paymentId,
+    "metadata.purpose": "edutrack_subscription",
+  });
+}
+
+if (!initialPayment) {
+  throw new ApiError(
+    404,
+    "No matching subscription payment was found for this Paystack transaction"
+  );
+}
 
   if (!initialPayment) {
     throw new ApiError(
