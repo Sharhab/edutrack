@@ -235,23 +235,6 @@ if (action === "upgrade") {
   }
 }
 
-  // 
-  // Prevent multiple unresolved upgrade checkouts.
-  const pendingUpgradePayment = await SubPayment.findOne({
-    schoolId: school._id,
-    status: { $in: ["pending", "processing"] },
-    "metadata.purpose": "edutrack_subscription",
-    "metadata.action": "upgrade",
-  });
-
-  if (pendingUpgradePayment) {
-    throw new ApiError(
-      409,
-      "An upgrade payment is already awaiting confirmation. Please verify or resolve that payment before starting another upgrade."
-    );
-  }
-}
-
   // For schools without an active/trial subscription,
   // use their latest pending subscription.
   if (!currentSubscription) {
