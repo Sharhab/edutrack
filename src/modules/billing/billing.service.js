@@ -163,40 +163,56 @@ const SUBSCRIPTION_PRICING = {
   },
 };
 
+
 async function initializeSubscriptionCheckout(user, payload, action) {
-  const school = await School.findById(user?.schoolId);
+  const schoolId = user?.schoolId;
+
+  if (!schoolId) {
+    throw new ApiError(403, "School context missing");
+  }
+
+  if (!["upgrade", "renewal"].includes(action)) {
+    throw new ApiError(400, "Invalid subscription payment action");
+  }
+
+  const school = await School.findById(schoolId);
 
   if (!school) {
     throw new ApiError(404, "School not found");
   }
 
-  // Prefer a real current subscription over an older pending one.
-  let subscription = await Subscription.findOne({
+  // Find the current active or trial subscription first.
+  let currentSubscription = await Subscription.findOne({
     schoolId: school._id,
     status: { $in: ["active", "trial"] },
   }).sort({ expiresAt: -1, createdAt: -1 });
 
-  if (!subscription) {
-    subscription = await Subscription.findOne({
+  // For schools without an active/trial subscription,
+  // use their latest pending subscription.
+  if (!currentSubscription) {
+    currentSubscription = await Subscription.findOne({
       schoolId: school._id,
       status: "pending",
     }).sort({ createdAt: -1 });
   }
 
   const plan = String(
-    payload.plan || subscription?.plan || school.plan || ""
-  ).toLowerCase();
+    payload.plan ||
+      currentSubscription?.plan ||
+      school.plan ||
+      ""
+  ).trim().toLowerCase();
 
   const billingCycle = String(
     payload.billingCycle ||
-      subscription?.billingCycle ||
+      currentSubscription?.billingCycle ||
       school.billingCycle ||
       "monthly"
-  ).toLowerCase();
+  ).trim().toLowerCase();
 
   const amount = SUBSCRIPTION_PRICING[plan]?.[billingCycle];
 
-  if (!amount) {
+  if (!amount || !Number.isFinite(Number(amount))) {
     throw new ApiError(
       400,
       `Invalid pricing for plan: ${plan} (${billingCycle})`
@@ -204,14 +220,14 @@ async function initializeSubscriptionCheckout(user, payload, action) {
   }
 
   if (action === "upgrade") {
-    if (!subscription) {
+    if (!currentSubscription) {
       throw new ApiError(
         400,
         "No existing subscription found. Use the subscription checkout instead."
       );
     }
 
-    if (subscription.plan === plan) {
+    if (currentSubscription.plan === plan) {
       throw new ApiError(
         400,
         "Choose a different plan to upgrade."
@@ -219,8 +235,8 @@ async function initializeSubscriptionCheckout(user, payload, action) {
     }
   }
 
-  if (action === "renewal" && subscription) {
-    if (subscription.plan !== plan) {
+  if (action === "renewal" && currentSubscription) {
+    if (currentSubscription.plan !== plan) {
       throw new ApiError(
         400,
         "Renewal must use the current plan. Use upgrade to change plans."
@@ -228,31 +244,44 @@ async function initializeSubscriptionCheckout(user, payload, action) {
     }
   }
 
-  // Never deactivate an existing paid subscription before payment.
-  // For upgrades, create a separate pending subscription.
-  if (action === "upgrade" || !subscription) {
-    subscription = await Subscription.create({
+  // Do not deactivate or modify an existing active subscription
+  // before the new payment has been verified.
+  let paymentSubscription;
+
+  if (action === "upgrade" || !currentSubscription) {
+    paymentSubscription = await Subscription.create({
       schoolId: school._id,
       plan,
       billingCycle,
       amount,
       status: "pending",
       isTrial: false,
+      trialEndsAt: null,
       startsAt: null,
       expiresAt: null,
+      enabledModules: [],
     });
-  } else if (subscription.status === "pending") {
-    subscription.plan = plan;
-    subscription.billingCycle = billingCycle;
-    subscription.amount = amount;
-    await subscription.save();
+  } else {
+    paymentSubscription = currentSubscription;
+
+    // Only update an already-pending subscription.
+    if (paymentSubscription.status === "pending") {
+      paymentSubscription.plan = plan;
+      paymentSubscription.billingCycle = billingCycle;
+      paymentSubscription.amount = amount;
+
+      await paymentSubscription.save();
+    }
   }
 
+  // Generate the EduTrack reference before contacting Paystack.
   const reference = `EDUTRACK-${randomUUID()}`;
 
+  // Create the payment record first.
+  // This gives us a durable payment ID for reconciliation.
   const paymentRecord = await SubPayment.create({
     schoolId: school._id,
-    subscriptionId: subscription._id,
+    subscriptionId: paymentSubscription._id,
     amount,
     currency: "NGN",
     method: "paystack",
@@ -262,35 +291,63 @@ async function initializeSubscriptionCheckout(user, payload, action) {
     metadata: {
       purpose: "edutrack_subscription",
       action,
+      schoolId: String(school._id),
+      subscriptionId: String(paymentSubscription._id),
       plan,
       billingCycle,
     },
   });
 
+  // Store the payment's own ID in its metadata.
+  paymentRecord.metadata = {
+    ...(paymentRecord.metadata?.toObject?.() ||
+      paymentRecord.metadata ||
+      {}),
+    paymentId: String(paymentRecord._id),
+  };
+
+  await paymentRecord.save();
+
   try {
     const payment = await initializePaystackPayment({
-      schoolId: school._id,
       email: school.email,
       amount,
       plan,
       billingCycle,
       reference,
       callbackUrl: payload.callbackUrl,
+
       metadata: {
         purpose: "edutrack_subscription",
         action,
         schoolId: String(school._id),
-        subscriptionId: String(subscription._id),
+        subscriptionId: String(paymentSubscription._id),
         paymentId: String(paymentRecord._id),
         plan,
         billingCycle,
       },
     });
 
+    // Ensure Paystack returned the exact reference we created.
+    if (
+      !payment?.authorizationUrl ||
+      !payment?.reference ||
+      payment.reference !== reference
+    ) {
+      throw new ApiError(
+        502,
+        "Paystack checkout response could not be confirmed. Contact support before retrying."
+      );
+    }
+
+    paymentRecord.status = "pending";
+
     paymentRecord.gatewayResponse = {
-      authorizationUrl: payment.authorizationUrl,
+      stage: "initialization",
+      status: "initialized",
       reference: payment.reference,
-      accessCode: payment.accessCode,
+      accessCode: payment.accessCode || null,
+      authorizationUrl: payment.authorizationUrl,
     };
 
     await paymentRecord.save();
@@ -298,35 +355,69 @@ async function initializeSubscriptionCheckout(user, payload, action) {
     return {
       authorizationUrl: payment.authorizationUrl,
       reference: payment.reference,
-      subscriptionId: subscription._id,
+      paymentId: paymentRecord._id,
+      subscriptionId: paymentSubscription._id,
       amount,
+      currency: "NGN",
       plan,
       billingCycle,
       action,
     };
   } catch (error) {
-    // An uncertain gateway/network failure may occur after Paystack
-    // has received the request. Keep the record for reconciliation.
-    const statusCode = Number(error?.statusCode || error?.status || 0);
+    // Never assume an initialization error means that
+    // Paystack did not receive the request.
+    const statusCode = Number(
+      error?.statusCode || error?.status || 0
+    );
 
-    paymentRecord.status =
-      statusCode >= 400 && statusCode < 500
-        ? "failed"
-        : "processing";
+    const isDefinitiveFailure =
+      error instanceof ApiError &&
+      statusCode >= 400 &&
+      statusCode < 500 &&
+      statusCode !== 408 &&
+      statusCode !== 429;
 
-    if (paymentRecord.status === "failed") {
+    paymentRecord.status = isDefinitiveFailure
+      ? "failed"
+      : "processing";
+
+    if (isDefinitiveFailure) {
       paymentRecord.failedAt = new Date();
     }
 
     paymentRecord.gatewayResponse = {
-      message: String(error?.message || "Paystack initialization failed"),
+      stage: "initialization",
+      status: isDefinitiveFailure
+        ? "failed"
+        : "requires_reconciliation",
+      message: String(
+        error?.message || "Paystack initialization failed"
+      ).slice(0, 1000),
       statusCode: statusCode || null,
+      reference,
     };
 
     await paymentRecord.save();
-    throw error;
+
+    console.error("SUBSCRIPTION PAYMENT INITIALIZATION ERROR:", {
+      schoolId: String(school._id),
+      paymentId: String(paymentRecord._id),
+      reference,
+      status: paymentRecord.status,
+      message: error?.message,
+    });
+
+    if (isDefinitiveFailure) {
+      throw error;
+    }
+
+    throw new ApiError(
+      503,
+      "Payment initialization could not be confirmed. Check payment status before retrying."
+    );
   }
 }
+
 
 export async function initializeRenewalPayment(user, payload) {
   return initializeSubscriptionCheckout(user, payload, "renewal");
