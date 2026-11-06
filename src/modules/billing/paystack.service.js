@@ -219,7 +219,9 @@ async function sendVerifiedSubscriptionReceipt(paymentRecord, school) {
       to: school.email,
       schoolName: school.name,
       receiptNumber: paymentRecord.receiptNumber,
-      reference: paymentRecord.reference,
+     reference:
+  paymentRecord.gatewayResponse?.reference ||
+  paymentRecord.reference,
       amount: paymentRecord.amount,
       currency: paymentRecord.currency || "NGN",
       plan: paymentRecord.metadata?.plan || "EduTrack subscription",
@@ -346,6 +348,25 @@ if (!initialPayment) {
     );
   }
 
+  // Validate the signed Paystack event metadata against our saved record.
+const metadataMatches =
+  String(initialPayment.schoolId) ===
+    String(eventMetadata.schoolId) &&
+  String(initialPayment.subscriptionId) ===
+    String(eventMetadata.subscriptionId) &&
+  String(initialPayment._id) ===
+    String(eventMetadata.paymentId) &&
+  String(initialPayment.metadata?.plan) ===
+    String(eventMetadata.plan) &&
+  String(initialPayment.metadata?.billingCycle) ===
+    String(eventMetadata.billingCycle);
+
+if (!metadataMatches) {
+  throw new ApiError(
+    409,
+    "Paystack metadata does not match the saved EduTrack payment"
+  );
+}
   // Verify directly with Paystack before changing any records.
   const verification = await verifyPaystackPayment(reference);
   const transaction = verification?.data;
