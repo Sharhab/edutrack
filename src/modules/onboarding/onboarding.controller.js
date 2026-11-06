@@ -169,9 +169,9 @@ export async function onboardingVerifyPaymentHandler(req, res) {
   }
 
   const result = await handlePaystackWebhook({
-    event: "charge.success",
-    data: { reference },
-  });
+  event: "charge.success",
+  data: transaction,
+});
 
   return res.status(200).json({
     success: true,
