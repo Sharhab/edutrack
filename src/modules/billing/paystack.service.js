@@ -5,6 +5,7 @@ import { School } from "../schools/school.model.js";
 import { Subscription } from "./subscription.model.js";
 import { SubPayment } from "./sub-payment.model.js";
 import { sendSubscriptionPaymentReceiptEmail } from "../../services/email.service.js";
+import mongoose from "mongoose";
 /**
  * =========================================
  * SAFE PAYSTACK REQUEST
@@ -289,8 +290,8 @@ async function sendVerifiedSubscriptionReceipt(paymentRecord, school) {
  * signature before calling this function.
  * =========================================
  */
+
 export async function handlePaystackWebhook(event) {
-  // Ignore events unrelated to successful charges.
   if (event?.event !== "charge.success") {
     return { ignored: true };
   }
@@ -300,27 +301,21 @@ export async function handlePaystackWebhook(event) {
   ).trim();
 
   if (!reference) {
-    throw new ApiError(
-      400,
-      "Missing Paystack payment reference"
-    );
+    throw new ApiError(400, "Missing Paystack payment reference");
   }
 
-  // Find the original payment record.
-  const paymentRecord = await SubPayment.findOne({
-    reference,
-  });
+  // Load the original payment.
+  const initialPayment = await SubPayment.findOne({ reference });
 
-  if (!paymentRecord) {
+  if (!initialPayment) {
     throw new ApiError(
       404,
       "No recorded subscription payment exists for this reference"
     );
   }
 
-  // Ensure this is an EduTrack subscription payment.
   if (
-    paymentRecord.metadata?.purpose !==
+    initialPayment.metadata?.purpose !==
     "edutrack_subscription"
   ) {
     throw new ApiError(
@@ -329,11 +324,8 @@ export async function handlePaystackWebhook(event) {
     );
   }
 
-  // Verify directly with Paystack.
-  // Never trust the webhook payload alone.
-  const verification =
-    await verifyPaystackPayment(reference);
-
+  // Verify directly with Paystack before changing any records.
+  const verification = await verifyPaystackPayment(reference);
   const transaction = verification?.data;
 
   if (
@@ -348,12 +340,8 @@ export async function handlePaystackWebhook(event) {
     );
   }
 
-  // Confirm the verified amount matches our recorded amount.
-  const verifiedAmount =
-    Number(transaction.amount) / 100;
-
-  const recordedAmount =
-    Number(paymentRecord.amount);
+  const verifiedAmount = Number(transaction.amount) / 100;
+  const recordedAmount = Number(initialPayment.amount);
 
   if (
     !Number.isFinite(verifiedAmount) ||
@@ -368,62 +356,13 @@ export async function handlePaystackWebhook(event) {
     );
   }
 
-  // Load the school associated with this payment.
-  const school = await School.findById(
-    paymentRecord.schoolId
-  );
-
-  if (!school) {
-    throw new ApiError(
-      404,
-      "School linked to payment was not found"
-    );
-  }
-
-  if (!paymentRecord.subscriptionId) {
-    throw new ApiError(
-      400,
-      "Payment is missing its subscription reference"
-    );
-  }
-
-  // Ensure the subscription belongs to this school.
-  const subscription = await Subscription.findOne({
-    _id: paymentRecord.subscriptionId,
-    schoolId: school._id,
-  });
-
-  if (!subscription) {
-    throw new ApiError(
-      404,
-      "Subscription linked to payment was not found"
-    );
-  }
-
-  // Use the plan and billing cycle stored when payment
-  // checkout was initialized.
-  const intendedPlan =
-    paymentRecord.metadata?.plan;
-
-  const intendedCycle =
-    paymentRecord.metadata?.billingCycle;
-
+  const intendedPlan = initialPayment.metadata?.plan;
+  const intendedCycle = initialPayment.metadata?.billingCycle;
   const action =
-    paymentRecord.metadata?.action ||
-    "new_subscription";
+    initialPayment.metadata?.action || "new_subscription";
 
-  const allowedPlans = [
-    "starter",
-    "growth",
-    "premium",
-  ];
-
-  const allowedCycles = [
-    "monthly",
-    "quarterly",
-    "yearly",
-  ];
-
+  const allowedPlans = ["starter", "growth", "premium"];
+  const allowedCycles = ["monthly", "quarterly", "yearly"];
   const allowedActions = [
     "new_subscription",
     "upgrade",
@@ -431,10 +370,7 @@ export async function handlePaystackWebhook(event) {
   ];
 
   if (!allowedPlans.includes(intendedPlan)) {
-    throw new ApiError(
-      400,
-      "Invalid plan stored in payment record"
-    );
+    throw new ApiError(400, "Invalid plan stored in payment record");
   }
 
   if (!allowedCycles.includes(intendedCycle)) {
@@ -451,284 +387,293 @@ export async function handlePaystackWebhook(event) {
     );
   }
 
-  const now = new Date();
-
   const paidAt = transaction.paid_at
     ? new Date(transaction.paid_at)
-    : now;
+    : new Date();
 
   if (Number.isNaN(paidAt.getTime())) {
-    throw new ApiError(
-      409,
-      "Invalid payment date returned by Paystack"
-    );
+    throw new ApiError(409, "Invalid payment date returned by Paystack");
   }
 
-  // -----------------------------------------
-  // DUPLICATE / RECOVERY HANDLING
-  // -----------------------------------------
+  const session = await mongoose.startSession();
 
-  // A payment is fully processed only when the
-  // reconciliation flag has been saved.
-  if (
-    paymentRecord.status === "success" &&
-    paymentRecord.reconciled === true
-  ) {
-    // Receipt delivery can be retried independently.
-    await sendVerifiedSubscriptionReceipt(
-      paymentRecord,
-      school
-    );
+  let result;
+  let receiptPaymentId = null;
+  let receiptSchoolId = null;
 
-    return {
-      alreadyProcessed: true,
-      reference,
-      schoolId: String(school._id),
-      plan: subscription.plan,
-      billingCycle: subscription.billingCycle,
-      subscriptionStatus: subscription.status,
-      expiresAt: subscription.expiresAt,
-    };
-  }
+  try {
+    await session.withTransaction(async () => {
+      // Always reload the payment inside the transaction.
+      const paymentRecord = await SubPayment.findOne({
+        reference,
+      }).session(session);
 
-  // Determine whether a previous webhook execution
-  // already saved the subscription before it stopped.
-  //
-  // The payment is saved before the subscription in the
-  // normal processing flow. Therefore, a matching active
-  // subscription updated at or after that payment save
-  // indicates that the subscription update was applied.
-  const subscriptionUpdatedAt =
-    subscription.updatedAt
-      ? new Date(subscription.updatedAt).getTime()
-      : 0;
+      if (!paymentRecord) {
+        throw new ApiError(404, "Payment record was not found");
+      }
 
-  const paymentUpdatedAt =
-    paymentRecord.updatedAt
-      ? new Date(paymentRecord.updatedAt).getTime()
-      : 0;
+      if (
+        paymentRecord.metadata?.purpose !==
+        "edutrack_subscription"
+      ) {
+        throw new ApiError(
+          400,
+          "Invalid EduTrack subscription payment"
+        );
+      }
 
-  const subscriptionAlreadyApplied =
-    paymentRecord.status === "success" &&
-    subscription.status === "active" &&
-    subscription.plan === intendedPlan &&
-    subscription.billingCycle === intendedCycle &&
-    subscriptionUpdatedAt >= paymentUpdatedAt &&
-    subscription.expiresAt;
+      // A completed payment must never apply the subscription twice.
+      if (
+        paymentRecord.status === "success" &&
+        paymentRecord.reconciled === true
+      ) {
+        result = {
+          alreadyProcessed: true,
+          reference,
+          schoolId: String(paymentRecord.schoolId),
+        };
 
-  if (subscriptionAlreadyApplied) {
-    // The subscription was saved, but school activation
-    // or the final reconciliation marker may have failed.
-    school.plan = subscription.plan;
-    school.billingCycle = subscription.billingCycle;
-    school.subscriptionStatus = "active";
-    school.billingStatus = "active";
+        receiptPaymentId = paymentRecord._id;
+        receiptSchoolId = paymentRecord.schoolId;
 
-    school.subscriptionStartedAt =
-      subscription.startsAt;
+        return;
+      }
 
-    school.subscriptionExpiresAt =
-      subscription.expiresAt;
+      const school = await School.findById(
+        paymentRecord.schoolId
+      ).session(session);
 
-    school.trialStartAt = null;
-    school.trialEndsAt = null;
+      if (!school) {
+        throw new ApiError(
+          404,
+          "School linked to payment was not found"
+        );
+      }
 
-    school.onboardingStatus = "active";
-    school.isActive = true;
+      if (!paymentRecord.subscriptionId) {
+        throw new ApiError(
+          400,
+          "Payment is missing its subscription reference"
+        );
+      }
 
-    await school.save();
+      const subscription = await Subscription.findOne({
+        _id: paymentRecord.subscriptionId,
+        schoolId: school._id,
+      }).session(session);
 
-    paymentRecord.reconciled = true;
-    paymentRecord.reconciledAt = new Date();
+      if (!subscription) {
+        throw new ApiError(
+          404,
+          "Subscription linked to payment was not found"
+        );
+      }
 
-    await paymentRecord.save();
+      // Handle old partially processed payments conservatively.
+      // Never calculate a second renewal period from an unknown state.
+      if (paymentRecord.status === "success") {
+        const schoolAlreadyMatches =
+          subscription.status === "active" &&
+          subscription.plan === intendedPlan &&
+          subscription.billingCycle === intendedCycle &&
+          school.plan === subscription.plan &&
+          school.billingCycle === subscription.billingCycle &&
+          school.subscriptionStatus === "active" &&
+          school.billingStatus === "active" &&
+          school.isActive === true &&
+          school.subscriptionExpiresAt &&
+          subscription.expiresAt &&
+          new Date(school.subscriptionExpiresAt).getTime() ===
+            new Date(subscription.expiresAt).getTime();
 
-    await sendVerifiedSubscriptionReceipt(
-      paymentRecord,
-      school
-    );
+        if (!schoolAlreadyMatches) {
+          throw new ApiError(
+            409,
+            "Payment was previously marked successful but activation is incomplete. Manual reconciliation is required to avoid applying a renewal twice."
+          );
+        }
 
-    return {
-      processed: true,
-      recovered: true,
-      reference,
-      schoolId: String(school._id),
-      plan: subscription.plan,
-      billingCycle: subscription.billingCycle,
-      subscriptionStatus: subscription.status,
-      expiresAt: subscription.expiresAt,
-    };
-  }
+        paymentRecord.reconciled = true;
+        paymentRecord.reconciledAt = new Date();
 
-  // -----------------------------------------
-  // VALIDATE SUBSCRIPTION ACTION
-  // -----------------------------------------
+        await paymentRecord.save({ session });
 
-  let previousSubscription = null;
+        result = {
+          processed: true,
+          recovered: true,
+          reference,
+          schoolId: String(school._id),
+          plan: subscription.plan,
+          billingCycle: subscription.billingCycle,
+          subscriptionStatus: subscription.status,
+          expiresAt: subscription.expiresAt,
+        };
 
-  // Only require the previous active subscription
-  // when an upgrade still needs to be applied.
-  if (
-    action === "upgrade" &&
-    paymentRecord.status !== "success"
-  ) {
-    previousSubscription = await Subscription.findOne({
-      schoolId: school._id,
-      _id: { $ne: subscription._id },
-      status: "active",
-      expiresAt: { $gt: now },
-    }).sort({
-      expiresAt: -1,
-      createdAt: -1,
+        receiptPaymentId = paymentRecord._id;
+        receiptSchoolId = school._id;
+
+        return;
+      }
+
+      // Only pending or processing payments may be newly applied.
+      if (
+        !["pending", "processing"].includes(paymentRecord.status)
+      ) {
+        throw new ApiError(
+          409,
+          `Payment cannot be processed from status: ${paymentRecord.status}`
+        );
+      }
+
+      const now = new Date();
+
+      let previousSubscription = null;
+
+      if (action === "upgrade") {
+        previousSubscription = await Subscription.findOne({
+          schoolId: school._id,
+          _id: { $ne: subscription._id },
+          status: "active",
+          expiresAt: { $gt: now },
+        })
+          .sort({ expiresAt: -1, createdAt: -1 })
+          .session(session);
+
+        if (!previousSubscription) {
+          throw new ApiError(
+            409,
+            "No active subscription was found to upgrade"
+          );
+        }
+
+        if (intendedPlan === previousSubscription.plan) {
+          throw new ApiError(
+            409,
+            "Choose a different plan to upgrade"
+          );
+        }
+      }
+
+      if (
+        action === "renewal" &&
+        intendedPlan !== subscription.plan
+      ) {
+        throw new ApiError(
+          409,
+          "Renewal plan does not match the current subscription plan"
+        );
+      }
+
+      // Calculate the billing period exactly once.
+      const currentExpiry = subscription.expiresAt
+        ? new Date(subscription.expiresAt)
+        : null;
+
+      const startsAt =
+        action === "renewal" &&
+        currentExpiry &&
+        currentExpiry > now
+          ? currentExpiry
+          : paidAt;
+
+      const expiresAt = calculateSubscriptionExpiry(
+        startsAt,
+        intendedCycle
+      );
+
+      // Save verified payment data.
+      paymentRecord.status = "success";
+      paymentRecord.paidAt = paidAt;
+      paymentRecord.reconciled = false;
+      paymentRecord.reconciledAt = null;
+
+      paymentRecord.gatewayResponse = {
+        status: transaction.status,
+        reference: transaction.reference,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        paid_at: transaction.paid_at,
+      };
+
+      await paymentRecord.save({ session });
+
+      // Activate the subscription.
+      subscription.plan = intendedPlan;
+      subscription.billingCycle = intendedCycle;
+      subscription.status = "active";
+      subscription.isTrial = false;
+      subscription.startsAt = startsAt;
+      subscription.expiresAt = expiresAt;
+      subscription.trialEndsAt = null;
+      subscription.amount = verifiedAmount;
+      subscription.failedPaymentAttempts = 0;
+
+      await subscription.save({ session });
+
+      // Expire the previous subscription for upgrades.
+      if (action === "upgrade" && previousSubscription) {
+        previousSubscription.status = "expired";
+        await previousSubscription.save({ session });
+      }
+
+      // Activate the school.
+      school.plan = intendedPlan;
+      school.billingCycle = intendedCycle;
+      school.subscriptionStatus = "active";
+      school.billingStatus = "active";
+      school.subscriptionStartedAt = startsAt;
+      school.subscriptionExpiresAt = expiresAt;
+      school.trialStartAt = null;
+      school.trialEndsAt = null;
+      school.onboardingStatus = "active";
+      school.isActive = true;
+
+      await school.save({ session });
+
+      // This marker is committed in the same transaction
+      // as the payment, subscription and school changes.
+      paymentRecord.reconciled = true;
+      paymentRecord.reconciledAt = new Date();
+
+      await paymentRecord.save({ session });
+
+      result = {
+        processed: true,
+        action,
+        reference,
+        schoolId: String(school._id),
+        plan: subscription.plan,
+        billingCycle: subscription.billingCycle,
+        subscriptionStatus: subscription.status,
+        expiresAt,
+      };
+
+      receiptPaymentId = paymentRecord._id;
+      receiptSchoolId = school._id;
     });
 
-    if (!previousSubscription) {
-      throw new ApiError(
-        409,
-        "No active subscription was found to upgrade"
-      );
-    }
-
-    if (
-      intendedPlan === previousSubscription.plan
-    ) {
-      throw new ApiError(
-        409,
-        "Choose a different plan to upgrade"
-      );
-    }
+  } finally {
+    await session.endSession();
   }
 
-  if (
-    action === "renewal" &&
-    intendedPlan !== subscription.plan
-  ) {
-    throw new ApiError(
-      409,
-      "Renewal plan does not match the current subscription plan"
+  // Send receipt only after the transaction commits.
+  // Receipt email failure must not undo activation.
+  if (receiptPaymentId && receiptSchoolId) {
+    const paymentForReceipt = await SubPayment.findById(
+      receiptPaymentId
     );
+
+    const schoolForReceipt = await School.findById(
+      receiptSchoolId
+    );
+
+    if (paymentForReceipt && schoolForReceipt) {
+      await sendVerifiedSubscriptionReceipt(
+        paymentForReceipt,
+        schoolForReceipt
+      );
+    }
   }
 
-  // -----------------------------------------
-  // CALCULATE SUBSCRIPTION PERIOD
-  // -----------------------------------------
-
-  const currentExpiry = subscription.expiresAt
-    ? new Date(subscription.expiresAt)
-    : null;
-
-  // For an interrupted renewal, the subscription
-  // still contains its previous expiry if the earlier
-  // execution did not save the subscription.
-  const startsAt =
-    action === "renewal" &&
-    currentExpiry &&
-    currentExpiry > now
-      ? currentExpiry
-      : paidAt;
-
-  const expiresAt = calculateSubscriptionExpiry(
-    startsAt,
-    intendedCycle
-  );
-
-  // -----------------------------------------
-  // SAVE VERIFIED PAYMENT
-  // -----------------------------------------
-
-  paymentRecord.status = "success";
-  paymentRecord.paidAt = paidAt;
-
-  paymentRecord.gatewayResponse = {
-    status: transaction.status,
-    reference: transaction.reference,
-    amount: transaction.amount,
-    currency: transaction.currency,
-    paid_at: transaction.paid_at,
-  };
-
-  // Mark as not fully reconciled until all related
-  // records have been successfully saved.
-  paymentRecord.reconciled = false;
-
-  await paymentRecord.save();
-
-  // -----------------------------------------
-  // ACTIVATE SUBSCRIPTION
-  // -----------------------------------------
-
-  subscription.plan = intendedPlan;
-  subscription.billingCycle = intendedCycle;
-
-  subscription.status = "active";
-  subscription.isTrial = false;
-
-  subscription.startsAt = startsAt;
-  subscription.expiresAt = expiresAt;
-
-  subscription.trialEndsAt = null;
-  subscription.amount = verifiedAmount;
-  subscription.failedPaymentAttempts = 0;
-
-  await subscription.save();
-
-  // Expire the previous subscription after the new
-  // subscription has been saved successfully.
-  if (
-    action === "upgrade" &&
-    previousSubscription
-  ) {
-    previousSubscription.status = "expired";
-
-    await previousSubscription.save();
-  }
-
-  // -----------------------------------------
-  // ACTIVATE SCHOOL
-  // -----------------------------------------
-
-  school.plan = intendedPlan;
-  school.billingCycle = intendedCycle;
-
-  school.subscriptionStatus = "active";
-  school.billingStatus = "active";
-
-  school.subscriptionStartedAt = startsAt;
-  school.subscriptionExpiresAt = expiresAt;
-
-  school.trialStartAt = null;
-  school.trialEndsAt = null;
-
-  school.onboardingStatus = "active";
-  school.isActive = true;
-
-  await school.save();
-
-  // -----------------------------------------
-  // MARK RECONCILIATION COMPLETE
-  // -----------------------------------------
-
-  paymentRecord.reconciled = true;
-  paymentRecord.reconciledAt = new Date();
-
-  await paymentRecord.save();
-
-  // Receipt delivery happens only after the payment,
-  // subscription, and school records are synchronized.
-  // Email failure must not reverse school activation.
-  await sendVerifiedSubscriptionReceipt(
-    paymentRecord,
-    school
-  );
-
-  return {
-    processed: true,
-    action,
-    reference,
-    schoolId: String(school._id),
-    plan: subscription.plan,
-    billingCycle: subscription.billingCycle,
-    subscriptionStatus: subscription.status,
-    expiresAt,
-  };
+  return result;
 }
