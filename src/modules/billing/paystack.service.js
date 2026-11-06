@@ -447,13 +447,30 @@ if (!metadataMatches) {
   try {
     await session.withTransaction(async () => {
       // Always reload the payment inside the transaction.
-      const paymentRecord = await SubPayment.findOne({
-        reference,
-      }).session(session);
+      let paymentRecord = await SubPayment.findOne({
+  reference,
+}).session(session);
 
-      if (!paymentRecord) {
-        throw new ApiError(404, "Payment record was not found");
-      }
+// Recover by the saved payment ID if the gateway reference differs.
+if (
+  !paymentRecord &&
+  paymentId &&
+  mongoose.isValidObjectId(paymentId)
+) {
+  paymentRecord = await SubPayment.findOne({
+    _id: paymentId,
+    schoolId: initialPayment.schoolId,
+    subscriptionId: initialPayment.subscriptionId,
+    "metadata.purpose": "edutrack_subscription",
+  }).session(session);
+}
+
+if (!paymentRecord) {
+  throw new ApiError(
+    404,
+    "Payment record could not be recovered inside the transaction"
+  );
+}
 
       if (
         paymentRecord.metadata?.purpose !==
