@@ -182,10 +182,87 @@ async function initializeSubscriptionCheckout(user, payload, action) {
   }
 
   // Find the current active or trial subscription first.
-  let currentSubscription = await Subscription.findOne({
+  let currentSubscription;
+
+if (action === "upgrade") {
+  const now = new Date();
+
+  currentSubscription = await Subscription.findOne({
+    schoolId: school._id,
+    status: "active",
+    isTrial: { $ne: true },
+    expiresAt: { $gt: now },
+  }).sort({ expiresAt: -1, createdAt: -1 });
+
+  if (!currentSubscription) {
+    throw new ApiError(
+      400,
+      "Only an active, unexpired paid subscription can be upgraded."
+    );
+  }
+
+  if (school.billingStatus === "blocked") {
+    throw new ApiError(
+      403,
+      "This school's billing account is blocked. Contact support."
+    );
+  }
+
+  const pendingUpgradePayment = await SubPayment.findOne({
+    schoolId: school._id,
+    status: { $in: ["pending", "processing"] },
+    "metadata.purpose": "edutrack_subscription",
+    "metadata.action": "upgrade",
+  });
+
+  if (pendingUpgradePayment) {
+    throw new ApiError(
+      409,
+      "An upgrade payment is already awaiting confirmation. Resolve that payment before starting another upgrade."
+    );
+  }
+} else {
+  currentSubscription = await Subscription.findOne({
     schoolId: school._id,
     status: { $in: ["active", "trial"] },
   }).sort({ expiresAt: -1, createdAt: -1 });
+
+  if (!currentSubscription) {
+    currentSubscription = await Subscription.findOne({
+      schoolId: school._id,
+      status: "pending",
+    }).sort({ createdAt: -1 });
+  }
+}
+
+  // Only an active, paid, unexpired subscription can be upgraded.
+  if (
+    !currentSubscription ||
+    currentSubscription.isTrial === true ||
+    !currentSubscription.expiresAt ||
+    new Date(currentSubscription.expiresAt) <= now
+  ) {
+    throw new ApiError(
+      400,
+      "Only an active paid subscription can be upgraded. Please choose a subscription plan first."
+    );
+  }
+
+  // Prevent multiple unresolved upgrade checkouts.
+  const pendingUpgradePayment = await SubPayment.findOne({
+    schoolId: school._id,
+    status: { $in: ["pending", "processing"] },
+    "metadata.purpose": "edutrack_subscription",
+    "metadata.action": "upgrade",
+  });
+
+  if (pendingUpgradePayment) {
+    throw new ApiError(
+      409,
+      "An upgrade payment is already awaiting confirmation. Please verify or resolve that payment before starting another upgrade."
+    );
+  }
+}
 
   // For schools without an active/trial subscription,
   // use their latest pending subscription.
