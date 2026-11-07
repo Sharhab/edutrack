@@ -633,15 +633,20 @@ export async function handlePaystackWebhook(event) {
       // Renewal extends an unexpired subscription; new subscriptions
       // and upgrades begin at the verified payment time.
       const currentExpiry = subscription.expiresAt
-        ? new Date(subscription.expiresAt)
-        : null;
+  ? new Date(subscription.expiresAt)
+  : null;
 
-      const startsAt =
-        action === "renewal" &&
-        currentExpiry &&
-        currentExpiry > now
-          ? currentExpiry
-          : paidAt;
+const isExistingPaidRenewal =
+  action === "renewal" &&
+  subscription.status === "active" &&
+  subscription.isTrial !== true;
+
+const startsAt =
+  isExistingPaidRenewal &&
+  currentExpiry &&
+  currentExpiry > now
+    ? currentExpiry
+    : paidAt;
 
       const expiresAt = calculateSubscriptionExpiry(
         startsAt,
