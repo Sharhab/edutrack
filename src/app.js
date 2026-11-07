@@ -97,10 +97,11 @@ app.use(
       const requestPath = req.originalUrl?.split("?")[0];
 
       const isPaystackWebhook =
-        requestPath === "/api/finance/paystack/webhook" ||
-        requestPath === "/api/finance/fees/payments/paystack/webhook" ||
-        requestPath?.endsWith("/onboarding/paystack/webhook");
-
+  requestPath === "/api/finance/paystack/webhook" ||
+  requestPath === "/api/finance/fees/payments/paystack/webhook" ||
+  requestPath === "/api/billing/paystack/webhook" ||
+  requestPath?.endsWith("/onboarding/paystack/webhook");
+      
       if (isPaystackWebhook) {
         req.rawBody = Buffer.from(buf);
       }
