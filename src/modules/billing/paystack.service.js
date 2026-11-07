@@ -620,16 +620,22 @@ export async function handlePaystackWebhook(event) {
         }
       }
 
-      if (
-        action === "renewal" &&
-        intendedPlan !== subscription.plan
-      ) {
-        throw new ApiError(
-          409,
-          "Renewal plan does not match the current subscription plan"
-        );
-      }
+      // A paid active subscription can only renew on its existing plan.
+// A trial subscription may convert to any selected plan.
+const isActivePaidSubscription =
+  subscription.status === "active" &&
+  subscription.isTrial !== true;
 
+if (
+  action === "renewal" &&
+  isActivePaidSubscription &&
+  intendedPlan !== subscription.plan
+) {
+  throw new ApiError(
+    409,
+    "An active paid subscription can only renew on its current plan. Use the upgrade option to select a higher plan."
+  );
+}
       // Renewal extends an unexpired subscription; new subscriptions
       // and upgrades begin at the verified payment time.
       const currentExpiry = subscription.expiresAt
