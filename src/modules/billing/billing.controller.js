@@ -6,7 +6,8 @@ import {
   verifyPaystackPayment,
   handlePaystackWebhook,
 } from "./paystack.service.js";
-
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { env } from "../../config/env.js";
 import { ApiError } from "../../utils/apiError.js";
 
 import {
@@ -332,5 +333,47 @@ export async function getBillingHistoryHandler(req, res) {
       success: false,
       message: "Failed to fetch billing history",
     });
+  }
+}
+
+export async function subscriptionPaystackWebhookHandler(req, res) {
+  try {
+    const signature = req.headers["x-paystack-signature"];
+
+    if (
+      typeof signature !== "string" ||
+      !/^[a-f0-9]{128}$/i.test(signature) ||
+      !Buffer.isBuffer(req.rawBody)
+    ) {
+      return res.sendStatus(401);
+    }
+
+    const expectedSignature = createHmac(
+      "sha512",
+      env.PAYSTACK_SECRET_KEY
+    )
+      .update(req.rawBody)
+      .digest("hex");
+
+    const receivedBuffer = Buffer.from(signature, "hex");
+    const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+    if (
+      receivedBuffer.length !== expectedBuffer.length ||
+      !timingSafeEqual(receivedBuffer, expectedBuffer)
+    ) {
+      return res.sendStatus(401);
+    }
+
+    if (req.body?.event !== "charge.success") {
+      return res.sendStatus(200);
+    }
+
+    await handlePaystackWebhook(req.body);
+
+    return res.sendStatus(200);
+  } catch (error) {
+    console.error("SUBSCRIPTION PAYSTACK WEBHOOK ERROR:", error);
+    return res.sendStatus(500);
   }
 }
