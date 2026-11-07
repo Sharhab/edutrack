@@ -22,6 +22,7 @@ import {
   getBillingHistoryHandler,
   upgradeSubscriptionHandler,
   initializeBillingPaymentHandler,
+  subscriptionPaystackWebhookHandler,
 } from "./billing.controller.js";
 
 const router = express.Router();
@@ -37,6 +38,11 @@ router.post(
 router.get(
   "/paystack/verify/:reference",
   asyncHandler(verifyPaystackHandler)
+);
+
+router.post(
+  "/paystack/webhook",
+  asyncHandler(subscriptionPaystackWebhookHandler)
 );
 
 // Existing billing routes require authentication.
