@@ -152,22 +152,28 @@ export default function UpgradePage() {
         hasActivePaidSubscription &&
         currentBilling?.plan !== plan;
 
-      // Use the upgrade endpoint only when changing an active paid plan.
-      // Renewal/new checkout continues using the existing Paystack route.
+      // A higher plan uses the upgrade endpoint.
+      // Same-plan checkout uses the renewal/checkout endpoint.
       const endpoint = isChangingPlan
         ? "/billing/upgrade"
         : "/billing/paystack/initialize";
 
+      // Paystack appends its transaction reference to this URL.
+      const callbackUrl = `${window.location.origin}/payment/success?type=subscription`;
+
       const response = await api.post(endpoint, {
         plan,
         billingCycle,
+        callbackUrl,
       });
 
       const checkoutUrl =
         response.data?.data?.authorizationUrl;
 
       if (!checkoutUrl) {
-        throw new Error("The server did not return a Paystack checkout URL.");
+        throw new Error(
+          "The server did not return a Paystack checkout URL."
+        );
       }
 
       window.location.assign(checkoutUrl);
@@ -191,9 +197,11 @@ export default function UpgradePage() {
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-400">
             EduTrack Billing
           </p>
+
           <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
             Choose your school plan
           </h1>
+
           <p className="mx-auto mt-3 max-w-2xl text-slate-400">
             Select a plan and billing period. Your payment will be
             verified by EduTrack before the subscription is activated.
@@ -211,14 +219,19 @@ export default function UpgradePage() {
 
         {currentBilling && (
           <section className="mb-8 rounded-2xl border border-slate-800 bg-slate-900 p-5">
-            <p className="text-sm text-slate-400">Current subscription</p>
+            <p className="text-sm text-slate-400">
+              Current subscription
+            </p>
+
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <span className="text-xl font-bold capitalize">
                 {currentBilling.plan}
               </span>
+
               <span className="rounded-full bg-slate-800 px-3 py-1 text-sm capitalize">
                 {currentBilling.subscriptionStatus}
               </span>
+
               {currentBilling.subscriptionExpiresAt && (
                 <span className="text-sm text-slate-400">
                   Expires{" "}
@@ -227,6 +240,7 @@ export default function UpgradePage() {
                   ).toLocaleDateString()}
                 </span>
               )}
+
               {currentBilling.trialEndsAt &&
                 currentBilling.subscriptionStatus === "trial" && (
                   <span className="text-sm text-slate-400">
@@ -258,9 +272,11 @@ export default function UpgradePage() {
                 }`}
               >
                 {cycle}
+
                 {cycle === "quarterly" && (
                   <span className="ml-2 text-xs">Save 10%</span>
                 )}
+
                 {cycle === "yearly" && (
                   <span className="ml-2 text-xs">Save 20%</span>
                 )}
@@ -300,6 +316,7 @@ export default function UpgradePage() {
                   <span className="text-3xl font-bold sm:text-4xl">
                     ₦{price.toLocaleString("en-NG")}
                   </span>
+
                   <span className="ml-2 text-sm text-slate-400">
                     / {billingCycle}
                   </span>
@@ -338,12 +355,14 @@ export default function UpgradePage() {
               <span className="text-slate-400">Plan</span>
               <span className="font-semibold capitalize">{plan}</span>
             </div>
+
             <div className="flex justify-between gap-4">
               <span className="text-slate-400">Billing period</span>
               <span className="font-semibold capitalize">
                 {billingCycle}
               </span>
             </div>
+
             <div className="flex justify-between gap-4 border-t border-slate-800 pt-4">
               <span className="text-lg">Total</span>
               <span className="text-2xl font-bold text-cyan-400">
