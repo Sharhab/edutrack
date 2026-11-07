@@ -329,13 +329,17 @@ if (action === "upgrade") {
     status: "pending",
     initiatedAt: new Date(),
     metadata: {
-      purpose: "edutrack_subscription",
-      action,
-      schoolId: String(school._id),
-      subscriptionId: String(paymentSubscription._id),
-      plan,
-      billingCycle,
-    },
+  purpose: "edutrack_subscription",
+  action,
+  schoolId: String(school._id),
+  subscriptionId: String(paymentSubscription._id),
+  upgradeFromSubscriptionId:
+    action === "upgrade"
+      ? String(currentSubscription._id)
+      : null,
+  plan,
+  billingCycle,
+},
   });
 
   // Store the payment's own ID in its metadata.
