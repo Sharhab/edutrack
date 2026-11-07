@@ -4,30 +4,36 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import api from "../../../lib/axios";
 
+type PaymentStatus = "verifying" | "success" | "error";
+
 function PaymentSuccessContent() {
   const searchParams = useSearchParams();
 
   const reference =
-    searchParams.get("reference") || searchParams.get("trxref");
+    searchParams.get("reference") ||
+    searchParams.get("trxref");
 
   const schoolId = searchParams.get("schoolId");
 
-  const [status, setStatus] = useState<
-    "verifying" | "success" | "error"
-  >("verifying");
+  const paymentType = searchParams.get("type");
+  const isSubscriptionPayment = paymentType === "subscription";
+
+  const [status, setStatus] = useState<PaymentStatus>("verifying");
 
   const [message, setMessage] = useState(
     "Verifying your payment..."
   );
 
   useEffect(() => {
-    if (!reference || !schoolId) {
+    if (!reference || (!isSubscriptionPayment && !schoolId)) {
       setStatus("error");
+
       setMessage(
         !reference
           ? "Payment reference was not provided."
           : "School information was not provided. Please contact your school administrator."
       );
+
       return;
     }
 
@@ -35,23 +41,30 @@ function PaymentSuccessContent() {
 
     const verifyPayment = async () => {
       try {
-        const response = await api.get(
-          `/finance/paystack/verify/${encodeURIComponent(reference)}`,
-          {
-            params: { schoolId },
-          }
-        );
+        const response = isSubscriptionPayment
+          ? await api.get(
+              `/billing/paystack/verify/${encodeURIComponent(reference)}`
+            )
+          : await api.get(
+              `/finance/paystack/verify/${encodeURIComponent(reference)}`,
+              {
+                params: { schoolId },
+              }
+            );
 
         if (cancelled) return;
 
         if (response.data?.success) {
           setStatus("success");
+
           setMessage(
             response.data?.data?.message ||
+              response.data?.message ||
               "Payment verified successfully."
           );
         } else {
           setStatus("error");
+
           setMessage(
             response.data?.message ||
               "Payment verification failed."
@@ -62,13 +75,16 @@ function PaymentSuccessContent() {
 
         console.error(
           "PAYMENT VERIFICATION ERROR:",
-          error?.response?.data || error?.message || error
+          error?.response?.data ||
+            error?.message ||
+            error
         );
 
         setStatus("error");
+
         setMessage(
           error?.response?.data?.message ||
-            "We could not verify this payment. Please contact your school administrator."
+            "We could not verify this payment. Please contact support before making another payment."
         );
       }
     };
@@ -78,10 +94,10 @@ function PaymentSuccessContent() {
     return () => {
       cancelled = true;
     };
-  }, [reference, schoolId]);
+  }, [reference, schoolId, isSubscriptionPayment]);
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50 px-6">
+    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-6">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-sm">
         {status === "verifying" && (
           <>
@@ -110,6 +126,12 @@ function PaymentSuccessContent() {
             <p className="mt-2 text-sm text-gray-600">
               {message}
             </p>
+
+            {isSubscriptionPayment && (
+              <p className="mt-3 text-sm text-gray-500">
+                Your EduTrack subscription payment has been verified.
+              </p>
+            )}
           </>
         )}
 
@@ -125,6 +147,11 @@ function PaymentSuccessContent() {
 
             <p className="mt-2 text-sm text-gray-600">
               {message}
+            </p>
+
+            <p className="mt-3 text-xs text-gray-500">
+              Do not make another payment until the status of this
+              transaction has been checked.
             </p>
           </>
         )}
