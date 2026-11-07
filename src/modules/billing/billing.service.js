@@ -358,14 +358,17 @@ if (action === "upgrade") {
       callbackUrl: payload.callbackUrl,
 
       metadata: {
-        purpose: "edutrack_subscription",
-        action,
-        schoolId: String(school._id),
-        subscriptionId: String(paymentSubscription._id),
-        paymentId: String(paymentRecord._id),
-        plan,
-        billingCycle,
-      },
+  purpose: "edutrack_subscription",
+  action,
+  schoolId: String(school._id),
+  subscriptionId: String(paymentSubscription._id),
+  upgradeFromSubscriptionId:
+    action === "upgrade"
+      ? String(currentSubscription._id)
+      : null,
+  plan,
+  billingCycle,
+},
     });
 
     // Ensure Paystack returned the exact reference we created.
