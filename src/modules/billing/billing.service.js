@@ -260,29 +260,33 @@ if (action === "upgrade") {
   }
 
   if (action === "upgrade") {
-    if (!currentSubscription) {
-      throw new ApiError(
-        400,
-        "No existing subscription found. Use the subscription checkout instead."
-      );
-    }
-
-    if (currentSubscription.plan === plan) {
-      throw new ApiError(
-        400,
-        "Choose a different plan to upgrade."
-      );
-    }
+  if (!currentSubscription) {
+    throw new ApiError(
+      400,
+      "No existing subscription found. Use the subscription checkout instead."
+    );
   }
 
-  if (action === "renewal" && currentSubscription) {
-    if (currentSubscription.plan !== plan) {
-      throw new ApiError(
-        400,
-        "Renewal must use the current plan. Use upgrade to change plans."
-      );
-    }
+  const planRank = {
+    starter: 1,
+    growth: 2,
+    premium: 3,
+  };
+
+  const currentRank = planRank[currentSubscription.plan];
+  const selectedRank = planRank[plan];
+
+  if (!currentRank || !selectedRank) {
+    throw new ApiError(400, "Invalid subscription plan.");
   }
+
+  if (selectedRank <= currentRank) {
+    throw new ApiError(
+      400,
+      "Choose a higher plan to upgrade."
+    );
+  }
+}
 
   // Do not deactivate or modify an existing active subscription
   // before the new payment has been verified.
