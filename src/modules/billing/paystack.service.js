@@ -6,6 +6,7 @@ import { Subscription } from "./subscription.model.js";
 import { SubPayment } from "./sub-payment.model.js";
 import { sendSubscriptionPaymentReceiptEmail } from "../../services/email.service.js";
 import mongoose from "mongoose";
+
 /**
  * =========================================
  * SAFE PAYSTACK REQUEST
@@ -175,6 +176,7 @@ function calculateSubscriptionExpiry(startDate, billingCycle) {
 
   return expiry;
 }
+
 /**
  * =========================================
  * SEND RECEIPT AFTER VERIFIED PAYMENT
@@ -219,9 +221,9 @@ async function sendVerifiedSubscriptionReceipt(paymentRecord, school) {
       to: school.email,
       schoolName: school.name,
       receiptNumber: paymentRecord.receiptNumber,
-     reference:
-  paymentRecord.gatewayResponse?.reference ||
-  paymentRecord.reference,
+      reference:
+        paymentRecord.gatewayResponse?.reference ||
+        paymentRecord.reference,
       amount: paymentRecord.amount,
       currency: paymentRecord.currency || "NGN",
       plan: paymentRecord.metadata?.plan || "EduTrack subscription",
@@ -257,19 +259,6 @@ async function sendVerifiedSubscriptionReceipt(paymentRecord, school) {
     );
   }
 }
-/**
- * =========================================
- * HANDLE PAYSTACK SUBSCRIPTION WEBHOOK
- *
- * Supports:
- * - new_subscription
- * - upgrade
- * - renewal
- *
- * The controller must verify the Paystack
- * webhook signature before calling this.
- * =========================================
- */
 
 /**
  * =========================================
@@ -292,85 +281,70 @@ async function sendVerifiedSubscriptionReceipt(paymentRecord, school) {
  * signature before calling this function.
  * =========================================
  */
-
 export async function handlePaystackWebhook(event) {
   if (event?.event !== "charge.success") {
     return { ignored: true };
   }
 
-  const reference = String(
-    event?.data?.reference || ""
-  ).trim();
+  const reference = String(event?.data?.reference || "").trim();
 
   if (!reference) {
     throw new ApiError(400, "Missing Paystack payment reference");
   }
 
-  // Load the original payment.
-const eventMetadata = event?.data?.metadata || {};
+  const eventMetadata = event?.data?.metadata || {};
+  const paymentId = String(eventMetadata.paymentId || "").trim();
 
-const paymentId = String(
-  eventMetadata.paymentId || ""
-).trim();
+  // Find the payment by its exact EduTrack reference first.
+  let initialPayment = await SubPayment.findOne({ reference });
 
-let initialPayment = await SubPayment.findOne({
-  reference,
-});
-
-if (!initialPayment && paymentId && mongoose.isValidObjectId(paymentId)) {
-  initialPayment = await SubPayment.findOne({
-    _id: paymentId,
-    "metadata.purpose": "edutrack_subscription",
-  });
-}
-
-if (!initialPayment) {
-  throw new ApiError(
-    404,
-    "No matching subscription payment was found for this Paystack transaction"
-  );
-}
+  // Retain the existing payment-ID recovery path, but all transaction
+  // details and metadata are still verified before any database changes.
+  if (
+    !initialPayment &&
+    paymentId &&
+    mongoose.isValidObjectId(paymentId)
+  ) {
+    initialPayment = await SubPayment.findOne({
+      _id: paymentId,
+      "metadata.purpose": "edutrack_subscription",
+    });
+  }
 
   if (!initialPayment) {
     throw new ApiError(
       404,
-      "No recorded subscription payment exists for this reference"
+      "No matching subscription payment was found for this Paystack transaction"
     );
   }
 
-  if (
-    initialPayment.metadata?.purpose !==
-    "edutrack_subscription"
-  ) {
+  if (initialPayment.metadata?.purpose !== "edutrack_subscription") {
     throw new ApiError(
       400,
       "Payment reference is not an EduTrack subscription payment"
     );
   }
 
-  // Validate the signed Paystack event metadata against our saved record.
-const metadataMatches =
-  String(initialPayment.schoolId) ===
-    String(eventMetadata.schoolId) &&
-  String(initialPayment.subscriptionId) ===
-    String(eventMetadata.subscriptionId) &&
-  String(initialPayment._id) ===
-    String(eventMetadata.paymentId) &&
-  String(initialPayment.metadata?.plan) ===
-    String(eventMetadata.plan) &&
-  String(initialPayment.metadata?.billingCycle) ===
-    String(eventMetadata.billingCycle) &&
-  String(
-    initialPayment.metadata?.upgradeFromSubscriptionId || ""
-  ) ===
-    String(eventMetadata.upgradeFromSubscriptionId || "");
-  
-if (!metadataMatches) {
-  throw new ApiError(
-    409,
-    "Paystack metadata does not match the saved EduTrack payment"
-  );
-}
+  // Validate Paystack's signed event metadata against the saved payment.
+  const metadataMatches =
+    String(initialPayment.schoolId) === String(eventMetadata.schoolId) &&
+    String(initialPayment.subscriptionId) ===
+      String(eventMetadata.subscriptionId) &&
+    String(initialPayment._id) === String(eventMetadata.paymentId) &&
+    String(initialPayment.metadata?.plan) ===
+      String(eventMetadata.plan) &&
+    String(initialPayment.metadata?.billingCycle) ===
+      String(eventMetadata.billingCycle) &&
+    String(initialPayment.metadata?.upgradeFromSubscriptionId || "") ===
+      String(eventMetadata.upgradeFromSubscriptionId || "");
+
+  if (!metadataMatches) {
+    throw new ApiError(
+      409,
+      "Paystack metadata does not match the saved EduTrack payment"
+    );
+  }
+
   // Verify directly with Paystack before changing any records.
   const verification = await verifyPaystackPayment(reference);
   const transaction = verification?.data;
@@ -381,10 +355,7 @@ if (!metadataMatches) {
     String(transaction?.reference) !== reference ||
     String(transaction?.currency).toUpperCase() !== "NGN"
   ) {
-    throw new ApiError(
-      409,
-      "Paystack transaction verification failed"
-    );
+    throw new ApiError(409, "Paystack transaction verification failed");
   }
 
   const verifiedAmount = Number(transaction.amount) / 100;
@@ -405,16 +376,12 @@ if (!metadataMatches) {
 
   const intendedPlan = initialPayment.metadata?.plan;
   const intendedCycle = initialPayment.metadata?.billingCycle;
-  const action =
-    initialPayment.metadata?.action || "new_subscription";
+  const action = initialPayment.metadata?.action || "new_subscription";
 
   const allowedPlans = ["starter", "growth", "premium"];
   const allowedCycles = ["monthly", "quarterly", "yearly"];
-  const allowedActions = [
-    "new_subscription",
-    "upgrade",
-    "renewal",
-  ];
+  const allowedActions = ["new_subscription", "upgrade", "renewal"];
+  const planRank = { starter: 1, growth: 2, premium: 3 };
 
   if (!allowedPlans.includes(intendedPlan)) {
     throw new ApiError(400, "Invalid plan stored in payment record");
@@ -450,43 +417,43 @@ if (!metadataMatches) {
 
   try {
     await session.withTransaction(async () => {
-      // Always reload the payment inside the transaction.
-      let paymentRecord = await SubPayment.findOne({
-  reference,
-}).session(session);
+      // Reload the payment inside the transaction.
+      let paymentRecord = await SubPayment.findOne({ reference }).session(
+        session
+      );
 
-// Recover by the saved payment ID if the gateway reference differs.
-if (
-  !paymentRecord &&
-  paymentId &&
-  mongoose.isValidObjectId(paymentId)
-) {
-  paymentRecord = await SubPayment.findOne({
-    _id: paymentId,
-    schoolId: initialPayment.schoolId,
-    subscriptionId: initialPayment.subscriptionId,
-    "metadata.purpose": "edutrack_subscription",
-  }).session(session);
-}
-
-if (!paymentRecord) {
-  throw new ApiError(
-    404,
-    "Payment record could not be recovered inside the transaction"
-  );
-}
-
+      // Recover by saved payment ID if the reference lookup did not find it.
       if (
-        paymentRecord.metadata?.purpose !==
-        "edutrack_subscription"
+        !paymentRecord &&
+        paymentId &&
+        mongoose.isValidObjectId(paymentId)
       ) {
+        paymentRecord = await SubPayment.findOne({
+          _id: paymentId,
+          schoolId: initialPayment.schoolId,
+          subscriptionId: initialPayment.subscriptionId,
+          "metadata.purpose": "edutrack_subscription",
+        }).session(session);
+      }
+
+      if (!paymentRecord) {
         throw new ApiError(
-          400,
-          "Invalid EduTrack subscription payment"
+          404,
+          "Payment record could not be recovered inside the transaction"
         );
       }
 
-      // A completed payment must never apply the subscription twice.
+      if (
+        paymentRecord.metadata?.purpose !== "edutrack_subscription" ||
+        String(paymentRecord._id) !== String(initialPayment._id) ||
+        String(paymentRecord.schoolId) !== String(initialPayment.schoolId) ||
+        String(paymentRecord.subscriptionId) !==
+          String(initialPayment.subscriptionId)
+      ) {
+        throw new ApiError(409, "Payment record changed during reconciliation");
+      }
+
+      // A completed and reconciled payment must never be applied twice.
       if (
         paymentRecord.status === "success" &&
         paymentRecord.reconciled === true
@@ -499,13 +466,12 @@ if (!paymentRecord) {
 
         receiptPaymentId = paymentRecord._id;
         receiptSchoolId = paymentRecord.schoolId;
-
         return;
       }
 
-      const school = await School.findById(
-        paymentRecord.schoolId
-      ).session(session);
+      const school = await School.findById(paymentRecord.schoolId).session(
+        session
+      );
 
       if (!school) {
         throw new ApiError(
@@ -533,8 +499,8 @@ if (!paymentRecord) {
         );
       }
 
-      // Handle old partially processed payments conservatively.
-      // Never calculate a second renewal period from an unknown state.
+      // Recover a payment marked successful before reconciliation completed.
+      // Do not calculate another billing period from an uncertain state.
       if (paymentRecord.status === "success") {
         const schoolAlreadyMatches =
           subscription.status === "active" &&
@@ -557,9 +523,35 @@ if (!paymentRecord) {
           );
         }
 
+        // For an upgrade, also ensure the exact original subscription
+        // is no longer active before marking this payment reconciled.
+        if (action === "upgrade") {
+          const previousId =
+            paymentRecord.metadata?.upgradeFromSubscriptionId;
+
+          if (!previousId || !mongoose.isValidObjectId(previousId)) {
+            throw new ApiError(
+              409,
+              "Upgrade payment is missing its original subscription reference."
+            );
+          }
+
+          const previousStillActive = await Subscription.exists({
+            _id: previousId,
+            schoolId: school._id,
+            status: "active",
+          }).session(session);
+
+          if (previousStillActive) {
+            throw new ApiError(
+              409,
+              "The previous subscription is still active. Manual reconciliation is required."
+            );
+          }
+        }
+
         paymentRecord.reconciled = true;
         paymentRecord.reconciledAt = new Date();
-
         await paymentRecord.save({ session });
 
         result = {
@@ -575,14 +567,11 @@ if (!paymentRecord) {
 
         receiptPaymentId = paymentRecord._id;
         receiptSchoolId = school._id;
-
         return;
       }
 
       // Only pending or processing payments may be newly applied.
-      if (
-        !["pending", "processing"].includes(paymentRecord.status)
-      ) {
+      if (!["pending", "processing"].includes(paymentRecord.status)) {
         throw new ApiError(
           409,
           `Payment cannot be processed from status: ${paymentRecord.status}`
@@ -590,30 +579,43 @@ if (!paymentRecord) {
       }
 
       const now = new Date();
-
       let previousSubscription = null;
 
+      // Resolve and validate the exact subscription captured at checkout.
+      // Do this BEFORE activating the new subscription.
       if (action === "upgrade") {
+        const previousId =
+          paymentRecord.metadata?.upgradeFromSubscriptionId;
+
+        if (!previousId || !mongoose.isValidObjectId(previousId)) {
+          throw new ApiError(
+            409,
+            "Upgrade payment is missing its original subscription reference."
+          );
+        }
+
         previousSubscription = await Subscription.findOne({
+          _id: previousId,
           schoolId: school._id,
-          _id: { $ne: subscription._id },
           status: "active",
+          isTrial: { $ne: true },
           expiresAt: { $gt: now },
-        })
-          .sort({ expiresAt: -1, createdAt: -1 })
-          .session(session);
+        }).session(session);
 
         if (!previousSubscription) {
           throw new ApiError(
             409,
-            "No active subscription was found to upgrade"
+            "The original subscription is no longer active. Upgrade reconciliation was stopped."
           );
         }
 
-        if (intendedPlan === previousSubscription.plan) {
+        if (
+          !planRank[previousSubscription.plan] ||
+          planRank[intendedPlan] <= planRank[previousSubscription.plan]
+        ) {
           throw new ApiError(
             409,
-            "Choose a different plan to upgrade"
+            "The selected plan is not a higher tier than the current plan."
           );
         }
       }
@@ -628,7 +630,8 @@ if (!paymentRecord) {
         );
       }
 
-      // Calculate the billing period exactly once.
+      // Renewal extends an unexpired subscription; new subscriptions
+      // and upgrades begin at the verified payment time.
       const currentExpiry = subscription.expiresAt
         ? new Date(subscription.expiresAt)
         : null;
@@ -645,12 +648,11 @@ if (!paymentRecord) {
         intendedCycle
       );
 
-      // Save verified payment data.
+      // Save verified payment data in the same transaction.
       paymentRecord.status = "success";
       paymentRecord.paidAt = paidAt;
       paymentRecord.reconciled = false;
       paymentRecord.reconciledAt = null;
-
       paymentRecord.gatewayResponse = {
         status: transaction.status,
         reference: transaction.reference,
@@ -661,7 +663,7 @@ if (!paymentRecord) {
 
       await paymentRecord.save({ session });
 
-      // Activate the subscription.
+      // Activate the new subscription.
       subscription.plan = intendedPlan;
       subscription.billingCycle = intendedCycle;
       subscription.status = "active";
@@ -674,45 +676,13 @@ if (!paymentRecord) {
 
       await subscription.save({ session });
 
-      // Expire the previous subscription for upgrades.
-     if (action === "upgrade") {
-  const upgradeFromSubscriptionId =
-    paymentRecord.metadata?.upgradeFromSubscriptionId;
+      // Expire only the exact previous subscription captured at checkout.
+      if (action === "upgrade") {
+        previousSubscription.status = "expired";
+        await previousSubscription.save({ session });
+      }
 
-  if (
-    !upgradeFromSubscriptionId ||
-    !mongoose.isValidObjectId(upgradeFromSubscriptionId)
-  ) {
-    throw new ApiError(
-      409,
-      "Upgrade payment is missing its original subscription reference."
-    );
-  }
-
-  previousSubscription = await Subscription.findOne({
-    _id: upgradeFromSubscriptionId,
-    schoolId: school._id,
-    status: "active",
-    isTrial: { $ne: true },
-    expiresAt: { $gt: now },
-  }).session(session);
-
-  if (!previousSubscription) {
-    throw new ApiError(
-      409,
-      "The original subscription is no longer active. Upgrade reconciliation was stopped."
-    );
-  }
-
-  if (intendedPlan === previousSubscription.plan) {
-    throw new ApiError(
-      409,
-      "Choose a different plan to upgrade."
-    );
-  }
-}
-
-      // Activate the school.
+      // Activate the school only after the subscription updates are ready.
       school.plan = intendedPlan;
       school.billingCycle = intendedCycle;
       school.subscriptionStatus = "active";
@@ -726,11 +696,9 @@ if (!paymentRecord) {
 
       await school.save({ session });
 
-      // This marker is committed in the same transaction
-      // as the payment, subscription and school changes.
+      // Commit this marker atomically with payment and subscription updates.
       paymentRecord.reconciled = true;
       paymentRecord.reconciledAt = new Date();
-
       await paymentRecord.save({ session });
 
       result = {
@@ -747,21 +715,15 @@ if (!paymentRecord) {
       receiptPaymentId = paymentRecord._id;
       receiptSchoolId = school._id;
     });
-
   } finally {
     await session.endSession();
   }
 
-  // Send receipt only after the transaction commits.
-  // Receipt email failure must not undo activation.
+  // Send the receipt only after the database transaction commits.
+  // Email failure must never reverse a verified payment.
   if (receiptPaymentId && receiptSchoolId) {
-    const paymentForReceipt = await SubPayment.findById(
-      receiptPaymentId
-    );
-
-    const schoolForReceipt = await School.findById(
-      receiptSchoolId
-    );
+    const paymentForReceipt = await SubPayment.findById(receiptPaymentId);
+    const schoolForReceipt = await School.findById(receiptSchoolId);
 
     if (paymentForReceipt && schoolForReceipt) {
       await sendVerifiedSubscriptionReceipt(
