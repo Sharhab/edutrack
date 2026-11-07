@@ -359,8 +359,12 @@ const metadataMatches =
   String(initialPayment.metadata?.plan) ===
     String(eventMetadata.plan) &&
   String(initialPayment.metadata?.billingCycle) ===
-    String(eventMetadata.billingCycle);
-
+    String(eventMetadata.billingCycle) &&
+  String(
+    initialPayment.metadata?.upgradeFromSubscriptionId || ""
+  ) ===
+    String(eventMetadata.upgradeFromSubscriptionId || "");
+  
 if (!metadataMatches) {
   throw new ApiError(
     409,
@@ -671,10 +675,42 @@ if (!paymentRecord) {
       await subscription.save({ session });
 
       // Expire the previous subscription for upgrades.
-      if (action === "upgrade" && previousSubscription) {
-        previousSubscription.status = "expired";
-        await previousSubscription.save({ session });
-      }
+     if (action === "upgrade") {
+  const upgradeFromSubscriptionId =
+    paymentRecord.metadata?.upgradeFromSubscriptionId;
+
+  if (
+    !upgradeFromSubscriptionId ||
+    !mongoose.isValidObjectId(upgradeFromSubscriptionId)
+  ) {
+    throw new ApiError(
+      409,
+      "Upgrade payment is missing its original subscription reference."
+    );
+  }
+
+  previousSubscription = await Subscription.findOne({
+    _id: upgradeFromSubscriptionId,
+    schoolId: school._id,
+    status: "active",
+    isTrial: { $ne: true },
+    expiresAt: { $gt: now },
+  }).session(session);
+
+  if (!previousSubscription) {
+    throw new ApiError(
+      409,
+      "The original subscription is no longer active. Upgrade reconciliation was stopped."
+    );
+  }
+
+  if (intendedPlan === previousSubscription.plan) {
+    throw new ApiError(
+      409,
+      "Choose a different plan to upgrade."
+    );
+  }
+}
 
       // Activate the school.
       school.plan = intendedPlan;
