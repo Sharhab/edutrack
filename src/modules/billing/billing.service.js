@@ -337,6 +337,7 @@ if (action === "upgrade") {
   action,
   schoolId: String(school._id),
   subscriptionId: String(paymentSubscription._id),
+  paymentId: String(paymentRecord._id),
   upgradeFromSubscriptionId:
     action === "upgrade"
       ? String(currentSubscription._id)
