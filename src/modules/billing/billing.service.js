@@ -323,30 +323,28 @@ if (action === "upgrade") {
 
   // Create the payment record first.
   // This gives us a durable payment ID for reconciliation.
-  const paymentRecord = await SubPayment.create({
-    schoolId: school._id,
-    subscriptionId: paymentSubscription._id,
-    amount,
-    currency: "NGN",
-    method: "paystack",
-    reference,
-    status: "pending",
-    initiatedAt: new Date(),
-    metadata: {
-  purpose: "edutrack_subscription",
-  action,
-  schoolId: String(school._id),
-  subscriptionId: String(paymentSubscription._id),
-  paymentId: String(paymentRecord._id),
-  upgradeFromSubscriptionId:
-    action === "upgrade"
-      ? String(currentSubscription._id)
-      : null,
-  plan,
-  billingCycle,
-},
-  });
-
+const paymentRecord = await SubPayment.create({
+  schoolId: school._id,
+  subscriptionId: paymentSubscription._id,
+  amount,
+  currency: "NGN",
+  method: "paystack",
+  reference,
+  status: "pending",
+  initiatedAt: new Date(),
+  metadata: {
+    purpose: "edutrack_subscription",
+    action,
+    schoolId: String(school._id),
+    subscriptionId: String(paymentSubscription._id),
+    upgradeFromSubscriptionId:
+      action === "upgrade"
+        ? String(currentSubscription._id)
+        : null,
+    plan,
+    billingCycle,
+  },
+});
   // Store the payment's own ID in its metadata.
   paymentRecord.metadata = {
     ...(paymentRecord.metadata?.toObject?.() ||
