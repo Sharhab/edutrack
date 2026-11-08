@@ -236,12 +236,15 @@ function drawInfoRow(
 }
 
 async function buildReceipt(payment: PaymentRecord): Promise<jsPDF> {
-  if (payment.status !== "success") {
-    throw new Error(
-      "A receipt can only be generated for a successful payment.",
-    );
-  }
+  const normalizedStatus = String(payment.status || "")
+  .trim()
+  .toLowerCase();
 
+if (normalizedStatus !== "success") {
+  throw new Error(
+    "A receipt can only be generated for a successful payment.",
+  );
+}
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
