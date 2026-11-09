@@ -13,7 +13,7 @@ import {
   generateMissingStudentLoginAccounts,
   resetStudentPassword,
 } from "./student.service.js";
-
+import { logSchoolAdminActivity } from "../school-monitoring/school-admin-activity.service.js";
 
 export async function bulkUpsertStudentsHandler(req, res, next) {
   try {
@@ -31,6 +31,16 @@ console.log("==========================================");
       schoolId
     );
 
+    await logSchoolAdminActivity({
+  user: req.user,
+  action: "students_bulk_imported",
+  module: "students",
+  description: "Processed a bulk student import",
+  entityType: "Student",
+  metadata: {
+    submittedCount: parsed.students.length,
+  },
+});
     return res.status(200).json({
       success: true,
       message: "Students bulk processed successfully",
@@ -53,7 +63,20 @@ export async function generateStudentLoginAccountsHandler(req, res) {
 }
 export async function createStudentHandler(req, res) {
   const parsed = createStudentSchema.parse(req.body);
+
   const data = await createStudent(parsed, req.user.schoolId);
+
+  await logSchoolAdminActivity({
+    user: req.user,
+    action: "student_created",
+    module: "students",
+    description: "Enrolled a new student",
+    entityId: data?._id,
+    entityType: "Student",
+    metadata: {
+      admissionNumber: data?.admissionNumber || null,
+    },
+  });
 
   res.status(201).json({
     success: true,
@@ -61,7 +84,6 @@ export async function createStudentHandler(req, res) {
     data,
   });
 }
-
 export async function listStudentsHandler(req, res) {
   const data = await listStudents(req.user.schoolId, req.query);
 
@@ -99,7 +121,21 @@ export async function getStudentHandler(req, res) {
 
 export async function updateStudentHandler(req, res) {
   const parsed = updateStudentSchema.parse(req.body);
-  const data = await updateStudent(req.params.id, parsed, req.user.schoolId);
+
+  const data = await updateStudent(
+    req.params.id,
+    parsed,
+    req.user.schoolId
+  );
+
+  await logSchoolAdminActivity({
+    user: req.user,
+    action: "student_updated",
+    module: "students",
+    description: "Updated a student record",
+    entityId: data?._id || req.params.id,
+    entityType: "Student",
+  });
 
   res.json({
     success: true,
@@ -108,8 +144,21 @@ export async function updateStudentHandler(req, res) {
   });
 }
 
+
 export async function deleteStudentHandler(req, res) {
-  const data = await deleteStudent(req.params.id, req.user.schoolId);
+  const data = await deleteStudent(
+    req.params.id,
+    req.user.schoolId
+  );
+
+  await logSchoolAdminActivity({
+    user: req.user,
+    action: "student_deleted",
+    module: "students",
+    description: "Deleted a student record",
+    entityId: req.params.id,
+    entityType: "Student",
+  });
 
   res.json({
     success: true,
@@ -117,7 +166,6 @@ export async function deleteStudentHandler(req, res) {
     data,
   });
 }
-
 export async function resetStudentPasswordHandler(
   req,
   res,
