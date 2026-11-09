@@ -12,16 +12,20 @@ import {
   updateClass,
   bulkUpsertClasses,
 } from "./class.service.js";
-
+import { logSchoolAdminActivity } from "../school-monitoring/school-admin-activity.service.js";
 export async function createClassHandler(req, res) {
 
-  console.log(
-  "LIST CLASSES SCHOOL:",
-  req.user.schoolId
-);
+  
   const parsed = createClassSchema.parse(req.body);
   const data = await createClass(parsed, req.user.schoolId);
-
+  await logSchoolAdminActivity({
+  user: req.user,
+  action: "class_created",
+  module: "classes",
+  description: "Created a class",
+  entityId: data?._id,
+  entityType: "Class",
+});
   res.status(201).json({
     success: true,
     message: "Class created successfully",
@@ -52,7 +56,14 @@ export async function getClassHandler(req, res) {
 export async function updateClassHandler(req, res) {
   const parsed = updateClassSchema.parse(req.body);
   const data = await updateClass(req.params.id, parsed, req.user.schoolId);
-
+ await logSchoolAdminActivity({
+  user: req.user,
+  action: "class_updated",
+  module: "classes",
+  description: "Updated a class",
+  entityId: data?._id || req.params.id,
+  entityType: "Class",
+});
   res.json({
     success: true,
     message: "Class updated successfully",
@@ -63,6 +74,14 @@ export async function updateClassHandler(req, res) {
 export async function deleteClassHandler(req, res) {
   const data = await deleteClass(req.params.id, req.user.schoolId);
 
+  await logSchoolAdminActivity({
+  user: req.user,
+  action: "class_deleted",
+  module: "classes",
+  description: "Deleted a class",
+  entityId: req.params.id,
+  entityType: "Class",
+});
   res.json({
     success: true,
     message: "Class deleted successfully",
@@ -79,7 +98,17 @@ export async function bulkUpsertClassesHandler(req, res, next) {
       parsed.classes,
       schoolId
     );
-
+   
+    await logSchoolAdminActivity({
+  user: req.user,
+  action: "classes_bulk_imported",
+  module: "classes",
+  description: "Processed a bulk class import",
+  entityType: "Class",
+  metadata: {
+    submittedCount: parsed.classes.length,
+  },
+});
     return res.status(200).json({
       success: true,
       message: "Classes processed successfully",
