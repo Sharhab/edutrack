@@ -7,6 +7,7 @@ import {
   getTenantById,
   getTenants,
   updateTenant,
+  getSchoolMonitoring,
 } from "./super-admin.service.js";
 
 export async function superAdminDashboardHandler(req, res) {
@@ -67,6 +68,15 @@ export async function controlTenantHandler(req, res) {
   res.json({
     success: true,
     message: "Tenant control updated successfully",
+    data,
+  });
+}
+export async function schoolMonitoringHandler(req, res) {
+  const data = await getSchoolMonitoring();
+
+  res.json({
+    success: true,
+    message: "School monitoring data fetched successfully",
     data,
   });
 }
