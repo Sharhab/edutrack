@@ -60,6 +60,7 @@ const navByRole: Record<
 
  school_admin: [
   { label: "Dashboard", href: "/school-admin", icon: LayoutDashboard },
+   { label: "Control center", href: "/super-admin", icon: Shield },
   { label: "Billing", href: "/school-admin/billing", icon: CreditCard },
   { label: "Students", href: "/school-admin/students", icon: GraduationCap },
   { label: "Teachers", href: "/school-admin/teachers", icon: Users },
