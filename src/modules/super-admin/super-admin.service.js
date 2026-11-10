@@ -286,3 +286,169 @@ export async function controlTenant(id, payload) {
 
   return school;
 }
+export async function getSchoolMonitoring() {
+  const now = new Date();
+
+  // An administrator is considered active if they logged in
+  // within the last 7 days and their account is enabled.
+  const activeSince = new Date(
+    now.getTime() - 7 * 24 * 60 * 60 * 1000
+  );
+
+  const [schools, studentCounts, schoolAdmins] =
+    await Promise.all([
+      School.find()
+        .select(
+          "name slug email phone isActive plan subscriptionStatus billingStatus createdAt"
+        )
+        .sort({ createdAt: -1 })
+        .lean(),
+
+      Student.aggregate([
+        {
+          $group: {
+            _id: "$schoolId",
+            totalStudents: { $sum: 1 },
+            activeStudents: {
+              $sum: {
+                $cond: [
+                  { $eq: ["$status", "active"] },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
+
+      User.find({
+        role: "school_admin",
+      })
+        .select(
+          "schoolId firstName lastName email isActive lastLogin"
+        )
+        .lean(),
+    ]);
+
+  const studentCountMap = new Map(
+    studentCounts.map((item) => [
+      String(item._id),
+      {
+        totalStudents: item.totalStudents,
+        activeStudents: item.activeStudents,
+      },
+    ])
+  );
+
+  const adminMap = new Map();
+
+  for (const admin of schoolAdmins) {
+    const schoolId = String(admin.schoolId);
+
+    if (!adminMap.has(schoolId)) {
+      adminMap.set(schoolId, []);
+    }
+
+    let status = "never_logged_in";
+
+    if (!admin.isActive) {
+      status = "disabled";
+    } else if (admin.lastLogin) {
+      status =
+        new Date(admin.lastLogin) >= activeSince
+          ? "active"
+          : "inactive";
+    }
+
+    adminMap.get(schoolId).push({
+      _id: admin._id,
+      name: `${admin.firstName || ""} ${
+        admin.lastName || ""
+      }`.trim(),
+      email: admin.email,
+      isActive: admin.isActive,
+      lastLogin: admin.lastLogin || null,
+      status,
+    });
+  }
+
+  const monitoredSchools = schools.map((school) => {
+    const schoolId = String(school._id);
+
+    const counts = studentCountMap.get(schoolId) || {
+      totalStudents: 0,
+      activeStudents: 0,
+    };
+
+    const admins = adminMap.get(schoolId) || [];
+
+    return {
+      _id: school._id,
+      name: school.name,
+      slug: school.slug,
+      email: school.email,
+      phone: school.phone,
+      isActive: school.isActive,
+      plan: school.plan,
+      subscriptionStatus: school.subscriptionStatus,
+      billingStatus: school.billingStatus,
+
+      totalStudents: counts.totalStudents,
+      activeStudents: counts.activeStudents,
+
+      schoolAdmins: admins,
+
+      adminStatus: admins.some(
+        (admin) => admin.status === "active"
+      )
+        ? "active"
+        : admins.some(
+            (admin) => admin.status === "inactive"
+          )
+          ? "inactive"
+          : admins.some(
+              (admin) => admin.status === "disabled"
+            )
+            ? "disabled"
+            : "never_logged_in",
+
+      lastAdminLogin: admins
+        .filter((admin) => admin.lastLogin)
+        .sort(
+          (a, b) =>
+            new Date(b.lastLogin) -
+            new Date(a.lastLogin)
+        )[0]?.lastLogin || null,
+    };
+  });
+
+  const totalStudents = monitoredSchools.reduce(
+    (sum, school) => sum + school.totalStudents,
+    0
+  );
+
+  const activeSchools = monitoredSchools.filter(
+    (school) => school.adminStatus === "active"
+  ).length;
+
+  const inactiveSchools = monitoredSchools.filter(
+    (school) => school.adminStatus === "inactive"
+  ).length;
+
+  const neverLoggedInSchools = monitoredSchools.filter(
+    (school) => school.adminStatus === "never_logged_in"
+  ).length;
+
+  return {
+    summary: {
+      totalSchools: monitoredSchools.length,
+      totalStudents,
+      activeSchools,
+      inactiveSchools,
+      neverLoggedInSchools,
+    },
+    schools: monitoredSchools,
+    activeSince,
+  };
+}
