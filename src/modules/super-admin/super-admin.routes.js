@@ -9,6 +9,7 @@ import {
   listTenantsHandler,
   superAdminDashboardHandler,
   updateTenantHandler,
+  schoolMonitoringHandler,
 } from "./super-admin.controller.js";
 import { createSchool } from "../schools/school.controller.js";
 
@@ -17,7 +18,10 @@ const router = express.Router();
 router.use(authorize("super_admin"));
 
 router.get("/dashboard", asyncHandler(superAdminDashboardHandler));
-
+router.get(
+  "/school-monitoring",
+  asyncHandler(schoolMonitoringHandler)
+);
 router.get("/tenants", asyncHandler(listTenantsHandler));
 router.post("/tenants", asyncHandler(createSchool));
 router.get("/tenants/:id", asyncHandler(getTenantHandler));
