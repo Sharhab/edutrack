@@ -48,7 +48,11 @@ const navByRole: Record<
   { label: string; href: string; icon: React.ElementType }[]
 > = {
   super_admin: [
-    { label: "Dashboard", href: "/super-admin", icon: Shield },
+  {
+    label: "Dashboard",
+    href: "/super-admin/school-monitoring",
+    icon: Shield,
+  },
     { label: "Tenants", href: "/super-admin/tenants", icon: Building2 },
     { label: "Billing", href: "/super-admin/billing", icon: CreditCard },
     { label: "Invoices", href: "/super-admin/invoices", icon: FileText },
