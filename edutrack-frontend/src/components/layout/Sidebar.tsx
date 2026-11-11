@@ -53,6 +53,7 @@ const navByRole: Record<
     href: "/super-admin/school-monitoring",
     icon: Shield,
   },
+    { label: "Control center", href: "/super-admin", icon: Shield },
     { label: "Tenants", href: "/super-admin/tenants", icon: Building2 },
     { label: "Billing", href: "/super-admin/billing", icon: CreditCard },
     { label: "Invoices", href: "/super-admin/invoices", icon: FileText },
@@ -60,7 +61,6 @@ const navByRole: Record<
 
  school_admin: [
   { label: "Dashboard", href: "/school-admin", icon: LayoutDashboard },
-   { label: "Control center", href: "/super-admin", icon: Shield },
   { label: "Billing", href: "/school-admin/billing", icon: CreditCard },
   { label: "Students", href: "/school-admin/students", icon: GraduationCap },
   { label: "Teachers", href: "/school-admin/teachers", icon: Users },
