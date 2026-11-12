@@ -14,11 +14,13 @@ const userSchema = new mongoose.Schema(
     lastName: String,
 
     email: {
-      type: String,
-      required: true,
-      lowercase: true,
-      index: true,
-    },
+  type: String,
+  lowercase: true,
+  trim: true,
+  default: undefined,
+  sparse: true,
+  index: true,
+},
 
     passwordHash: {
       type: String,
