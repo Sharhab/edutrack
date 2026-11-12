@@ -17,10 +17,11 @@ export const createTeacherSchema =
       ),
 
     email: z
-      .string()
-      .email(
-        "Valid email is required"
-      ),
+  .string()
+  .trim()
+  .email("Enter a valid email address")
+  .optional()
+  .or(z.literal("")),
 
     phone: z
       .string()
