@@ -331,108 +331,147 @@ export default function TeacherBulkEntryPage() {
      Qualification | Designation | Gender | DOB | State
   ===================================================== */
 
-  function importPastedTeachers() {
-    setError("");
-    setPasteMessage("");
-    setSaveResult(null);
+function importPastedTeachers() {
+  setError("");
+  setPasteMessage("");
+  setSaveResult(null);
 
-    if (!pasteText.trim()) {
-      setError("Paste teacher records first.");
-      return;
-    }
-
-    const lines = pasteText
-      .split(/\r?\n/)
-      .filter((line) => line.trim().length > 0);
-
-    if (!lines.length) {
-      setError("No teacher records found.");
-      return;
-    }
-
-    const firstLine = lines[0].toLowerCase();
-
-    const hasHeader =
-      firstLine.includes("first") &&
-      (firstLine.includes("last") || firstLine.includes("email"));
-
-    const dataLines = hasHeader ? lines.slice(1) : lines;
-
-    if (!dataLines.length) {
-      setError("The pasted content contains only a header.");
-      return;
-    }
-
-    const importedRows: Row[] = dataLines.map((line) => {
-      const columns = line.split("\t");
-
-      const genderValue = columns[7]?.trim().toLowerCase();
-
-      const gender: Row["gender"] =
-        genderValue === "female" ? "female" : "male";
-
-      return {
-        ...createEmptyRow(),
-
-        firstName: columns[0]?.trim() || "",
-        middleName: columns[1]?.trim() || "",
-        lastName: columns[2]?.trim() || "",
-
-        email: columns[3]?.trim() || "",
-        phone: columns[4]?.trim() || "",
-
-        qualification: columns[5]?.trim() || "",
-        designation: columns[6]?.trim() || "",
-
-        gender,
-
-        dateOfBirth: columns[8]?.trim() || "",
-        stateOfOrigin: columns[9]?.trim() || "",
-      };
-    });
-
-    const invalidRows = importedRows
-      .map((row, index) => ({
-        row,
-        number: index + 1,
-      }))
-      .filter(
-        ({ row }) =>
-          row.firstName.trim().length < 2 ||
-          row.lastName.trim().length < 2
-      );
-
-    if (invalidRows.length) {
-      setError(
-        `Check pasted rows: ${invalidRows
-          .map((item) => item.number)
-          .join(", ")}. First name and last name are required.`
-      );
-      return;
-    }
-
-    const importedEmails = importedRows
-      .map((row) => row.email.trim().toLowerCase())
-      .filter(Boolean);
-
-    if (new Set(importedEmails).size !== importedEmails.length) {
-      setError("Duplicate email addresses found in the pasted records.");
-      return;
-    }
-
-    setRows((previous) => {
-      const existingRows = previous.filter(isFilled);
-
-      return [...existingRows, ...importedRows];
-    });
-
-    setPasteMessage(
-      `${importedRows.length} teacher(s) imported. Assign subjects, classes and passwords below.`
-    );
-
-    setPasteText("");
+  if (!pasteText.trim()) {
+    setError("Paste teacher records first.");
+    return;
   }
 
+  const lines = pasteText
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0);
+
+  if (!lines.length) {
+    setError("No teacher records found.");
+    return;
+  }
+
+  const firstLine = lines[0].toLowerCase();
+
+  const hasHeader =
+    firstLine.includes("first") &&
+    (firstLine.includes("last") || firstLine.includes("email"));
+
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  if (!dataLines.length) {
+    setError("The pasted content contains only a header.");
+    return;
+  }
+
+  const importedRows: Row[] = [];
+
+  for (let index = 0; index < dataLines.length; index++) {
+    const columns = dataLines[index]
+      .split("\t")
+      .map((column) => column.trim());
+
+    // Find the actual gender column instead of assuming its position.
+    const genderIndex = columns.findIndex(
+      (column) => ["male", "female"].includes(column.toLowerCase())
+    );
+
+    if (genderIndex === -1) {
+      setError(
+        `Row ${index + 1}: Gender must be Male or Female. Check your pasted columns.`
+      );
+      return;
+    }
+
+    if (genderIndex < 6) {
+      setError(
+        `Row ${index + 1}: The teacher data does not contain enough columns.`
+      );
+      return;
+    }
+
+    const hasEmailColumn = genderIndex >= 7;
+
+    const email = hasEmailColumn
+      ? columns[3] || ""
+      : "";
+
+    const phoneIndex = hasEmailColumn ? 4 : 3;
+    const qualificationIndex = hasEmailColumn ? 5 : 4;
+    const designationIndex = hasEmailColumn ? 6 : 5;
+
+    const dateOfBirth = columns[genderIndex + 1] || "";
+    const stateOfOrigin = columns[genderIndex + 2] || "";
+
+    if (
+      dateOfBirth &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)
+    ) {
+      setError(
+        `Row ${index + 1}: Invalid date of birth "${dateOfBirth}". Use YYYY-MM-DD or leave it blank.`
+      );
+      return;
+    }
+
+    importedRows.push({
+      ...createEmptyRow(),
+
+      firstName: columns[0] || "",
+      middleName: columns[1] || "",
+      lastName: columns[2] || "",
+
+      email,
+      phone: columns[phoneIndex] || "",
+
+      qualification: columns[qualificationIndex] || "",
+      designation: columns[designationIndex] || "",
+
+      gender:
+        columns[genderIndex].toLowerCase() === "female"
+          ? "female"
+          : "male",
+
+      dateOfBirth,
+      stateOfOrigin,
+    });
+  }
+
+  const invalidRows = importedRows
+    .map((row, index) => ({ row, number: index + 1 }))
+    .filter(
+      ({ row }) =>
+        row.firstName.length < 2 ||
+        row.lastName.length < 2
+    );
+
+  if (invalidRows.length) {
+    setError(
+      `Rows ${invalidRows.map((item) => item.number).join(", ")}: First name and last name are required.`
+    );
+    return;
+  }
+
+  const emails = importedRows
+    .map((row) => row.email.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (new Set(emails).size !== emails.length) {
+    setError("Duplicate email addresses found in the pasted records.");
+    return;
+  }
+
+  setRows((previous) => [
+    ...previous.filter(isFilled),
+    ...importedRows,
+  ]);
+
+  setPasteMessage(
+    `${importedRows.length} teacher(s) imported. Assign subjects, classes and passwords below.`
+  );
+
+  setPasteText("");
+}
+
+  
   /* =====================================================
      VALIDATION
   ===================================================== */
