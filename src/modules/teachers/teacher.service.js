@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Teacher } from "./teacher.model.js";
 import { User } from "../users/user.model.js";
 import { SubjectModel } from "../subjects/subject.model.js";
@@ -731,344 +732,244 @@ export async function deleteTeacher(
     deleted: true,
   };
 }
-
+function generateEmployeeId() {
+  return `TCH-${randomUUID()
+    .replace(/-/g, "")
+    .slice(0, 8)
+    .toUpperCase()}`;
+}
 /**
  * ==================================================
  * BULK UPSERT
  * ==================================================
  */
-export async function bulkUpsertTeachers(
-  rows = [],
-  schoolId
-) {
+
+export async function bulkUpsertTeachers(rows = [], schoolId) {
+  if (!Array.isArray(rows) || !rows.length) {
+    throw new ApiError(400, "No teachers supplied");
+  }
+
   let created = 0;
   let updated = 0;
   let failed = 0;
 
   const results = [];
 
-  for (const row of rows) {
-    try {
-      const email = (
-        row.email || ""
-      )
-        .toLowerCase()
-        .trim();
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
 
-      if (!email) {
-        throw new Error(
-          "Email missing"
-        );
+    let createdUserId = null;
+
+    try {
+      const firstName = String(row.firstName || "").trim();
+      const middleName = String(row.middleName || "").trim();
+      const lastName = String(row.lastName || "").trim();
+      const email = String(row.email || "").trim().toLowerCase();
+      const password = String(row.password || "");
+
+      if (firstName.length < 2) {
+        throw new Error("First name is required");
       }
 
-      const user =
-        await User.findOne({
-          email,
+      if (lastName.length < 2) {
+        throw new Error("Last name is required");
+      }
+
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error("A valid email address is required");
+      }
+
+      const subjectIds = [
+        ...new Set(
+          Array.isArray(row.subjectIds) ? row.subjectIds : []
+        ),
+      ];
+
+      const classIds = [
+        ...new Set(
+          Array.isArray(row.classIds) ? row.classIds : []
+        ),
+      ];
+
+      // Confirm assignments belong to this school.
+      await validateSubjectIds(subjectIds, schoolId);
+      await validateClassIds(classIds, schoolId);
+
+      const status = row.status === "inactive" ? "inactive" : "active";
+
+      const user = await User.findOne({
+        email,
+        schoolId,
+        role: "teacher",
+      });
+
+      // UPDATE EXISTING TEACHER
+      if (user) {
+        const teacher = await Teacher.findOne({
+          userId: user._id,
           schoolId,
         });
 
-      /* =========================
-         UPDATE FLOW
-      ========================= */
-      if (user) {
-        user.firstName =
-          row.firstName ||
-          user.firstName;
-
-        user.lastName =
-          row.lastName ||
-          user.lastName;
-
-        user.phone =
-          row.phone ||
-          user.phone;
-
-        if (row.isActive !== undefined) {
-          user.isActive =
-            row.isActive;
+        if (!teacher) {
+          throw new Error(
+            "An account with this email exists but has no teacher profile"
+          );
         }
 
-        if (row.status) {
-          user.isActive =
-            row.status ===
-            "active";
+        user.firstName = firstName;
+        user.lastName = lastName;
+        user.phone = String(row.phone || "").trim();
+        user.isActive = status === "active";
+
+        if (password.trim()) {
+          if (password.length < 6) {
+            throw new Error("Password must be at least 6 characters");
+          }
+
+          user.passwordHash = await hashPassword(password);
+          user.passwordChangedAt = new Date();
+        }
+
+        teacher.middleName = middleName;
+        teacher.qualification = String(row.qualification || "").trim();
+        teacher.designation = String(row.designation || "").trim();
+        teacher.gender = row.gender === "female" ? "female" : "male";
+        teacher.dateOfBirth = row.dateOfBirth || null;
+        teacher.stateOfOrigin = String(row.stateOfOrigin || "").trim();
+
+        teacher.subjectIds = subjectIds;
+        teacher.classIds = classIds;
+        teacher.status = status;
+
+        if (!teacher.employeeId) {
+          teacher.employeeId = generateEmployeeId();
         }
 
         await user.save();
-
-        const teacher =
-          await Teacher.findOne({
-            userId: user._id,
-            schoolId,
-          });
-
-        if (teacher) {
-          teacher.employeeId =
-            row.employeeId ||
-            teacher.employeeId;
-
-          teacher.qualification =
-            row.qualification ||
-            teacher.qualification;
-
-          teacher.designation =
-            row.designation ||
-            teacher.designation;
-
-          teacher.gender =
-            row.gender ||
-            teacher.gender;
-
-          teacher.address =
-            row.address ||
-            teacher.address;
-
-          teacher.dateOfBirth =
-            row.dateOfBirth ||
-            teacher.dateOfBirth;
-
-          teacher.employmentDate =
-            row.employmentDate ||
-            teacher.employmentDate;
-
-          teacher.employmentType =
-            row.employmentType ||
-            teacher.employmentType;
-
-          teacher.maritalStatus =
-            row.maritalStatus ||
-            teacher.maritalStatus;
-
-          teacher.stateOfOrigin =
-            row.stateOfOrigin ||
-            teacher.stateOfOrigin;
-
-          teacher.lga =
-            row.lga ||
-            teacher.lga;
-
-          teacher.nationality =
-            row.nationality ||
-            teacher.nationality;
-
-          teacher.staffCategory =
-            row.staffCategory ||
-            teacher.staffCategory;
-
-          teacher.emergencyName =
-            row.emergencyName ||
-            teacher.emergencyName;
-
-          teacher.emergencyPhone =
-            row.emergencyPhone ||
-            teacher.emergencyPhone;
-
-          teacher.bloodGroup =
-            row.bloodGroup ||
-            teacher.bloodGroup;
-
-          teacher.genotype =
-            row.genotype ||
-            teacher.genotype;
-
-          teacher.nin =
-            row.nin ||
-            teacher.nin;
-
-          teacher.photo =
-            row.photo ||
-            teacher.photo;
-
-          teacher.status =
-            row.status ||
-            teacher.status;
-
-          /* SUBJECTS */
-          if (
-            Array.isArray(
-              row.subjectIds
-            )
-          ) {
-            teacher.subjectIds =
-              row.subjectIds;
-          }
-
-          /* CLASSES */
-          if (
-            Array.isArray(
-              row.classIds
-            )
-          ) {
-            teacher.classIds =
-              row.classIds;
-          }
-
-          await teacher.save();
-        }
+        await teacher.save();
 
         updated++;
 
         results.push({
+          row: index + 1,
           email,
+          employeeId: teacher.employeeId,
           action: "updated",
         });
+
+        continue;
       }
 
-      /* =========================
-         CREATE FLOW
-      ========================= */
-      else {
-        const passwordHash =
-          await hashPassword(
-            row.password ||
-              "teacher123"
-          );
+      // CREATE NEW TEACHER
+      if (password.length < 6) {
+        throw new Error("Password must be at least 6 characters");
+      }
 
-        const newUser =
-          await User.create({
-            schoolId,
-            role: "teacher",
-            firstName:
-              row.firstName || "",
-            lastName:
-              row.lastName || "",
-            email,
-            phone:
-              row.phone || "",
-            passwordHash,
-            isActive:
-              row.status !==
-              "inactive",
-          });
+      // Prevent reuse of an email already registered to another account.
+      const existingAccount = await User.findOne({ email });
 
-        const newTeacher =
-          await Teacher.create({
-            schoolId,
-            userId: newUser._id,
+      if (existingAccount) {
+        throw new Error(
+          "This email is already registered to another account"
+        );
+      }
 
-            employeeId:
-              row.employeeId || "",
+      const employeeId = generateEmployeeId();
 
-            qualification:
-              row.qualification || "",
+      const passwordHash = await hashPassword(password);
 
-            designation:
-              row.designation || "",
+      const newUser = await User.create({
+        schoolId,
+        role: "teacher",
+        firstName,
+        lastName,
+        email,
+        phone: String(row.phone || "").trim(),
+        passwordHash,
+        isActive: status === "active",
+      });
 
-            gender:
-              row.gender || "male",
+      createdUserId = newUser._id;
 
-            address:
-              row.address || "",
+      try {
+        const newTeacher = await Teacher.create({
+          schoolId,
+          userId: newUser._id,
 
-            dateOfBirth:
-              row.dateOfBirth || null,
+          employeeId,
+          middleName,
 
-            employmentDate:
-              row.employmentDate ||
-              null,
+          qualification: String(row.qualification || "").trim(),
+          designation: String(row.designation || "").trim(),
 
-            employmentType:
-              row.employmentType ||
-              "full_time",
+          gender: row.gender === "female" ? "female" : "male",
+          dateOfBirth: row.dateOfBirth || null,
 
-            maritalStatus:
-              row.maritalStatus ||
-              "",
+          stateOfOrigin: String(row.stateOfOrigin || "").trim(),
 
-            stateOfOrigin:
-              row.stateOfOrigin ||
-              "",
+          subjectIds,
+          classIds,
 
-            lga:
-              row.lga || "",
-
-            nationality:
-              row.nationality ||
-              "Nigerian",
-
-            staffCategory:
-              row.staffCategory ||
-              "",
-
-            emergencyName:
-              row.emergencyName ||
-              "",
-
-            emergencyPhone:
-              row.emergencyPhone ||
-              "",
-
-            bloodGroup:
-              row.bloodGroup ||
-              "",
-
-            genotype:
-              row.genotype ||
-              "",
-
-            nin:
-              row.nin || "",
-
-            photo:
-              row.photo || "",
-
-            subjectIds:
-              Array.isArray(
-                row.subjectIds
-              )
-                ? row.subjectIds
-                : [],
-
-            classIds:
-              Array.isArray(
-                row.classIds
-              )
-                ? row.classIds
-                : [],
-
-            status:
-              row.status ||
-              "active",
-          });
-
-        const school = await School.findById(schoolId)
-          .select("name slug");
-
-        const loginUrl = school
-          ? `https://${school.slug}.edutrack.cloud/login`
-          : `${process.env.FRONTEND_URL || ""}/login`;
-
-        await sendTeacherWelcomeEmail({
-          firstName: newUser.firstName,
-          email: newUser.email,
-          schoolName: school?.name || "Your School",
-          loginUrl,
-          teacherId: newTeacher._id.toString(),
+          status,
         });
 
         created++;
 
         results.push({
+          row: index + 1,
           email,
+          employeeId: newTeacher.employeeId,
           action: "created",
         });
+
+        createdUserId = null;
+
+        // Welcome email is optional; an email failure must not undo creation.
+        try {
+          const school = await School.findById(schoolId).select("name slug");
+
+          const loginUrl = school
+            ? `https://${school.slug}.edutrack.cloud/login`
+            : `${process.env.FRONTEND_URL || ""}/login`;
+
+          await sendTeacherWelcomeEmail({
+            firstName: newUser.firstName,
+            email: newUser.email,
+            schoolName: school?.name || "Your School",
+            loginUrl,
+            teacherId: newTeacher._id.toString(),
+          });
+        } catch (emailError) {
+          console.error(
+            `Teacher welcome email failed for ${email}:`,
+            emailError.message
+          );
+        }
+      } catch (teacherError) {
+        throw teacherError;
       }
     } catch (error) {
+      // Avoid leaving an orphaned login account if profile creation fails.
+      if (createdUserId) {
+        await User.deleteOne({
+          _id: createdUserId,
+          schoolId,
+        }).catch(() => {});
+      }
+
       failed++;
 
       results.push({
-        email:
-          row.email ||
-          "unknown",
+        row: index + 1,
+        email: row.email || "",
         action: "failed",
-        error:
-          error.message,
+        error: error.message,
       });
     }
   }
 
   return {
+    total: rows.length,
     created,
     updated,
     failed,
