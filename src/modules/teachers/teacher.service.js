@@ -61,12 +61,10 @@ export async function createTeacher(
   payload,
   schoolId
 ) {
-  const existingUser =
-    await User.findOne({
-      email:
-        payload.email
-          .toLowerCase(),
-    });
+  const email = String(payload.email || "").trim().toLowerCase();
+
+if (email) {
+  const existingUser = await User.findOne({ email });
 
   if (existingUser) {
     throw new ApiError(
@@ -74,7 +72,7 @@ export async function createTeacher(
       "A user with this email already exists"
     );
   }
-
+}
   if (payload.employeeId) {
     const existingTeacher =
       await Teacher.findOne({
