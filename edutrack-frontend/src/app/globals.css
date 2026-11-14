@@ -413,13 +413,9 @@ body {
   font-weight: 500;
 }
 @media print {
-  body * {
-    visibility: hidden;
-  }
-
   #student-login-slips,
   #student-login-slips * {
-    visibility: visible;
+    visibility: visible !important;
   }
 
   #student-login-slips {
@@ -442,10 +438,5 @@ body {
 
   button {
     display: none !important;
-  }
-
-  @page {
-    size: A4;
-    margin: 10mm;
   }
 }
