@@ -335,6 +335,19 @@ export default function ReportCardTemplate({
   table-layout: fixed;
   border-collapse: collapse;
 }
+.academic-table-wrapper .report-subject-table tbody td {
+  color: #172033 !important;
+  background-color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  -webkit-text-fill-color: #172033 !important;
+}
+
+.academic-table-wrapper .report-subject-table tbody td span {
+  opacity: 1 !important;
+  visibility: visible !important;
+  -webkit-text-fill-color: #172033 !important;
+}
 
 .academic-table-wrapper .report-subject-table th,
 .academic-table-wrapper .report-subject-table td {
