@@ -126,6 +126,10 @@ export default function ReportCardTemplate({
           padding: 3.5mm 4mm;
           border-bottom: 2px solid ${brandColor};
         }
+        .report-card-header {
+  min-height: 27mm !important;
+  padding: 2mm 3mm !important;
+}
 
         .passport-area {
           width: 23mm;
