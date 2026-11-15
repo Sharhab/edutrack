@@ -176,21 +176,57 @@ const englishSchoolName = getEnglishSchoolName(schoolName);
           font-weight: 700;
         }
 
-        .school-heading {
-          min-width: 0;
-          text-align: center;
-          padding: 0 5mm;
-        }
+        
+.school-heading {
+  min-width: 0;
+  text-align: center;
+  padding: 1.5mm 5mm 0;
+}
 
-        .school-name {
-          margin: 0;
-          color: ${brandColor};
-          font-size: 17px;
-          line-height: 1.15;
-          font-weight: 800;
-          text-transform: uppercase;
-          overflow-wrap: anywhere;
-        }
+/* Arabic school name — always first */
+.school-arabic-name {
+  margin: 0 0 1mm !important;
+  color: #172033;
+  font-family: "Noto Naskh Arabic", "Amiri", serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  direction: rtl;
+  text-align: center;
+}
+
+/* English school name */
+.school-name {
+  margin: 0 !important;
+  font-size: 17px;
+  line-height: 1.15;
+  font-weight: 800;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+/* Location */
+.school-location-name {
+  margin: 1px 0 0 !important;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+/* Motto and contact */
+.school-motto {
+  margin: 2px 0 0 !important;
+  font-size: 7px;
+  line-height: 1.2;
+}
+
+.school-contact {
+  margin: 2px 0 0 !important;
+  font-size: 7px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 
         .school-address {
           margin: 3px 0 0;
@@ -670,9 +706,16 @@ const englishSchoolName = getEnglishSchoolName(schoolName);
             height: 44px !important;
           }
 
-          .school-heading {
-            padding: 0 2px !important;
-          }
+          
+.school-heading {
+  padding: 0 2px !important;
+}
+
+.school-arabic-name {
+  font-size: 9px !important;
+  margin-bottom: 1px !important;
+}
+
 
           .school-name {
             font-size: clamp(12px, 3.5vw, 17px) !important;
