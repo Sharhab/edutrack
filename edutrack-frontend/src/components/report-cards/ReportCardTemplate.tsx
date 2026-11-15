@@ -39,6 +39,28 @@ function resolveSchoolLogoUrl(logoUrl?: string) {
   return `${BACKEND_URL}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
 }
 
+function getArabicSchoolName(value?: string) {
+  if (!value) return "";
+
+  return (
+    value.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\s]+/)?.[0]
+      ?.trim() || ""
+  );
+}
+
+function getEnglishSchoolName(value?: string) {
+  if (!value) return "SCHOOL NAME";
+
+  const arabicName = getArabicSchoolName(value);
+
+  return (
+    (arabicName ? value.replace(arabicName, "") : value)
+      .replace(/[|•·–—-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || value.trim()
+  );
+}
+
 export default function ReportCardTemplate({
   data,
   schoolName = "SCHOOL NAME",
@@ -85,6 +107,9 @@ export default function ReportCardTemplate({
 
   const principalComment = comments?.principal || "";
 
+const arabicSchoolName = getArabicSchoolName(schoolName);
+const englishSchoolName = getEnglishSchoolName(schoolName);
+  
   return (
     <>
       <style jsx global>{`
@@ -1027,8 +1052,10 @@ export default function ReportCardTemplate({
       <div className="report-card-page">
         <div className="report-card-paper">
           {/* HEADER */}
-
-         <div className="report-card-header">
+           
+{/* HEADER */}
+<div className="report-card-header">
+  {/* SCHOOL LOGO */}
   <div className="logo-area">
     {schoolLogo ? (
       <img
@@ -1042,10 +1069,23 @@ export default function ReportCardTemplate({
     )}
   </div>
 
+  {/* SCHOOL IDENTITY */}
   <div className="school-heading">
+    {arabicSchoolName && (
+      <h2
+        className="school-arabic-name"
+        lang="ar"
+        dir="rtl"
+      >
+        {arabicSchoolName}
+      </h2>
+    )}
+
     <h1 className="school-name">
-      {schoolName || "SCHOOL NAME"}
+      {englishSchoolName}
     </h1>
+
+    <p className="school-location-name">JALINGO</p>
 
     {schoolMotto && (
       <p className="school-motto">{schoolMotto}</p>
@@ -1061,18 +1101,22 @@ export default function ReportCardTemplate({
       </p>
     )}
 
-    <h2 className="report-title">Student Report Card</h2>
+    <h2 className="report-title">
+      STUDENT REPORT CARD
+    </h2>
 
     <div className="session-term">
       <span>
         <strong>Session:</strong> {sessionName}
       </span>
+
       <span>
         <strong>Term:</strong> {termName}
       </span>
     </div>
   </div>
 </div>
+          
 
           <div className="report-content">
             {/* STUDENT INFORMATION */}
