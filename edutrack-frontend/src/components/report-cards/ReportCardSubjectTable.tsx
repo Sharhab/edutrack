@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useMemo } from "react";
@@ -60,12 +61,6 @@ export default function ReportCardSubjectTable({
                   <div className="font-medium">
                     {sub.subjectName}
                   </div>
-
-                  {sub.subjectCode && (
-                    <div className="text-xs text-gray-500">
-                      {sub.subjectCode}
-                    </div>
-                  )}
                 </td>
 
                 <td className="p-2 border text-center">
