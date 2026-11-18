@@ -9,6 +9,7 @@ export interface TeacherAssignedClass {
 export interface TeacherPortalStudent {
   _id: string;
   firstName: string;
+  middleName?: string;
   lastName: string;
   fullName?: string;
   admissionNumber?: string;
