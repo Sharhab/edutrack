@@ -67,13 +67,19 @@ export async function termOptionsHandler(req, res) {
     data,
   });
 }
-
 export async function subjectOptionsHandler(req, res) {
-  const data = await getSubjectOptions(req.user.schoolId);
+  const data = await getSubjectOptions(
+    req.user.schoolId,
+    {
+      classId: req.query.classId,
+      userId: req.user._id,
+      role: req.user.role,
+    }
+  );
 
   res.json({
     success: true,
-    message: "Subject options fetched successfully",
+    message: "Class subjects fetched successfully",
     data,
   });
 }
