@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -19,20 +20,14 @@ import {
   resetTeacherPassword,
 } from "../../../../lib/teachers";
 
-import {
-  getClassOptions,
-  getSubjectOptions,
-} from "../../../../lib/options";
+import { getClassOptions } from "../../../../lib/options";
 
 import type {
   Teacher,
   TeacherFormValues,
 } from "../../../../types/teacher";
 
-import type {
-  ClassOption,
-  SubjectOption,
-} from "../../../../types/options";
+import type { ClassOption } from "../../../../types/options";
 
 import {
   Plus,
@@ -48,7 +43,12 @@ import {
   CheckCircle2,
   X,
   Mail,
+  GraduationCap,
 } from "lucide-react";
+
+/* =====================================================
+   FORM DEFAULTS
+===================================================== */
 
 const initialForm: TeacherFormValues = {
   firstName: "",
@@ -111,6 +111,11 @@ function getTeacherEmail(teacher: Teacher) {
   return user.email || teacher.email || "";
 }
 
+function getTeacherPhone(teacher: Teacher) {
+  const user = getUser(teacher);
+  return user.phone || teacher.phone || "";
+}
+
 function isTeacherActive(teacher: Teacher) {
   const user = getUser(teacher);
 
@@ -119,6 +124,16 @@ function isTeacherActive(teacher: Teacher) {
   return Boolean(user.isActive ?? teacher.isActive ?? true);
 }
 
+function getId(value: any): string {
+  if (!value) return "";
+  return String(value._id || value);
+}
+
+function getClassName(value: any): string {
+  if (!value) return "Class";
+  if (typeof value === "string") return value;
+  return value.name || value.level || "Class";
+}
 
 function generateSecurePassword(): string {
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -137,30 +152,32 @@ function generateSecurePassword(): string {
     symbols[randomValues[3] % symbols.length],
     ...Array.from(
       { length: 4 },
-      (_, i) => all[randomValues[i + 4] % all.length]
+      (_, index) => all[randomValues[index + 4] % all.length]
     ),
   ];
 
-  // Shuffle the eight characters.
-  for (let i = characters.length - 1; i > 0; i--) {
+  for (let index = characters.length - 1; index > 0; index--) {
     const random = new Uint32Array(1);
     crypto.getRandomValues(random);
-    const j = random[0] % (i + 1);
 
-    [characters[i], characters[j]] = [
-      characters[j],
-      characters[i],
+    const swapIndex = random[0] % (index + 1);
+
+    [characters[index], characters[swapIndex]] = [
+      characters[swapIndex],
+      characters[index],
     ];
   }
 
   return characters.join("");
 }
 
+/* =====================================================
+   PAGE
+===================================================== */
 
 export default function TeachersPage() {
   const [items, setItems] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
-  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
 
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -172,7 +189,9 @@ export default function TeachersPage() {
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Teacher | null>(null);
-  const [form, setForm] = useState<TeacherFormValues>(initialForm);
+  const [form, setForm] = useState<TeacherFormValues>({
+    ...initialForm,
+  });
 
   const [resetTarget, setResetTarget] = useState<Teacher | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState("");
@@ -181,26 +200,30 @@ export default function TeachersPage() {
   const [resetSuccess, setResetSuccess] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
 
+  /* =====================================================
+     LOAD DATA
+  ===================================================== */
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setPageError("");
 
-      const [teachersData, classData, subjectData] = await Promise.all([
+      const [teachersData, classData] = await Promise.all([
         getTeachers({ search: "" }),
         getClassOptions(),
-        getSubjectOptions(),
       ]);
 
       setItems(teachersData || []);
       setClasses(classData || []);
-      setSubjects(subjectData || []);
     } catch (error) {
       const message = axios.isAxiosError(error)
         ? error.response?.data?.message
         : undefined;
 
-      setPageError(message || "Unable to load teachers. Please try again.");
+      setPageError(
+        message || "Unable to load teachers. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -210,22 +233,25 @@ export default function TeachersPage() {
     void loadData();
   }, [loadData]);
 
+  /* =====================================================
+     FILTERING AND STATISTICS
+  ===================================================== */
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     if (!query) return items;
 
     return items.filter((teacher) => {
-      const user = getUser(teacher);
-
       const name = getTeacherName(teacher).toLowerCase();
       const email = getTeacherEmail(teacher).toLowerCase();
+      const phone = getTeacherPhone(teacher).toLowerCase();
 
       return (
         name.includes(query) ||
         email.includes(query) ||
-        (teacher.employeeId || "").toLowerCase().includes(query) ||
-        (user.phone || teacher.phone || "").toLowerCase().includes(query)
+        phone.includes(query) ||
+        (teacher.employeeId || "").toLowerCase().includes(query)
       );
     });
   }, [items, search]);
@@ -236,6 +262,10 @@ export default function TeachersPage() {
   );
 
   const inactiveCount = items.length - activeCount;
+
+  /* =====================================================
+     FORM ACTIONS
+  ===================================================== */
 
   function updateForm(
     field: keyof TeacherFormValues,
@@ -268,31 +298,42 @@ export default function TeachersPage() {
 
     setForm({
       ...initialForm,
+
       firstName: user.firstName || teacher.firstName || "",
       middleName: teacher.middleName || "",
       lastName: user.lastName || teacher.lastName || "",
+
       email: user.email || teacher.email || "",
       phone: user.phone || teacher.phone || "",
+
       employeeId: teacher.employeeId || "",
       qualification: teacher.qualification || "",
       designation: teacher.designation || "",
-      subjectIds: (teacher.subjectIds || []).map(
-        (item: any) => item._id || item
-      ),
-      classIds: (teacher.classIds || []).map(
-        (item: any) => item._id || item
-      ),
+
+      // Retain legacy subject IDs for existing records,
+      // but do not expose manual subject assignment in the form.
+      subjectIds: [],
+
+      classIds: (teacher.classIds || [])
+        .map(getId)
+        .filter(Boolean),
+
       gender: teacher.gender || "male",
       address: teacher.address || "",
+
       dateOfBirth: teacher.dateOfBirth
         ? String(teacher.dateOfBirth).substring(0, 10)
         : "",
+
       employmentDate: teacher.employmentDate
         ? String(teacher.employmentDate).substring(0, 10)
         : "",
+
       employmentType: teacher.employmentType || "full_time",
+
       isActive: isTeacherActive(teacher),
       status: isTeacherActive(teacher) ? "active" : "inactive",
+
       password: "",
     });
 
@@ -300,12 +341,18 @@ export default function TeachersPage() {
   }
 
   async function handleSave() {
+    if (!form.classIds?.length) {
+      setActionError("Assign at least one class to this teacher.");
+      return;
+    }
+
     try {
       setSubmitting(true);
       setActionError("");
 
       const payload: TeacherFormValues = {
         ...form,
+        subjectIds: [],
         status: form.isActive ? "active" : "inactive",
       };
 
@@ -323,12 +370,17 @@ export default function TeachersPage() {
       await loadData();
     } catch (error: any) {
       setActionError(
-        error?.response?.data?.message || "Unable to save teacher."
+        error?.response?.data?.message ||
+          "Unable to save teacher. Please try again."
       );
     } finally {
       setSubmitting(false);
     }
   }
+
+  /* =====================================================
+     DELETE TEACHER
+  ===================================================== */
 
   async function handleDelete(teacher: Teacher) {
     const name = getTeacherName(teacher) || "this teacher";
@@ -344,15 +396,22 @@ export default function TeachersPage() {
     try {
       setNotice("");
       setPageError("");
+
       await deleteTeacher(teacher._id);
+
       setNotice(`${name} was deleted successfully.`);
       await loadData();
     } catch (error: any) {
       setNotice(
-        error?.response?.data?.message || "Unable to delete teacher."
+        error?.response?.data?.message ||
+          "Unable to delete teacher."
       );
     }
   }
+
+  /* =====================================================
+     PASSWORD RESET
+  ===================================================== */
 
   function openResetModal(teacher: Teacher) {
     setResetTarget(teacher);
@@ -363,19 +422,16 @@ export default function TeachersPage() {
     if (!isTeacherActive(teacher)) {
       setTemporaryPassword("");
       setResetError(
-        "This teacher is inactive. Activate the teacher's account before resetting the password."
+        "This teacher is inactive. Activate the account before resetting the password."
       );
       return;
     }
 
     try {
-      // Generate immediately so Reset Password is available on opening.
       setTemporaryPassword(generateSecurePassword());
-    } catch (error: any) {
+    } catch {
       setTemporaryPassword("");
-      setResetError(
-        error?.message || "Unable to generate a secure password."
-      );
+      setResetError("Unable to generate a secure password.");
     }
   }
 
@@ -385,10 +441,8 @@ export default function TeachersPage() {
       setResetError("");
       setResetSuccess(false);
       setCopyMessage("");
-    } catch (error: any) {
-      setResetError(
-        error?.message || "Unable to generate a secure password."
-      );
+    } catch {
+      setResetError("Unable to generate a secure password.");
     }
   }
 
@@ -406,7 +460,7 @@ export default function TeachersPage() {
     }
 
     if (temporaryPassword.length < 12) {
-      setResetError("Enter a password containing at least 12 characters.");
+      setResetError("Password must contain at least 12 characters.");
       return;
     }
 
@@ -424,7 +478,7 @@ export default function TeachersPage() {
     } catch (error: any) {
       setResetError(
         error?.response?.data?.message ||
-          "Password reset failed. The existing password has not been confirmed as changed."
+          "Password reset failed. Please try again."
       );
     } finally {
       setResetSubmitting(false);
@@ -434,10 +488,12 @@ export default function TeachersPage() {
   async function copyTemporaryPassword() {
     try {
       await navigator.clipboard.writeText(temporaryPassword);
-      setCopyMessage("Password copied. Share it privately with the teacher.");
+      setCopyMessage(
+        "Password copied. Share it privately with the teacher."
+      );
     } catch {
       setCopyMessage(
-        "Automatic copying failed. Select the password field and copy it manually."
+        "Copying failed. Select the password and copy it manually."
       );
     }
   }
@@ -451,6 +507,10 @@ export default function TeachersPage() {
     setResetSuccess(false);
     setCopyMessage("");
   }
+
+  /* =====================================================
+     LOADING AND ERROR STATES
+  ===================================================== */
 
   if (loading) return <PageLoader />;
 
@@ -475,13 +535,17 @@ export default function TeachersPage() {
     );
   }
 
+  /* =====================================================
+     MAIN UI
+  ===================================================== */
+
   return (
     <div className="space-y-6">
       <SectionCard
         title="Teachers"
-        subtitle="Manage teacher profiles, assignments and account access."
+        subtitle="Manage teacher profiles, class assignments and account access."
       >
-        {/* Overview */}
+        {/* OVERVIEW */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <div className="flex items-center justify-between gap-3">
@@ -510,7 +574,7 @@ export default function TeachersPage() {
           </div>
         </div>
 
-        {/* Toolbar */}
+        {/* TOOLBAR */}
         <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full lg:max-w-md">
             <Search
@@ -521,7 +585,7 @@ export default function TeachersPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search name, email or employee ID..."
+              placeholder="Search name, email, phone or employee ID..."
               aria-label="Search teachers"
               className="input w-full pl-10"
             />
@@ -547,6 +611,7 @@ export default function TeachersPage() {
           </div>
         </div>
 
+        {/* NOTICE */}
         {notice && (
           <div
             role="status"
@@ -564,19 +629,19 @@ export default function TeachersPage() {
           </div>
         )}
 
-        {/* Table */}
+        {/* TEACHER LIST */}
         {filtered.length === 0 ? (
           <EmptyState
             title={search ? "No matching teachers" : "No teachers yet"}
             description={
               search
-                ? "Try a different name, email or employee ID."
+                ? "Try a different name, email, phone or employee ID."
                 : "Add your first teacher or import teacher records using Bulk Entry."
             }
           />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-white/10">
-            <table className="w-full min-w-[1050px] text-left text-sm">
+            <table className="w-full min-w-[1000px] text-left text-sm">
               <thead className="bg-white/[0.04] text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   <th className="px-4 py-3">Teacher</th>
@@ -585,8 +650,8 @@ export default function TeachersPage() {
                   <th className="px-4 py-3">Gender</th>
                   <th className="px-4 py-3">Qualification</th>
                   <th className="px-4 py-3">Designation</th>
-                  <th className="px-4 py-3">Subjects</th>
-                  <th className="px-4 py-3">Classes</th>
+                  <th className="px-4 py-3">Assigned Classes</th>
+                  <th className="px-4 py-3">Subject Access</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -596,6 +661,7 @@ export default function TeachersPage() {
                 {filtered.map((teacher) => {
                   const user = getUser(teacher);
                   const active = isTeacherActive(teacher);
+                  const assignedClasses = teacher.classIds || [];
 
                   return (
                     <tr
@@ -606,6 +672,7 @@ export default function TeachersPage() {
                         <p className="font-medium text-white">
                           {getTeacherName(teacher) || "Unnamed teacher"}
                         </p>
+
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
                           <Mail size={12} />
                           {getTeacherEmail(teacher) || "No email"}
@@ -633,57 +700,43 @@ export default function TeachersPage() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <div className="flex max-w-40 flex-wrap gap-1">
-                          {(teacher.subjectIds || []).length === 0 ? (
-                            <span className="text-slate-500">—</span>
+                        <div className="flex max-w-48 flex-wrap gap-1">
+                          {assignedClasses.length === 0 ? (
+                            <span className="text-amber-400">
+                              No classes
+                            </span>
                           ) : (
-                            <>
-                              {(teacher.subjectIds || [])
-                                .slice(0, 2)
-                                .map((subject: any, index: number) => (
-                                  <span
-                                    key={subject._id || subject || index}
-                                    className="rounded-md bg-cyan-500/10 px-2 py-1 text-xs text-cyan-300"
-                                  >
-                                    {subject.name || subject.code || "Subject"}
-                                  </span>
-                                ))}
-
-                              {teacher.subjectIds.length > 2 && (
-                                <span className="text-xs text-slate-400">
-                                  +{teacher.subjectIds.length - 2}
+                            assignedClasses.slice(0, 3).map(
+                              (classItem: any, index: number) => (
+                                <span
+                                  key={getId(classItem) || index}
+                                  className="rounded-md bg-purple-500/10 px-2 py-1 text-xs text-purple-300"
+                                >
+                                  {getClassName(classItem)}
                                 </span>
-                              )}
-                            </>
+                              )
+                            )
+                          )}
+
+                          {assignedClasses.length > 3 && (
+                            <span className="text-xs text-slate-400">
+                              +{assignedClasses.length - 3} more
+                            </span>
                           )}
                         </div>
                       </td>
 
                       <td className="px-4 py-3">
-                        <div className="flex max-w-40 flex-wrap gap-1">
-                          {(teacher.classIds || []).length === 0 ? (
-                            <span className="text-slate-500">—</span>
-                          ) : (
-                            <>
-                              {(teacher.classIds || [])
-                                .slice(0, 2)
-                                .map((classItem: any, index: number) => (
-                                  <span
-                                    key={classItem._id || classItem || index}
-                                    className="rounded-md bg-purple-500/10 px-2 py-1 text-xs text-purple-300"
-                                  >
-                                    {classItem.name || classItem.level || "Class"}
-                                  </span>
-                                ))}
-
-                              {teacher.classIds.length > 2 && (
-                                <span className="text-xs text-slate-400">
-                                  +{teacher.classIds.length - 2}
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </div>
+                        {assignedClasses.length > 0 ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-cyan-300">
+                            <GraduationCap size={15} />
+                            All class subjects
+                          </span>
+                        ) : (
+                          <span className="text-xs text-amber-400">
+                            No class access
+                          </span>
+                        )}
                       </td>
 
                       <td className="px-4 py-3">
@@ -752,14 +805,14 @@ export default function TeachersPage() {
         </p>
       </SectionCard>
 
-      {/* Add / Edit Teacher */}
+      {/* ADD / EDIT TEACHER */}
       <Modal
         open={open}
         title={selected ? "Edit Teacher" : "Add Teacher"}
         description={
           selected
-            ? "Update this teacher's profile and assignments."
-            : "Create a teacher account and configure their profile."
+            ? "Update this teacher's profile and assigned classes."
+            : "Create a teacher account and assign the classes they will handle."
         }
         onClose={() => {
           if (submitting) return;
@@ -771,7 +824,6 @@ export default function TeachersPage() {
           <TeacherForm
             values={form}
             classes={classes}
-            subjects={subjects}
             onChange={updateForm}
             onSubmit={handleSave}
             submitting={submitting}
@@ -790,7 +842,7 @@ export default function TeachersPage() {
         </div>
       </Modal>
 
-      {/* Reset Password */}
+      {/* RESET PASSWORD */}
       <Modal
         open={Boolean(resetTarget)}
         title="Reset Teacher Password"
@@ -809,9 +861,11 @@ export default function TeachersPage() {
                   <p className="font-semibold text-white">
                     {getTeacherName(resetTarget) || "Teacher"}
                   </p>
+
                   <p className="mt-1 break-all text-sm text-slate-400">
                     {getTeacherEmail(resetTarget) || "No email address"}
                   </p>
+
                   <span
                     className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs ${
                       isTeacherActive(resetTarget)
@@ -867,8 +921,8 @@ export default function TeachersPage() {
                 </div>
 
                 <p className="text-xs text-slate-400">
-                  A secure 16-character password is generated automatically.
-                  You can regenerate or edit it. Minimum length: 12 characters.
+                  A secure password is generated automatically. You can
+                  regenerate or edit it. Minimum length: 12 characters.
                 </p>
 
                 {temporaryPassword.length > 0 &&
@@ -898,10 +952,12 @@ export default function TeachersPage() {
                     size={20}
                     className="mt-0.5 shrink-0 text-emerald-400"
                   />
+
                   <div>
                     <p className="font-semibold text-emerald-300">
                       Password reset successfully
                     </p>
+
                     <p className="mt-1 text-sm text-slate-300">
                       The new password has been saved. Share it privately
                       with the teacher.
@@ -951,8 +1007,7 @@ export default function TeachersPage() {
                   type="button"
                   onClick={() => void handleResetPassword()}
                   disabled={
-                    resetSubmitting ||
-                    temporaryPassword.length < 12
+                    resetSubmitting || temporaryPassword.length < 12
                   }
                   className="btn-primary inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
