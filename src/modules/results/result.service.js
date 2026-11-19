@@ -8,6 +8,9 @@ import { Term } from "../terms/term.model.js";
 import {
   getResultScheme,
 } from "./result-scheme.service.js";
+import { SubjectModel } from "../subjects/subject.model.js";
+import { ClassModel } from "../classes/class.model.js";
+import { Student } from "../students/student.model.js";
 
 import {
   calculateDynamicResultFields,
@@ -255,74 +258,99 @@ export async function ensureTeacherCanEnter({
   classId,
   subjectId,
 }) {
-  console.log("ENSURE USER:", user);
-
   if (!user) {
     throw new ApiError(401, "Unauthorized");
   }
 
-  const userId = (
-    user._id ||
-    user.id
-  )?.toString();
+  const userId = user._id || user.id;
 
   if (!userId) {
-    throw new ApiError(
-      401,
-      "Invalid user"
-    );
+    throw new ApiError(401, "Invalid user");
   }
 
-  const teacher = await mongoose
-    .model("Teacher")
-    .findOne({
-      userId: new mongoose.Types.ObjectId(userId),
-      schoolId: new mongoose.Types.ObjectId(
-        schoolId
-      ),
-    });
+  const [teacher, schoolClass, subject] = await Promise.all([
+    Teacher.findOne({
+      userId,
+      schoolId,
+      status: "active",
+      isActive: true,
+    }).lean(),
+
+    ClassModel.findOne({
+      _id: classId,
+      schoolId,
+      isActive: { $ne: false },
+    }).lean(),
+
+    SubjectModel.findOne({
+      _id: subjectId,
+      schoolId,
+      isActive: true,
+    }).lean(),
+  ]);
 
   if (!teacher) {
+    throw new ApiError(403, "Active teacher profile not found");
+  }
+
+  if (!schoolClass) {
+    throw new ApiError(404, "Class not found or inactive");
+  }
+
+  if (!subject) {
+    throw new ApiError(404, "Subject not found or inactive");
+  }
+
+  const teacherHasClass = (teacher.classIds || []).some(
+    (id) => String(id) === String(classId)
+  );
+
+  if (!teacherHasClass) {
     throw new ApiError(
       403,
-      "Teacher not found"
+      "You are not assigned to this class"
     );
   }
 
-  const assigned =
-    teacher.assignments?.some(
-      (a) =>
-        a.classId?.toString() ===
-          classId?.toString() &&
-        a.subjectId?.toString() ===
-          subjectId?.toString()
-    );
-
-  if (assigned) {
-    return true;
-  }
-
-  const legacy =
-    teacher.classIds?.some(
-      (id) =>
-        id.toString() ===
-        classId?.toString()
-    ) &&
-    teacher.subjectIds?.some(
-      (id) =>
-        id.toString() ===
-        subjectId?.toString()
-    );
-
-  if (legacy) {
-    return true;
-  }
-
-  throw new ApiError(
-    403,
-    "You are not assigned to this subject"
+  const subjectHasClass = (subject.classIds || []).some(
+    (id) => String(id) === String(classId)
   );
+
+  if (!subjectHasClass) {
+    throw new ApiError(
+      403,
+      "This subject is not assigned to the selected class"
+    );
+  }
+
+  return true;
 }
+
+
+async function ensureStudentsBelongToClass({
+  schoolId,
+  classId,
+  studentIds,
+}) {
+  const students = await Student.find({
+    _id: { $in: studentIds },
+    schoolId,
+    classId,
+    status: "active",
+  })
+    .select("_id")
+    .lean();
+
+  if (students.length !== studentIds.length) {
+    throw new ApiError(
+      403,
+      "One or more students do not belong to the selected class or are inactive"
+    );
+  }
+
+  return true;
+}
+
 
 /* =========================================
    UPSERT (SINGLE RESULT)
@@ -463,6 +491,12 @@ export async function createOrUpdateResult(payload, user) {
     subjectId: payload.subjectId,
   });
 
+  await ensureStudentsBelongToClass({
+  schoolId,
+  classId: payload.classId,
+  studentIds: [payload.studentId],
+});
+  
   const gradeBands = await getSchoolGradeBands(schoolId);
 
   const computed = await calculateForClass({
@@ -565,6 +599,13 @@ export async function bulkUpsertResults({
     classId,
     subjectId,
   });
+  
+  await ensureStudentsBelongToClass({
+  schoolId,
+  classId,
+  studentIds,
+});
+  
 
   const studentIds = results.map((result) => result.studentId);
 
