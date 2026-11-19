@@ -91,13 +91,22 @@ router.get("/health", (req, res) => {
 /**
  * PUBLIC ROUTES
  */
+/**
+ * PUBLIC ROUTES
+ */
 router.use("/auth", authRoutes);
 router.use("/onboarding", onboardingRoutes);
 router.use("/public", tenantResolverRoutes);
 
+// Paystack webhooks and payment verification must be
+// reachable without an EduTrack JWT.
+//
+// billing.routes.js applies its own authentication and
+// authorization to protected billing operations.
+router.use("/billing", billingRoutes);
+
 // Preserve existing school Paystack endpoints.
 router.use("/finance/paystack", paystackRoutes);
-
 /**
  * AUTHENTICATION
  *
@@ -123,7 +132,7 @@ router.use("/super-admin", superAdminRoutes);
  * Preserve renewal, upgrade, verification, and school billing
  * behavior separately from Super Admin management.
  */
-router.use("/billing", billingRoutes);
+
 
 /**
  * TENANT RESOLUTION
