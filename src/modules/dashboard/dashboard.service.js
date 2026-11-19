@@ -505,6 +505,7 @@ export async function getParentChildSummary(
 /* =========================================
    TEACHER DASHBOARD
 ========================================= */
+
 export async function getTeacherDashboard(user) {
   const schoolId = normalizeSchoolId(user);
 
@@ -512,20 +513,34 @@ export async function getTeacherDashboard(user) {
     schoolId,
     userId: user._id,
     status: "active",
+    isActive: true,
   })
     .populate("classIds", "name level")
-    .populate("subjectIds", "name code");
+    .lean();
 
   if (!teacher) {
     throw new ApiError(404, "Teacher profile not found");
   }
 
-  const assignedClasses = teacher.classIds || [];
-  const assignedSubjects = teacher.subjectIds || [];
+  // Only classes assigned to this teacher.
+  const assignedClasses = (teacher.classIds || []).filter(Boolean);
 
   const classIds = assignedClasses.map(
     (cls) => cls._id
   );
+
+  // Get every active subject assigned to at least one
+  // of the teacher's assigned classes.
+  const assignedSubjects = classIds.length
+    ? await SubjectModel.find({
+        schoolId,
+        isActive: true,
+        classIds: { $in: classIds },
+      })
+        .select("_id name code classIds")
+        .sort({ name: 1 })
+        .lean()
+    : [];
 
   /* =========================================
      SCHOOL AND ACADEMIC PERIOD
@@ -617,13 +632,23 @@ export async function getTeacherDashboard(user) {
       : 0;
 
   /* =========================================
-     BUILD ASSIGNMENTS
+     CLASS-SUBJECT COMBINATIONS
   ========================================= */
 
   const assignments = [];
 
   for (const cls of assignedClasses) {
     for (const subject of assignedSubjects) {
+      const subjectClassIds = (subject.classIds || []).map(
+        (id) => String(id)
+      );
+
+      // Only include this subject under classes
+      // to which the subject is actually assigned.
+      if (!subjectClassIds.includes(String(cls._id))) {
+        continue;
+      }
+
       assignments.push({
         classId: {
           _id: cls._id,
@@ -633,7 +658,7 @@ export async function getTeacherDashboard(user) {
         subjectId: {
           _id: subject._id,
           name: subject.name,
-          code: subject.code,
+          code: subject.code || "",
         },
       });
     }
@@ -661,7 +686,8 @@ export async function getTeacherDashboard(user) {
     mySubjects: assignedSubjects.map((subject) => ({
       _id: subject._id,
       name: subject.name,
-      code: subject.code,
+      code: subject.code || "",
+      classIds: (subject.classIds || []).map(String),
     })),
 
     assignments,
