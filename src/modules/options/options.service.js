@@ -125,11 +125,13 @@ export async function getTermOptions(schoolId) {
     isCurrent: item.isCurrent,
   }));
 }
+
+
 export async function getSubjectOptions(
   schoolId,
   { classId, userId, role } = {}
 ) {
-  // 1. If a class is selected, confirm it belongs to this school.
+  // Confirm that the selected class belongs to this school.
   if (classId) {
     const schoolClass = await ClassModel.findOne({
       _id: classId,
@@ -142,18 +144,12 @@ export async function getSubjectOptions(
     }
   }
 
-  // 2. Start with active subjects belonging to this school.
   const subjectQuery = {
     schoolId,
     isActive: true,
   };
 
-  // Only subjects explicitly assigned to the selected class.
-  if (classId) {
-    subjectQuery.classIds = classId;
-  }
-
-  // 3. For teachers, restrict subjects to explicit class-subject assignments.
+  // Teachers can only access subjects for their assigned classes.
   if (role === "teacher") {
     const teacher = await Teacher.findOne({
       schoolId,
@@ -161,39 +157,35 @@ export async function getSubjectOptions(
       status: "active",
       isActive: true,
     })
-      .select("assignments")
+      .select("classIds")
       .lean();
 
     if (!teacher) {
       throw new ApiError(403, "Active teacher profile not found");
     }
 
-    const allowedSubjectIds = [
-      ...new Set(
-        (teacher.assignments || [])
-          .filter((assignment) => {
-            if (!assignment.classId || !assignment.subjectId) {
-              return false;
-            }
+    const teacherClassIds = (teacher.classIds || []).map(
+      (id) => String(id)
+    );
 
-            // When a class is selected, require an exact class match.
-            return (
-              !classId ||
-              String(assignment.classId) === String(classId)
-            );
-          })
-          .map((assignment) => String(assignment.subjectId))
-      ),
-    ];
-
-    if (!allowedSubjectIds.length) {
+    if (!teacherClassIds.length) {
       return [];
     }
 
-    subjectQuery._id = { $in: allowedSubjectIds };
+    // If a class was selected, confirm the teacher is assigned to it.
+    if (classId && !teacherClassIds.includes(String(classId))) {
+      return [];
+    }
+
+    // A teacher sees subjects belonging to their assigned classes.
+    subjectQuery.classIds = classId
+      ? classId
+      : { $in: teacher.classIds };
+  } else if (classId) {
+    // School admins can filter subjects by any valid school class.
+    subjectQuery.classIds = classId;
   }
 
-  // 4. Fetch only subjects that passed the school/class/teacher filters.
   const items = await SubjectModel.find(subjectQuery)
     .sort({ name: 1 })
     .select("_id name code classIds")
