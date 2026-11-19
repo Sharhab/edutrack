@@ -31,25 +31,34 @@ async function validateSubjectIds(
   }
 }
 
-async function validateClassIds(
-  classIds,
-  schoolId
-) {
-  if (!classIds?.length) return;
 
-  const count =
-    await ClassModel.countDocuments({
-      _id: { $in: classIds },
-      schoolId,
-    });
+async function validateClassIds(classIds, schoolId) {
+  const uniqueClassIds = [
+    ...new Set((classIds || []).map(String)),
+  ];
 
-  if (count !== classIds.length) {
+  if (!uniqueClassIds.length) {
     throw new ApiError(
       400,
-      "One or more class IDs are invalid"
+      "Assign at least one class to this teacher"
     );
   }
+
+  const count = await ClassModel.countDocuments({
+    _id: { $in: uniqueClassIds },
+    schoolId,
+  });
+
+  if (count !== uniqueClassIds.length) {
+    throw new ApiError(
+      400,
+      "One or more selected classes do not belong to this school"
+    );
+  }
+
+  return uniqueClassIds;
 }
+
 
 
 /**
@@ -57,29 +66,35 @@ async function validateClassIds(
  * CREATE
  * ==================================================
  */
-export async function createTeacher(
-  payload,
-  schoolId
-) {
-  const email = String(payload.email || "").trim().toLowerCase();
 
-if (email) {
-  const existingUser = await User.findOne({ email });
+export async function createTeacher(payload, schoolId) {
+  const email = String(payload.email || "")
+    .trim()
+    .toLowerCase();
 
-  if (existingUser) {
-    throw new ApiError(
-      400,
-      "A user with this email already exists"
-    );
+  const firstName = String(payload.firstName || "").trim();
+  const lastName = String(payload.lastName || "").trim();
+
+  if (firstName.length < 2 || lastName.length < 2) {
+    throw new ApiError(400, "First name and last name are required");
   }
-}
+
+  if (email) {
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      throw new ApiError(
+        400,
+        "A user with this email already exists"
+      );
+    }
+  }
+
   if (payload.employeeId) {
-    const existingTeacher =
-      await Teacher.findOne({
-        schoolId,
-        employeeId:
-          payload.employeeId,
-      });
+    const existingTeacher = await Teacher.findOne({
+      schoolId,
+      employeeId: payload.employeeId,
+    });
 
     if (existingTeacher) {
       throw new ApiError(
@@ -89,159 +104,116 @@ if (email) {
     }
   }
 
-  await validateSubjectIds(
-    payload.subjectIds,
-    schoolId
-  );
-
-  await validateClassIds(
+  // Class assignment is now the source of subject access.
+  const classIds = await validateClassIds(
     payload.classIds,
     schoolId
   );
 
-  const passwordHash =
-    await hashPassword(
-      payload.password
-    );
+  const passwordHash = await hashPassword(payload.password);
 
-  const user =
-    await User.create({
+  let user;
+
+  try {
+    const userData = {
       schoolId,
-
       role: "teacher",
-
-      firstName:
-        payload.firstName,
-
-      lastName:
-        payload.lastName,
-
-      email:
-        payload.email
-          .toLowerCase(),
-
-      phone:
-        payload.phone,
-
+      firstName,
+      lastName,
       passwordHash,
-
       isActive:
         payload.isActive ??
-        payload.status ===
-          "active",
-    });
+        payload.status !== "inactive",
+    };
 
-  const teacher =
-    await Teacher.create({
+    if (email) userData.email = email;
+
+    if (payload.phone) userData.phone = payload.phone;
+
+    user = await User.create(userData);
+
+    const teacher = await Teacher.create({
       schoolId,
-
       userId: user._id,
 
-      employeeId:
-        payload.employeeId ||
-        "",
+      employeeId: payload.employeeId || "",
+      qualification: payload.qualification || "",
+      designation: payload.designation || "",
+      middleName: payload.middleName || "",
 
-      qualification:
-        payload.qualification ||
-        "",
+      gender: payload.gender || "male",
+      dateOfBirth: payload.dateOfBirth || null,
+      address: payload.address || "",
 
-      middleName:
-        payload.middleName ||
-        "",
+      employmentDate: payload.employmentDate || null,
+      employmentType: payload.employmentType || "full_time",
 
-      gender:
-        payload.gender ||
-        "male",
+      maritalStatus: payload.maritalStatus || "",
+      stateOfOrigin: payload.stateOfOrigin || "",
+      lga: payload.lga || "",
+      nationality: payload.nationality || "Nigerian",
+      staffCategory: payload.staffCategory || "",
 
-      dateOfBirth:
-        payload.dateOfBirth ||
-        null,
+      emergencyName: payload.emergencyName || "",
+      emergencyPhone: payload.emergencyPhone || "",
 
-      address:
-        payload.address ||
-        "",
+      bloodGroup: payload.bloodGroup || "",
+      genotype: payload.genotype || "",
+      nin: payload.nin || "",
+      photo: payload.photo || "",
 
-      designation:
-        payload.designation ||
-        "",
+      // Do not assign subjects individually.
+      subjectIds: [],
 
-      employmentDate:
-        payload.employmentDate ||
-        null,
+      // All subject access will be derived from these classes.
+      classIds,
 
-      employmentType:
-        payload.employmentType ||
-        "full_time",
-
-      emergencyName:
-        payload.emergencyName ||
-        "",
-
-      emergencyPhone:
-        payload.emergencyPhone ||
-        "",
-
-      bloodGroup:
-        payload.bloodGroup ||
-        "",
-
-      genotype:
-        payload.genotype ||
-        "",
-
-      nin:
-        payload.nin ||
-        "",
-
-      photo:
-        payload.photo ||
-        "",
-
-      subjectIds:
-        payload.subjectIds ||
-        [],
-
-      classIds:
-        payload.classIds ||
-        [],
-
-      status:
-        payload.status ||
-        (
-          payload.isActive
-            ? "active"
-            : "inactive"
-        ),
+      status: payload.status || "active",
+      isActive:
+        payload.isActive ??
+        payload.status !== "inactive",
     });
 
-  const school = await School.findById(schoolId)
-    .select("name slug");
+    // Email failure should not undo a successfully created teacher.
+    if (email) {
+      try {
+        const school = await School.findById(schoolId)
+          .select("name slug");
 
-  const loginUrl = school
-    ? `https://${school.slug}.edutrack.cloud/login`
-    : `${process.env.FRONTEND_URL || ""}/login`;
+        const loginUrl = school?.slug
+          ? `https://${school.slug}.edutrack.cloud/login`
+          : `${process.env.FRONTEND_URL || ""}/login`;
 
-  await sendTeacherWelcomeEmail({
-    firstName:
-      user.firstName,
+        await sendTeacherWelcomeEmail({
+          firstName,
+          email,
+          schoolName: school?.name || "Your School",
+          loginUrl,
+          teacherId: teacher._id.toString(),
+        });
+      } catch (emailError) {
+        console.error(
+          "Teacher welcome email failed:",
+          emailError.message
+        );
+      }
+    }
 
-    email:
-      user.email,
+    return teacherPopulate(
+      Teacher.findById(teacher._id)
+    );
+  } catch (error) {
+    // Prevent orphaned accounts if profile creation fails.
+    if (user?._id) {
+      await User.deleteOne({
+        _id: user._id,
+        schoolId,
+        role: "teacher",
+      }).catch(() => {});
+    }
 
-    schoolName:
-      school?.name || "Your School",
-
-    loginUrl,
-
-    teacherId:
-      teacher._id.toString(),
-  });
-
-  return teacherPopulate(
-    Teacher.findById(
-      teacher._id
-    )
-  );
+    throw error;
+  }
 }
 
 /**
@@ -485,17 +457,19 @@ export async function updateTeacher(
   /* =========================
      CLASSES
   ========================= */
-  if (
-    payload.classIds !== undefined
-  ) {
-    await validateClassIds(
-      payload.classIds,
-      schoolId
-    );
+  
+/* =========================
+   CLASS ASSIGNMENT
+========================= */
+if (payload.classIds !== undefined) {
+  const classIds = await validateClassIds(
+    payload.classIds,
+    schoolId
+  );
 
-    teacher.classIds =
-      payload.classIds;
-  }
+  teacher.classIds = classIds;
+}
+
 
   /* =========================
      USER FIELDS
