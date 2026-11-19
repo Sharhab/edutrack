@@ -1,3 +1,4 @@
+
 import { Teacher } from "../teachers/teacher.model.js";
 import { ClassModel } from "../classes/class.model.js";
 import { SubjectModel } from "../subjects/subject.model.js";
@@ -13,131 +14,70 @@ export async function getTeacherResultContextHandler(
     const teacher = await Teacher.findOne({
       userId: req.user._id,
       schoolId: req.user.schoolId,
-    });
+      status: "active",
+      isActive: true,
+    }).lean();
 
     if (!teacher) {
       return res.status(404).json({
         success: false,
-        message: "Teacher profile not found",
+        message: "Active teacher profile not found",
       });
     }
 
-    /* =========================================
-       CLASSES
-    ========================================= */
-
+    // Only classes assigned to this teacher.
     const classes = await ClassModel.find({
-      _id: {
-        $in: teacher.classIds || [],
-      },
-
+      _id: { $in: teacher.classIds || [] },
       schoolId: req.user.schoolId,
-    }).select("name level");
+      isActive: { $ne: false },
+    })
+      .select("name level")
+      .sort({ name: 1 })
+      .lean();
 
-    /* =========================================
-       SUBJECTS
-    ========================================= */
+    const classIds = classes.map((item) => item._id);
 
-    let subjects = [];
-
-    /**
-     * If teacher has assigned subjects
-     */
-
-    if (
-      teacher.subjectIds &&
-      teacher.subjectIds.length > 0
-    ) {
-      subjects = await SubjectModel.find({
-        _id: {
-          $in: teacher.subjectIds,
-        },
-
-        schoolId: req.user.schoolId,
-
-        isActive: true,
-      }).select(`
-        name
-        code
-        category
-        ca1Max
-        ca2Max
-        assignmentMax
-        examMax
-        passMark
-      `);
-    }
-
-    /**
-     * Fallback:
-     * return all school subjects
-     */
-
-    if (subjects.length === 0) {
-      subjects = await SubjectModel.find({
-        schoolId: req.user.schoolId,
-
-        isActive: true,
-      }).select(`
-        name
-        code
-        category
-        ca1Max
-        ca2Max
-        assignmentMax
-        examMax
-        passMark
-      `);
-    }
-
-    /* =========================================
-       SESSIONS
-    ========================================= */
+    // All active subjects assigned to those classes.
+    const subjects = classIds.length
+      ? await SubjectModel.find({
+          schoolId: req.user.schoolId,
+          classIds: { $in: classIds },
+          isActive: true,
+        })
+          .select(
+            "name code category ca1Max ca2Max assignmentMax examMax passMark classIds"
+          )
+          .sort({ name: 1 })
+          .lean()
+      : [];
 
     const sessions = await Session.find({
       schoolId: req.user.schoolId,
-    }).sort({
-      createdAt: -1,
-    });
-
-    /* =========================================
-       TERMS
-    ========================================= */
+    }).sort({ createdAt: -1 });
 
     const terms = await Term.find({
       schoolId: req.user.schoolId,
-    }).sort({
-      createdAt: -1,
-    });
-
-    /* =========================================
-       ACTIVE SESSION + TERM
-    ========================================= */
+    }).sort({ createdAt: -1 });
 
     const activeSession =
-      sessions.find(
-        (s) => s.isCurrent
-      ) || sessions[0];
+      sessions.find((session) => session.isCurrent) ||
+      sessions.find((session) => session.isActive) ||
+      sessions[0] ||
+      null;
 
     const activeTerm =
-      terms.find(
-        (t) => t.isCurrent
-      ) || terms[0];
-
-    /* =========================================
-       RESPONSE
-    ========================================= */
+      terms.find((term) => term.isCurrent) ||
+      terms.find((term) => term.isActive) ||
+      terms[0] ||
+      null;
 
     return res.json({
       success: true,
-
       data: {
         classes,
         subjects,
-
         sessions,
         terms,
-
         session: activeSession,
         term: activeTerm,
       },
@@ -146,3 +86,4 @@ export async function getTeacherResultContextHandler(
     next(error);
   }
 }
+
