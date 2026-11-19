@@ -53,8 +53,11 @@ export async function getStudentOptions() {
 /* =========================
    SUBJECTS
 ========================= */
-export async function getSubjectOptions() {
-  const res = await api.get("/options/subjects");
+export async function getSubjectOptions(classId?: string) {
+  const res = await api.get("/options/subjects", {
+    params: classId ? { classId } : {},
+  });
+
   return safeArray(res.data).map(normalizeOption);
 }
 
