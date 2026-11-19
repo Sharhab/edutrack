@@ -728,6 +728,7 @@ async function createUniqueEmployeeId(schoolId) {
   throw new Error("Could not generate a unique Employee ID. Please try again.");
 }
 
+
 export async function bulkUpsertTeachers(rows = [], schoolId) {
   if (!Array.isArray(rows) || !rows.length) {
     throw new ApiError(400, "No teachers supplied");
@@ -766,28 +767,17 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         throw new Error("Password must contain at least 6 characters");
       }
 
-      const subjectIds = [
-        ...new Set(Array.isArray(row.subjectIds) ? row.subjectIds : []),
-      ];
+      // Classes are now the only assignment required here.
+      const classIds = await validateClassIds(
+        row.classIds,
+        schoolId
+      );
 
-      const classIds = [
-        ...new Set(Array.isArray(row.classIds) ? row.classIds : []),
-      ];
+      const status =
+        row.status === "inactive" || row.isActive === false
+          ? "inactive"
+          : "active";
 
-      if (!subjectIds.length) {
-        throw new Error("Select at least one subject");
-      }
-
-      if (!classIds.length) {
-        throw new Error("Select at least one class");
-      }
-
-      await validateSubjectIds(subjectIds, schoolId);
-      await validateClassIds(classIds, schoolId);
-
-      const status = row.status === "inactive" ? "inactive" : "active";
-
-      // Only search by email when one was supplied.
       let existingUser = null;
 
       if (email) {
@@ -798,7 +788,31 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         });
       }
 
-      // Update an existing teacher account when the supplied email matches.
+      const teacherFields = {
+        middleName,
+        phone,
+        qualification: String(row.qualification || "").trim(),
+        designation: String(row.designation || "").trim(),
+        gender: row.gender === "female" ? "female" : "male",
+        dateOfBirth: row.dateOfBirth || null,
+        address: String(row.address || "").trim(),
+        maritalStatus: String(row.maritalStatus || "").trim(),
+        stateOfOrigin: String(row.stateOfOrigin || "").trim(),
+        lga: String(row.lga || "").trim(),
+        nationality: String(row.nationality || "Nigerian").trim(),
+        employmentDate: row.employmentDate || null,
+        employmentType: row.employmentType || "full_time",
+        emergencyName: String(row.emergencyName || "").trim(),
+        emergencyPhone: String(row.emergencyPhone || "").trim(),
+        bloodGroup: String(row.bloodGroup || "").trim(),
+        genotype: String(row.genotype || "").trim(),
+        nin: String(row.nin || "").trim(),
+        classIds,
+        status,
+        isActive: status === "active",
+      };
+
+      // Update an existing teacher account in this school.
       if (existingUser) {
         const teacher = await Teacher.findOne({
           userId: existingUser._id,
@@ -814,23 +828,12 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         existingUser.firstName = firstName;
         existingUser.lastName = lastName;
         existingUser.isActive = status === "active";
-
-        if (phone) existingUser.phone = phone;
-
         existingUser.passwordHash = await hashPassword(password);
         existingUser.passwordChangedAt = new Date();
 
-        teacher.middleName = middleName;
-        teacher.phone = phone;
-        teacher.qualification = String(row.qualification || "").trim();
-        teacher.designation = String(row.designation || "").trim();
-        teacher.gender = row.gender === "female" ? "female" : "male";
-        teacher.dateOfBirth = row.dateOfBirth || null;
-        teacher.stateOfOrigin = String(row.stateOfOrigin || "").trim();
-        teacher.subjectIds = subjectIds;
-        teacher.classIds = classIds;
-        teacher.status = status;
-        teacher.isActive = status === "active";
+        if (phone) existingUser.phone = phone;
+
+        Object.assign(teacher, teacherFields);
 
         if (!teacher.employeeId) {
           teacher.employeeId = await createUniqueEmployeeId(schoolId);
@@ -843,7 +846,7 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
 
         results.push({
           row: index + 1,
-          email: email || "",
+          email,
           employeeId: teacher.employeeId,
           action: "updated",
         });
@@ -851,12 +854,14 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         continue;
       }
 
-      // If an email was supplied, prevent it being reused by another account.
+      // Do not allow an email already used by another account.
       if (email) {
         const existingAccount = await User.findOne({ email });
 
         if (existingAccount) {
-          throw new Error("This email is already registered to another account");
+          throw new Error(
+            "This email is already registered to another account"
+          );
         }
       }
 
@@ -872,8 +877,8 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         isActive: status === "active",
       };
 
-      // Do not store empty strings as email addresses.
       if (email) userData.email = email;
+      if (phone) userData.phone = phone;
 
       const newUser = await User.create(userData);
       createdUserId = newUser._id;
@@ -882,17 +887,12 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         schoolId,
         userId: newUser._id,
         employeeId,
-        middleName,
-        phone,
-        qualification: String(row.qualification || "").trim(),
-        designation: String(row.designation || "").trim(),
-        gender: row.gender === "female" ? "female" : "male",
-        dateOfBirth: row.dateOfBirth || null,
-        stateOfOrigin: String(row.stateOfOrigin || "").trim(),
-        subjectIds,
-        classIds,
-        status,
-        isActive: status === "active",
+
+        ...teacherFields,
+
+        // Do not manually assign subjects.
+        // Subject access is derived from classIds.
+        subjectIds: [],
       });
 
       createdUserId = null;
@@ -900,17 +900,17 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
 
       results.push({
         row: index + 1,
-        email: email || "",
+        email,
         employeeId: newTeacher.employeeId,
         action: "created",
       });
 
-      // Send a welcome email only when an email address exists.
       if (email) {
         try {
-          const school = await School.findById(schoolId).select("name slug");
+          const school = await School.findById(schoolId)
+            .select("name slug");
 
-          const loginUrl = school
+          const loginUrl = school?.slug
             ? `https://${school.slug}.edutrack.cloud/login`
             : `${process.env.FRONTEND_URL || ""}/login`;
 
@@ -929,7 +929,6 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         }
       }
     } catch (error) {
-      // If profile creation fails, do not leave an orphaned user account.
       if (createdUserId) {
         await User.deleteOne({
           _id: createdUserId,
@@ -957,6 +956,7 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
     results,
   };
 }
+
 
 /**
  * RESET TEACHER PASSWORD
