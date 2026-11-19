@@ -600,11 +600,7 @@ export async function bulkUpsertResults({
     subjectId,
   });
   
-  await ensureStudentsBelongToClass({
-  schoolId,
-  classId,
-  studentIds,
-});
+  
   
 
   const studentIds = results.map((result) => result.studentId);
@@ -621,6 +617,12 @@ export async function bulkUpsertResults({
     throw new ApiError(400, "Duplicate student results were submitted.");
   }
 
+  await ensureStudentsBelongToClass({
+  schoolId,
+  classId,
+  studentIds,
+});
+  
   await ensureResultsEditable({
     schoolId,
     classId,
@@ -1167,65 +1169,87 @@ export async function getAdminResultSummary({
    LIST RESULTS
 ========================================= */
 
-export async function listResults(
-  query,
-  user
-) {
+
+export async function listResults(query, user) {
+  if (!user?.schoolId) {
+    throw new ApiError(401, "School context is required.");
+  }
+
   const filter = {
     schoolId: user.schoolId,
   };
 
-  if (query.classId)
-    filter.classId =
-      query.classId;
+  if (query.sessionId) filter.sessionId = query.sessionId;
+  if (query.termId) filter.termId = query.termId;
+  if (query.studentId) filter.studentId = query.studentId;
 
-  if (query.studentId)
-    filter.studentId =
-      query.studentId;
+  if (user.role === "teacher") {
+    const teacher = await Teacher.findOne({
+      userId: user._id || user.id,
+      schoolId: user.schoolId,
+      status: "active",
+      isActive: true,
+    }).lean();
 
-  if (query.subjectId)
-    filter.subjectId =
-      query.subjectId;
+    if (!teacher) {
+      throw new ApiError(403, "Active teacher profile not found");
+    }
 
-  if (query.sessionId)
-    filter.sessionId =
-      query.sessionId;
+    const classIds = teacher.classIds || [];
 
-  if (query.termId)
-    filter.termId =
-      query.termId;
+    if (!classIds.length) {
+      return [];
+    }
 
-  const results =
-    await Result.find(filter)
-      .populate(
-        "studentId",
-        "firstName lastName admissionNumber"
-      )
-      .populate("classId", "name")
-      .populate(
-        "subjectId",
-        "name code"
-      )
-      .populate(
-        "sessionId",
-        "name"
-      )
-      .populate(
-        "termId",
-        "name"
-      )
-      .populate(
-        "enteredBy",
-        "firstName lastName"
-      )
-      .sort({
-        createdAt: -1,
-      });
+    if (
+      query.classId &&
+      !classIds.some((id) => String(id) === String(query.classId))
+    ) {
+      throw new ApiError(403, "You are not assigned to this class");
+    }
 
-  return results.map(
-    formatResult
-  );
+    const subjects = await SubjectModel.find({
+      schoolId: user.schoolId,
+      classIds: { $in: classIds },
+      isActive: true,
+    })
+      .select("_id")
+      .lean();
+
+    const subjectIds = subjects.map((subject) => subject._id);
+
+    if (!subjectIds.length) {
+      return [];
+    }
+
+    filter.classId = query.classId
+      ? query.classId
+      : { $in: classIds };
+
+    filter.subjectId = query.subjectId
+      ? subjectIds.some(
+          (id) => String(id) === String(query.subjectId)
+        )
+        ? query.subjectId
+        : { $in: [] }
+      : { $in: subjectIds };
+  } else {
+    if (query.classId) filter.classId = query.classId;
+    if (query.subjectId) filter.subjectId = query.subjectId;
+  }
+
+  const results = await Result.find(filter)
+    .populate("studentId", "firstName middleName lastName admissionNumber")
+    .populate("classId", "name")
+    .populate("subjectId", "name code")
+    .populate("sessionId", "name")
+    .populate("termId", "name")
+    .populate("enteredBy", "firstName lastName")
+    .sort({ createdAt: -1 });
+
+  return results.map(formatResult);
 }
+
 
 /* =========================================
    STUDENT RESULTS
