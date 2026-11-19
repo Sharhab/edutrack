@@ -1,154 +1,110 @@
+
 import { z } from "zod";
 
-export const createTeacherSchema =
-  z.object({
-    firstName: z
-      .string()
-      .min(
-        2,
-        "First name is required"
-      ),
+const optionalText = z.string().optional().default("");
 
-    lastName: z
-      .string()
-      .min(
-        2,
-        "Last name is required"
-      ),
+const classIdsSchema = z
+  .array(z.string().min(1))
+  .min(1, "Assign at least one class to this teacher")
+  .transform((ids) => [...new Set(ids)]);
 
-    email: z
-  .string()
-  .trim()
-  .email("Enter a valid email address")
-  .optional()
-  .or(z.literal("")),
+export const createTeacherSchema = z.object({
+  firstName: z.string().trim().min(2, "First name is required"),
+  middleName: optionalText,
+  lastName: z.string().trim().min(2, "Last name is required"),
 
-    phone: z
-      .string()
-      .optional()
-      .default(""),
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email address")
+    .optional()
+    .or(z.literal("")),
 
-    password: z
-      .string()
-      .min(
-        6,
-        "Password must be at least 6 characters"
-      ),
+  phone: optionalText,
+  password: z.string().min(6, "Password must be at least 6 characters"),
 
-    employeeId: z
-      .string()
-      .optional()
-      .default(""),
+  employeeId: optionalText,
+  qualification: optionalText,
+  designation: optionalText,
 
-    qualification: z
-      .string()
-      .optional()
-      .default(""),
+  dateOfBirth: optionalText,
+  employmentDate: optionalText,
 
-    subjectIds: z
-      .array(z.string())
-      .optional()
-      .default([]),
+  employmentType: z
+    .enum(["full_time", "part_time", "contract", "visiting"])
+    .optional()
+    .default("full_time"),
 
-    classIds: z
-      .array(z.string())
-      .optional()
-      .default([]),
+  classIds: classIdsSchema,
 
-    status: z
-      .enum([
-        "active",
-        "inactive",
-      ])
-      .optional()
-      .default("active"),
-  });
+  gender: z.enum(["male", "female"]).optional().default("male"),
+  address: optionalText,
 
-export const updateTeacherSchema =
-  z.object({
-    firstName: z
-      .string()
-      .min(2)
-      .optional(),
+  maritalStatus: optionalText,
+  stateOfOrigin: optionalText,
+  lga: optionalText,
+  nationality: optionalText,
 
-    lastName: z
-      .string()
-      .min(2)
-      .optional(),
+  staffCategory: optionalText,
+  emergencyName: optionalText,
+  emergencyPhone: optionalText,
 
-    phone: z
-      .string()
-      .optional(),
+  bloodGroup: optionalText,
+  genotype: optionalText,
+  nin: optionalText,
+  photo: optionalText,
 
-    employeeId: z
-      .string()
-      .optional(),
+  isActive: z.boolean().optional(),
+  status: z.enum(["active", "inactive"]).optional().default("active"),
+});
 
-    qualification: z
-      .string()
-      .optional(),
+export const updateTeacherSchema = z.object({
+  firstName: z.string().trim().min(2).optional(),
+  middleName: optionalText.optional(),
+  lastName: z.string().trim().min(2).optional(),
 
-    subjectIds: z
-      .array(z.string())
-      .optional(),
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email address")
+    .optional()
+    .or(z.literal("")),
 
-    classIds: z
-      .array(z.string())
-      .optional(),
+  phone: optionalText.optional(),
 
-    status: z
-      .enum([
-        "active",
-        "inactive",
-      ])
-      .optional(),
+  employeeId: optionalText.optional(),
+  qualification: optionalText.optional(),
+  designation: optionalText.optional(),
 
-    isActive: z
-      .boolean()
-      .optional(),
-  });
+  dateOfBirth: optionalText.optional(),
+  employmentDate: optionalText.optional(),
 
-/**
- * =========================================
- * BULK IMPORT
- * =========================================
- */
-export const bulkUpsertTeacherSchema =
-  z.object({
-    teachers: z
-      .array(
-        z.object({
-          firstName: z
-            .string()
-            .min(2),
+  employmentType: z
+    .enum(["full_time", "part_time", "contract", "visiting"])
+    .optional(),
 
-          lastName: z
-            .string()
-            .min(2),
+  classIds: z
+    .array(z.string().min(1))
+    .transform((ids) => [...new Set(ids)])
+    .optional(),
 
-          email: z
-            .string()
-            .email(),
+  gender: z.enum(["male", "female"]).optional(),
+  address: optionalText.optional(),
 
-          phone: z
-            .string()
-            .optional(),
+  maritalStatus: optionalText.optional(),
+  stateOfOrigin: optionalText.optional(),
+  lga: optionalText.optional(),
+  nationality: optionalText.optional(),
 
-          employeeId: z
-            .string()
-            .optional(),
+  staffCategory: optionalText.optional(),
+  emergencyName: optionalText.optional(),
+  emergencyPhone: optionalText.optional(),
 
-          qualification: z
-            .string()
-            .optional(),
+  bloodGroup: optionalText.optional(),
+  genotype: optionalText.optional(),
+  nin: optionalText.optional(),
+  photo: optionalText.optional(),
 
-          status: z
-            .enum([
-              "active",
-              "inactive",
-            ])
-            .optional(),
-        })
-      )
-      .min(1),
-  });
+  isActive: z.boolean().optional(),
+  status: z.enum(["active", "inactive"]).optional(),
+});
