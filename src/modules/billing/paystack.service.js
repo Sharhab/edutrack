@@ -458,6 +458,30 @@ export async function handlePaystackWebhook(event) {
         paymentRecord.status === "success" &&
         paymentRecord.reconciled === true
       ) {
+        
+// Repair a missing paidAt date for an already
+// successful payment, using Paystack's verified date.
+if (!paymentRecord.paidAt && transaction?.paid_at) {
+  const verifiedPaidAt = new Date(transaction.paid_at);
+
+  if (Number.isNaN(verifiedPaidAt.getTime())) {
+    throw new ApiError(
+      409,
+      "Invalid payment date returned by Paystack"
+    );
+  }
+
+  paymentRecord.paidAt = verifiedPaidAt;
+
+  await paymentRecord.save({ session });
+
+  console.log(
+    "Payment date recovered:",
+    paymentRecord.reference,
+    verifiedPaidAt
+  );
+}
+
         result = {
           alreadyProcessed: true,
           reference,
