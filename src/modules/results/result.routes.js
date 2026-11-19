@@ -1,4 +1,8 @@
+
 import express from "express";
+
+import { protect } from "../../middlewares/auth.middleware.js";
+import { authorize } from "../../middlewares/role.middleware.js";
 
 import {
   createResultHandler,
@@ -13,58 +17,84 @@ import {
   bulkUpsertResultsHandler,
 } from "./result.controller.js";
 
-import { protect } from "../../middlewares/auth.middleware.js";
-
 import {
   getTeacherResultContextHandler,
 } from "./result.context.controller.js";
 
 const router = express.Router();
 
-/* =========================================
-   GLOBAL AUTH
-========================================= */
 router.use(protect);
 
-/* =========================================
-   CORE RESULT OPERATIONS
-========================================= */
+// Teacher and school admin result entry.
+router.post(
+  "/",
+  authorize("school_admin", "teacher"),
+  createResultHandler
+);
 
-// Create single result
-router.post("/", createResultHandler);
+router.post(
+  "/bulk-upsert",
+  authorize("school_admin", "teacher"),
+  bulkUpsertResultsHandler
+);
 
-// List results (filtered by class/subject/session via query)
-router.get("/", listResultsHandler);
+// Result reading. Service must enforce each user's scope.
+router.get(
+  "/",
+  authorize("school_admin", "teacher"),
+  listResultsHandler
+);
 
-// Bulk upsert (teacher entry system)
-router.post("/bulk-upsert", bulkUpsertResultsHandler);
+// Student and parent result access.
+// Ownership checks must be enforced in the service.
+router.get(
+  "/student/:studentId",
+  authorize("school_admin", "parent", "student"),
+  getStudentResultsHandler
+);
 
-// Student results
-router.get("/student/:studentId", getStudentResultsHandler);
+// Teacher's available classes and subjects.
+router.get(
+  "/teacher/results/context",
+  authorize("teacher"),
+  getTeacherResultContextHandler
+);
 
-// Teacher context (who can enter what)
-router.get("/teacher/results/context", getTeacherResultContextHandler);
+// Administrative result management.
+router.get(
+  "/admin/summary",
+  authorize("school_admin"),
+  getAdminResultSummaryHandler
+);
 
-/* =========================================
-   ADMIN RESULT ENGINE (CONTROL CENTER)
-========================================= */
+router.get(
+  "/admin/overview",
+  authorize("school_admin"),
+  getAdminResultsOverviewHandler
+);
 
-// Summary dashboard (progress tracking)
-router.get("/admin/summary", getAdminResultSummaryHandler);
+router.post(
+  "/admin/generate",
+  authorize("school_admin"),
+  generateResultsHandler
+);
 
-// Full overview (detailed breakdown)
-router.get("/admin/overview", getAdminResultsOverviewHandler);
+router.post(
+  "/admin/publish",
+  authorize("school_admin"),
+  publishResultsHandler
+);
 
-// Generate final results (compute term results)
-router.post("/admin/generate", generateResultsHandler);
+router.post(
+  "/admin/lock",
+  authorize("school_admin"),
+  lockResultsHandler
+);
 
-// Publish results (make visible to students)
-router.post("/admin/publish", publishResultsHandler);
-
-// Lock results (freeze editing)
-router.post("/admin/lock", lockResultsHandler);
-
-// Unlock results (re-open editing)
-router.post("/admin/unlock", unlockResultsHandler);
+router.post(
+  "/admin/unlock",
+  authorize("school_admin"),
+  unlockResultsHandler
+);
 
 export default router;
