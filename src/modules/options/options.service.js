@@ -5,6 +5,7 @@ import { Student } from "../students/student.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
 import { SubjectModel } from "../subjects/subject.model.js";
+import { ApiError } from "../../utils/apiError.js";
 
 export async function getClassOptions(schoolId) {
   const items = await ClassModel.find({ schoolId })
@@ -124,52 +125,79 @@ export async function getTermOptions(schoolId) {
     isCurrent: item.isCurrent,
   }));
 }
+export async function getSubjectOptions(
+  schoolId,
+  { classId, userId, role } = {}
+) {
+  // 1. If a class is selected, confirm it belongs to this school.
+  if (classId) {
+    const schoolClass = await ClassModel.findOne({
+      _id: classId,
+      schoolId,
+      isActive: { $ne: false },
+    }).select("_id");
 
+    if (!schoolClass) {
+      throw new ApiError(404, "Class not found in this school");
+    }
+  }
 
-export async function getSubjectOptions(schoolId) {
-  const items = await SubjectModel.find({
+  // 2. Start with active subjects belonging to this school.
+  const subjectQuery = {
     schoolId,
     isActive: true,
-  })
+  };
+
+  // Only subjects explicitly assigned to the selected class.
+  if (classId) {
+    subjectQuery.classIds = classId;
+  }
+
+  // 3. For teachers, restrict subjects to explicit class-subject assignments.
+  if (role === "teacher") {
+    const teacher = await Teacher.findOne({
+      schoolId,
+      userId,
+      status: "active",
+      isActive: true,
+    })
+      .select("assignments")
+      .lean();
+
+    if (!teacher) {
+      throw new ApiError(403, "Active teacher profile not found");
+    }
+
+    const allowedSubjectIds = [
+      ...new Set(
+        (teacher.assignments || [])
+          .filter((assignment) => {
+            if (!assignment.classId || !assignment.subjectId) {
+              return false;
+            }
+
+            // When a class is selected, require an exact class match.
+            return (
+              !classId ||
+              String(assignment.classId) === String(classId)
+            );
+          })
+          .map((assignment) => String(assignment.subjectId))
+      ),
+    ];
+
+    if (!allowedSubjectIds.length) {
+      return [];
+    }
+
+    subjectQuery._id = { $in: allowedSubjectIds };
+  }
+
+  // 4. Fetch only subjects that passed the school/class/teacher filters.
+  const items = await SubjectModel.find(subjectQuery)
     .sort({ name: 1 })
-    .select("_id name code");
-
-  // Read teacher assignments for this school.
-  const teachers = await Teacher.find({ schoolId })
-    .select("subjectIds classIds assignments")
+    .select("_id name code classIds")
     .lean();
-
-  const classIdsBySubject = new Map();
-
-  function addClassForSubject(subjectId, classId) {
-    if (!subjectId || !classId) return;
-
-    const key = String(subjectId);
-
-    if (!classIdsBySubject.has(key)) {
-      classIdsBySubject.set(key, new Set());
-    }
-
-    classIdsBySubject.get(key).add(String(classId));
-  }
-
-  for (const teacher of teachers) {
-    // Preferred: explicit class-subject assignment pairs.
-    for (const assignment of teacher.assignments || []) {
-      addClassForSubject(
-        assignment.subjectId,
-        assignment.classId
-      );
-    }
-
-    // Backward compatibility with separate teacher arrays.
-    // This assumes the teacher's subjects apply to their listed classes.
-    for (const subjectId of teacher.subjectIds || []) {
-      for (const classId of teacher.classIds || []) {
-        addClassForSubject(subjectId, classId);
-      }
-    }
-  }
 
   return items.map((item) => ({
     value: String(item._id),
@@ -177,9 +205,8 @@ export async function getSubjectOptions(schoolId) {
       ? `${item.name} (${item.code})`
       : item.name,
     name: item.name,
-    code: item.code,
-    classIds: Array.from(
-      classIdsBySubject.get(String(item._id)) || []
-    ),
+    code: item.code || "",
+    classIds: (item.classIds || []).map(String),
   }));
 }
+
