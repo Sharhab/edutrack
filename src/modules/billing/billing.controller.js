@@ -336,44 +336,136 @@ export async function getBillingHistoryHandler(req, res) {
   }
 }
 
-export async function subscriptionPaystackWebhookHandler(req, res) {
-  try {
-    const signature = req.headers["x-paystack-signature"];
 
-    if (
-      typeof signature !== "string" ||
-      !/^[a-f0-9]{128}$/i.test(signature) ||
-      !Buffer.isBuffer(req.rawBody)
-    ) {
-      return res.sendStatus(401);
+function safeSignatureMatch(expected, received) {
+  if (
+    typeof received !== "string" ||
+    !/^[a-f0-9]{128}$/i.test(received)
+  ) {
+    return false;
+  }
+
+  const expectedBuffer = Buffer.from(expected, "hex");
+  const receivedBuffer = Buffer.from(received, "hex");
+
+  return (
+    expectedBuffer.length === receivedBuffer.length &&
+    timingSafeEqual(expectedBuffer, receivedBuffer)
+  );
+}
+
+function verifyPaystackWebhookSignature(req) {
+  if (!Buffer.isBuffer(req.rawBody)) {
+    console.error("Paystack webhook raw body is missing");
+    return false;
+  }
+
+  // New Paystack webhook signing format.
+  const modernSignature = req.headers["paystack-signature"];
+
+  if (typeof modernSignature === "string") {
+    const webhookSecret = env.PAYSTACK_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error(
+        "PAYSTACK_WEBHOOK_SECRET is not configured"
+      );
+      return false;
     }
 
-    const expectedSignature = createHmac(
-      "sha512",
-      env.PAYSTACK_SECRET_KEY
-    )
+    const parts = modernSignature.split(",");
+
+    const timestampPart = parts.find(
+      (part) => part.trim().startsWith("t=")
+    );
+
+    const timestamp = Number(
+      timestampPart?.trim().slice(2)
+    );
+
+    if (
+      !Number.isFinite(timestamp) ||
+      Math.abs(Date.now() / 1000 - timestamp) > 300
+    ) {
+      return false;
+    }
+
+    const signatures = parts
+      .filter((part) => part.trim().startsWith("v1="))
+      .map((part) => {
+        const value = part.trim().slice(3);
+        const separator = value.indexOf(":");
+
+        return separator >= 0
+          ? value.slice(separator + 1)
+          : value;
+      });
+
+    if (!signatures.length) {
+      return false;
+    }
+
+    const expected = createHmac("sha512", webhookSecret)
+      .update(`${timestamp}.`)
       .update(req.rawBody)
       .digest("hex");
 
-    const receivedBuffer = Buffer.from(signature, "hex");
-    const expectedBuffer = Buffer.from(expectedSignature, "hex");
+    return signatures.some((signature) =>
+      safeSignatureMatch(expected, signature)
+    );
+  }
 
-    if (
-      receivedBuffer.length !== expectedBuffer.length ||
-      !timingSafeEqual(receivedBuffer, expectedBuffer)
-    ) {
+  // Legacy Paystack webhook signature.
+  const legacySignature =
+    req.headers["x-paystack-signature"];
+
+  if (
+    typeof legacySignature !== "string" ||
+    !env.PAYSTACK_SECRET_KEY
+  ) {
+    return false;
+  }
+
+  const expected = createHmac(
+    "sha512",
+    env.PAYSTACK_SECRET_KEY
+  )
+    .update(req.rawBody)
+    .digest("hex");
+
+  return safeSignatureMatch(expected, legacySignature);
+}
+
+export async function subscriptionPaystackWebhookHandler(
+  req,
+  res
+) {
+  try {
+    if (!verifyPaystackWebhookSignature(req)) {
+      console.warn(
+        "Rejected invalid Paystack webhook signature"
+      );
+
       return res.sendStatus(401);
     }
 
+    // Respond successfully to events we do not process.
     if (req.body?.event !== "charge.success") {
       return res.sendStatus(200);
     }
 
+    // Verify with Paystack and reconcile using the
+    // existing idempotent subscription service.
     await handlePaystackWebhook(req.body);
 
     return res.sendStatus(200);
   } catch (error) {
-    console.error("SUBSCRIPTION PAYSTACK WEBHOOK ERROR:", error);
+    console.error(
+      "SUBSCRIPTION PAYSTACK WEBHOOK ERROR:",
+      error
+    );
+
+    // Non-200 tells Paystack to retry delivery.
     return res.sendStatus(500);
   }
 }
