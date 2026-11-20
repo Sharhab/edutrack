@@ -79,6 +79,11 @@ const attemptSchema = new mongoose.Schema(
       default: null,
     },
 
+    assessmentAggregationMethod: {
+  type: String,
+  enum: ["average", "highest", "selected"],
+  default: null,
+},
     status: {
       type: String,
       enum: ["in_progress", "submitted"],
