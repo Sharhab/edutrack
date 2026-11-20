@@ -971,4 +971,198 @@ export async function listExamResultsHandler(req, res, next) {
   }
 }
 
+/* =========================================================
+   ADMIN REVIEW STUDENT EXAM ANSWERS
+   GET /:examId/attempts/:attemptId/review
+========================================================= */
+
+export async function reviewExamAttemptHandler(req, res, next) {
+  try {
+    const { examId, attemptId } = req.params;
+    const schoolId = req.user?.schoolId;
+
+    if (!validId(examId) || !validId(attemptId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid exam or attempt ID.",
+      });
+    }
+
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: "School context is missing.",
+      });
+    }
+
+    // Only retrieve an exam belonging to this school.
+    const exam = await Exam.findOne({
+      _id: examId,
+      schoolId,
+    })
+      .select("_id title questions classId subjectId")
+      .populate("classId", "name level")
+      .populate("subjectId", "name code")
+      .lean();
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found.",
+      });
+    }
+
+    // Attempt must belong to this school and this exam.
+    const attempt = await ExamAttempt.findOne({
+      _id: attemptId,
+      examId: exam._id,
+      schoolId,
+    })
+      .populate(
+        "studentId",
+        "firstName middleName lastName admissionNumber"
+      )
+      .lean();
+
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        message: "Student exam attempt not found.",
+      });
+    }
+
+    if (attempt.status !== "submitted") {
+      return res.status(409).json({
+        success: false,
+        message: "Only submitted attempts can be reviewed.",
+      });
+    }
+
+    const student =
+      attempt.studentId &&
+      typeof attempt.studentId === "object"
+        ? attempt.studentId
+        : null;
+
+    // Mongoose Map values may appear as a Map or plain object.
+    const answers =
+      attempt.answers instanceof Map
+        ? Object.fromEntries(attempt.answers)
+        : attempt.answers || {};
+
+    let correctCount = 0;
+    let wrongCount = 0;
+    let unansweredCount = 0;
+
+    const questions = exam.questions.map((question, index) => {
+      const questionId = String(question._id);
+      const selectedIndex = answers[questionId];
+
+      const hasAnswer =
+        Number.isInteger(selectedIndex) &&
+        selectedIndex >= 0 &&
+        selectedIndex < question.options.length;
+
+      const isCorrect =
+        hasAnswer &&
+        selectedIndex === question.correctOptionIndex;
+
+      const marksAwarded = isCorrect
+        ? Number(question.marks || 0)
+        : 0;
+
+      if (!hasAnswer) {
+        unansweredCount++;
+      } else if (isCorrect) {
+        correctCount++;
+      } else {
+        wrongCount++;
+      }
+
+      return {
+        questionId,
+        questionNumber: index + 1,
+        questionText: question.text,
+
+        options: question.options.map((option, optionIndex) => ({
+          index: optionIndex,
+          text: option,
+          isCorrect: optionIndex === question.correctOptionIndex,
+          isSelected: hasAnswer && optionIndex === selectedIndex,
+        })),
+
+        selectedAnswer: hasAnswer
+          ? question.options[selectedIndex]
+          : null,
+
+        correctAnswer:
+          question.options[question.correctOptionIndex],
+
+        selectedOptionIndex: hasAnswer
+          ? selectedIndex
+          : null,
+
+        correctOptionIndex: question.correctOptionIndex,
+
+        isCorrect: hasAnswer ? isCorrect : false,
+        marks: Number(question.marks || 0),
+        marksAwarded,
+      };
+    });
+
+    const totalQuestions = questions.length;
+    const score = Number(attempt.score ?? 0);
+    const totalMarks = Number(attempt.totalMarks ?? 0);
+
+    return res.status(200).json({
+      success: true,
+      message: "Exam answer review loaded successfully.",
+      data: {
+        exam: {
+          _id: exam._id,
+          title: exam.title,
+          class: exam.classId,
+          subject: exam.subjectId,
+        },
+
+        student: {
+          _id: student?._id ?? null,
+          name: student
+            ? [
+                student.firstName,
+                student.middleName,
+                student.lastName,
+              ].filter(Boolean).join(" ")
+            : "Student record unavailable",
+          admissionNumber: student?.admissionNumber ?? "",
+        },
+
+        attempt: {
+          _id: attempt._id,
+          status: attempt.status,
+          startedAt: attempt.startedAt,
+          submittedAt: attempt.submittedAt,
+          score,
+          totalMarks,
+          percentage:
+            totalMarks > 0
+              ? Math.round((score / totalMarks) * 10000) / 100
+              : 0,
+        },
+
+        summary: {
+          totalQuestions,
+          correctCount,
+          wrongCount,
+          unansweredCount,
+        },
+
+        questions,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 
