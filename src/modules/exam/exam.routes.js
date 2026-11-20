@@ -1,6 +1,4 @@
 
-
-
 import express from "express";
 import { protect } from "../../middlewares/auth.middleware.js";
 import { authorize } from "../../middlewares/role.middleware.js";
@@ -21,16 +19,22 @@ import {
   reviewExamAttemptHandler,
 } from "./attempt.controller.js";
 
+import {
+  syncCbtResultsHandler,
+} from "./exam-result-sync.controller.js";
+
 const router = express.Router();
 
 router.use(protect);
 
+// Student exam listing
 router.get(
   "/student",
   authorize("student"),
   listStudentExamsHandler
 );
-// Staff exam management
+
+// School admin exam management
 router.post(
   "/",
   authorize("school_admin"),
@@ -42,6 +46,14 @@ router.get(
   authorize("school_admin"),
   listExamsHandler
 );
+
+// Synchronize submitted CBT marks into the result assessment scheme
+router.post(
+  "/:examId/sync-results",
+  authorize("school_admin"),
+  syncCbtResultsHandler
+);
+
 router.get(
   "/:examId/results",
   authorize("school_admin"),
@@ -53,7 +65,6 @@ router.get(
   authorize("school_admin"),
   reviewExamAttemptHandler
 );
-
 
 router.patch(
   "/:examId/publish",
@@ -87,3 +98,6 @@ router.post(
 );
 
 export default router;
+
+
+
