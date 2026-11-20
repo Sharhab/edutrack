@@ -332,16 +332,52 @@ export async function syncCbtResults({
       aggregationMethod
     );
 
-    const currentScores =
-      existing?.scores instanceof Map
-        ? Object.fromEntries(existing.scores.entries())
-        : existing?.scores &&
-            typeof existing.scores === "object"
-          ? { ...existing.scores }
-          : {};
+    
+const currentScores =
+  existing?.scores instanceof Map
+    ? Object.fromEntries(existing.scores.entries())
+    : existing?.scores &&
+        typeof existing.scores === "object"
+      ? { ...existing.scores }
+      : {};
 
-    // Preserve all other assessment component scores.
-    currentScores[exam.assessmentKey] = componentScore;
+// Preserve legacy teacher-entered marks when the dynamic
+// score map does not yet contain those components.
+if (existing) {
+  const legacyKeys = [
+    "ca1",
+    "ca2",
+    "assignment",
+    "exam",
+  ];
+
+  const schemeKeys = new Set(
+    (schemeSnapshot.components || []).map(
+      (component) => component.key
+    )
+  );
+
+  for (const key of legacyKeys) {
+    const hasDynamicScore =
+      currentScores[key] !== undefined &&
+      currentScores[key] !== null &&
+      currentScores[key] !== "";
+
+    const legacyScore = existing[key];
+
+    if (
+      schemeKeys.has(key) &&
+      !hasDynamicScore &&
+      legacyScore !== undefined &&
+      legacyScore !== null
+    ) {
+      currentScores[key] = legacyScore;
+    }
+  }
+}
+
+// Update only the CBT-linked assessment component.
+currentScores[exam.assessmentKey] = componentScore;
 
     const calculated = calculateDynamicResultFields({
       scores: currentScores,
