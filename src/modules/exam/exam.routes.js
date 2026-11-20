@@ -18,6 +18,7 @@ import {
   listStudentExamsHandler,
   submitExamHandler,
   listExamResultsHandler,
+  reviewExamAttemptHandler,
 } from "./attempt.controller.js";
 
 const router = express.Router();
@@ -46,6 +47,14 @@ router.get(
   authorize("school_admin"),
   listExamResultsHandler
 );
+
+router.get(
+  "/:examId/attempts/:attemptId/review",
+  authorize("school_admin"),
+  reviewExamAttemptHandler
+);
+
+
 router.patch(
   "/:examId/publish",
   authorize("school_admin"),
