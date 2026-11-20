@@ -346,12 +346,24 @@ async function finalizeAttempt(attempt, exam) {
       status: "in_progress",
     },
     {
-      $set: {
-        score,
-        totalMarks,
-        submittedAt: new Date(),
-        status: "submitted",
-      },
+    
+$set: {
+  score,
+  totalMarks,
+
+  // Preserve the exam's assessment configuration.
+  assessmentKey: exam.assessmentKey || null,
+  assessmentMaxScore:
+    exam.assessmentMaxScore ?? null,
+  assessmentSchemeVersion:
+    exam.assessmentSchemeVersion ?? null,
+  assessmentAggregationMethod:
+    exam.assessmentAggregationMethod || null,
+
+  submittedAt: new Date(),
+  status: "submitted",
+},
+
     },
     {
       new: true,
