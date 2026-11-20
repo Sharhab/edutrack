@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const assessmentComponentSchema = new mongoose.Schema(
@@ -32,6 +33,13 @@ const assessmentComponentSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
+    },
+
+    // How multiple CBT tests contribute to this assessment.
+    aggregationMethod: {
+      type: String,
+      enum: ["average", "highest", "selected"],
+      default: "average",
     },
   },
   { _id: false }
@@ -93,8 +101,7 @@ const resultSchemeSchema = new mongoose.Schema(
             components.length > 0
           );
         },
-        message:
-          "At least one assessment component is required.",
+        message: "At least one assessment component is required.",
       },
     },
 
@@ -115,7 +122,6 @@ const resultSchemeSchema = new mongoose.Schema(
   }
 );
 
-// One scheme per school and scope key.
 resultSchemeSchema.index(
   {
     schoolId: 1,
