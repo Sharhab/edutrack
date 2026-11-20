@@ -1,11 +1,14 @@
 
+
 import mongoose from "mongoose";
 
 import { Exam } from "./exam.model.js";
 import { ExamAttempt } from "./attempt.model.js";
 import { Student } from "../students/student.model.js";
 
-const validId = (id) => mongoose.Types.ObjectId.isValid(id);
+const validId = (id) =>
+  typeof id === "string" &&
+  mongoose.Types.ObjectId.isValid(id);
 
 /* =========================================================
    STUDENT AUTHENTICATION
@@ -29,7 +32,7 @@ async function getStudent(req) {
 }
 
 /* =========================================================
-   DETERMINISTIC SHUFFLING
+   DETERMINISTIC QUESTION AND OPTION SHUFFLING
 ========================================================= */
 
 function createSeededRandom(seed) {
@@ -102,10 +105,6 @@ function getOptionOrder(exam, attemptId, question) {
    STUDENT-SAFE EXAM RESPONSE
 ========================================================= */
 
-/**
- * Correct answers are never returned to students.
- * Question and option ordering is deterministic per attempt.
- */
 function studentSafeExam(exam, attemptId) {
   const questionOrder = getQuestionOrder(
     exam,
@@ -132,21 +131,19 @@ function studentSafeExam(exam, attemptId) {
       return {
         _id: question._id,
         text: question.text,
-
         options: optionOrder.map(
           (optionIndex) => question.options[optionIndex]
         ),
-
         marks: question.marks,
       };
     }),
   };
 }
 
-/**
- * Convert original stored answers into the indexes
- * displayed to the student.
- */
+/* =========================================================
+   RESTORE DISPLAYED ANSWERS
+========================================================= */
+
 function answersForStudent(exam, attempt) {
   const result = {};
 
@@ -178,18 +175,31 @@ function answersForStudent(exam, attempt) {
   return result;
 }
 
-/**
- * Convert student-facing displayed answers back
- * into original exam option indexes.
- */
+/* =========================================================
+   CONVERT STUDENT ANSWERS TO ORIGINAL OPTION INDEXES
+
+   The frontend sends displayed option indexes.
+   MongoDB stores original option indexes.
+
+   null means the student cleared an answer.
+   An empty object is a valid submission.
+========================================================= */
+
 function convertAnswersToOriginal(exam, attempt, answers) {
   const updates = {};
+  const removals = {};
+
   const questionIds = new Set(
     exam.questions.map((question) => String(question._id))
   );
 
-  for (const [questionId, displayedIndex] of Object.entries(answers)) {
-    if (!validId(questionId) || !questionIds.has(questionId)) {
+  for (const [questionId, displayedIndex] of Object.entries(
+    answers
+  )) {
+    if (
+      !validId(questionId) ||
+      !questionIds.has(questionId)
+    ) {
       return {
         error: "One or more question IDs are invalid.",
       };
@@ -197,8 +207,19 @@ function convertAnswersToOriginal(exam, attempt, answers) {
 
     const question = exam.questions.id(questionId);
 
+    if (!question) {
+      return {
+        error: "Question not found in this examination.",
+      };
+    }
+
+    // Allow a student to clear a previously selected answer.
+    if (displayedIndex === null) {
+      removals[`answers.${questionId}`] = "";
+      continue;
+    }
+
     if (
-      !question ||
       !Number.isInteger(displayedIndex) ||
       displayedIndex < 0 ||
       displayedIndex >= question.options.length
@@ -225,13 +246,10 @@ function convertAnswersToOriginal(exam, attempt, answers) {
     updates[`answers.${questionId}`] = originalIndex;
   }
 
-  if (Object.keys(updates).length === 0) {
-    return {
-      error: "No valid answers were provided.",
-    };
-  }
-
-  return { updates };
+  return {
+    updates,
+    removals,
+  };
 }
 
 /* =========================================================
@@ -239,7 +257,9 @@ function convertAnswersToOriginal(exam, attempt, answers) {
 ========================================================= */
 
 function deadlineFor(exam, attempt) {
-  const examDeadline = new Date(exam.endsAt).getTime();
+  const examDeadline = new Date(
+    exam.endsAt
+  ).getTime();
 
   const attemptDeadline =
     new Date(attempt.startedAt).getTime() +
@@ -250,12 +270,8 @@ function deadlineFor(exam, attempt) {
   );
 }
 
-async function getAttemptExam(attempt, schoolId) {
-  return Exam.findOne({
-    _id: attempt.examId,
-    schoolId,
-    classId: attempt.studentClassId,
-  });
+function isDeadlinePassed(exam, attempt, now = new Date()) {
+  return now.getTime() >= deadlineFor(exam, attempt).getTime();
 }
 
 /* =========================================================
@@ -292,24 +308,41 @@ function calculateScore(exam, answers) {
   };
 }
 
-/**
- * Finalizes an attempt exactly once.
- *
- * The database always stores original option indexes.
- * Marking therefore remains correct regardless of shuffling.
- */
+/* =========================================================
+   FINALIZE ATTEMPT
+
+   Always fetch the latest database record before marking.
+   This prevents a stale in-memory attempt from losing
+   recently saved answers during submission.
+========================================================= */
+
 async function finalizeAttempt(attempt, exam) {
+  const latestAttempt = await ExamAttempt.findOne({
+    _id: attempt._id,
+    schoolId: attempt.schoolId,
+    studentId: attempt.studentId,
+    examId: attempt.examId,
+  });
+
+  if (!latestAttempt) {
+    return null;
+  }
+
+  if (latestAttempt.status === "submitted") {
+    return latestAttempt;
+  }
+
   const { score, totalMarks } = calculateScore(
     exam,
-    attempt.answers
+    latestAttempt.answers
   );
 
   const submitted = await ExamAttempt.findOneAndUpdate(
     {
-      _id: attempt._id,
-      schoolId: attempt.schoolId,
-      studentId: attempt.studentId,
-      examId: attempt.examId,
+      _id: latestAttempt._id,
+      schoolId: latestAttempt.schoolId,
+      studentId: latestAttempt.studentId,
+      examId: latestAttempt.examId,
       status: "in_progress",
     },
     {
@@ -324,23 +357,19 @@ async function finalizeAttempt(attempt, exam) {
       new: true,
       runValidators: true,
     }
-  ).select(
-    "_id score totalMarks submittedAt status"
   );
 
   if (submitted) {
     return submitted;
   }
 
-  // Another request may have finalized the attempt.
+  // Another request may have submitted the attempt first.
   return ExamAttempt.findOne({
-    _id: attempt._id,
-    schoolId: attempt.schoolId,
-    studentId: attempt.studentId,
-    examId: attempt.examId,
-  }).select(
-    "_id score totalMarks submittedAt status"
-  );
+    _id: latestAttempt._id,
+    schoolId: latestAttempt.schoolId,
+    studentId: latestAttempt.studentId,
+    examId: latestAttempt.examId,
+  });
 }
 
 /* =========================================================
@@ -402,17 +431,20 @@ export async function startExamHandler(req, res, next) {
       });
     }
 
-    // Resume existing attempts even if the exam was closed.
+    // Existing attempts can resume even after the exam is closed.
     if (attempt?.status === "in_progress") {
       const deadline = deadlineFor(exam, attempt);
 
       if (now >= deadline) {
-        await finalizeAttempt(attempt, exam);
+        const submitted = await finalizeAttempt(
+          attempt,
+          exam
+        );
 
         return res.status(409).json({
           success: false,
-          message:
-            "Your exam time has ended and your attempt was submitted.",
+          message: "Your exam time has ended.",
+          data: submitted,
         });
       }
 
@@ -495,11 +527,15 @@ export async function startExamHandler(req, res, next) {
     const deadline = deadlineFor(exam, attempt);
 
     if (now >= deadline) {
-      await finalizeAttempt(attempt, exam);
+      const submitted = await finalizeAttempt(
+        attempt,
+        exam
+      );
 
       return res.status(409).json({
         success: false,
         message: "Your exam time has ended.",
+        data: submitted,
       });
     }
 
@@ -574,15 +610,17 @@ export async function saveAnswersHandler(req, res, next) {
       });
     }
 
-    // Expired attempts are finalized using already saved answers.
-    if (new Date() >= deadlineFor(exam, attempt)) {
-      const finalized = await finalizeAttempt(attempt, exam);
+    // Expired attempts are submitted using the latest server-saved answers.
+    if (isDeadlinePassed(exam, attempt)) {
+      const submitted = await finalizeAttempt(
+        attempt,
+        exam
+      );
 
       return res.status(200).json({
         success: true,
-        message:
-          "The exam deadline passed. Your saved answers were submitted.",
-        data: finalized,
+        message: "The exam deadline passed. Saved answers were submitted.",
+        data: submitted,
       });
     }
 
@@ -599,7 +637,29 @@ export async function saveAnswersHandler(req, res, next) {
       });
     }
 
-    // Do not permit updates to an attempt already submitted.
+    const update = {};
+
+    if (Object.keys(converted.updates).length > 0) {
+      update.$set = converted.updates;
+    }
+
+    if (Object.keys(converted.removals).length > 0) {
+      update.$unset = converted.removals;
+    }
+
+    // An empty object is valid: it means no answers are selected.
+    if (Object.keys(update).length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Answers are already saved.",
+        data: {
+          _id: attempt._id,
+          status: attempt.status,
+          updatedAt: attempt.updatedAt,
+        },
+      });
+    }
+
     const updated = await ExamAttempt.findOneAndUpdate(
       {
         _id: attempt._id,
@@ -607,9 +667,7 @@ export async function saveAnswersHandler(req, res, next) {
         studentId: student._id,
         status: "in_progress",
       },
-      {
-        $set: converted.updates,
-      },
+      update,
       {
         new: true,
         runValidators: true,
@@ -620,6 +678,30 @@ export async function saveAnswersHandler(req, res, next) {
       return res.status(409).json({
         success: false,
         message: "This attempt is no longer editable.",
+      });
+    }
+
+    // If the deadline passed during the save, finalize immediately.
+    const freshAttempt = await ExamAttempt.findOne({
+      _id: attempt._id,
+      schoolId: req.user.schoolId,
+      studentId: student._id,
+    });
+
+    if (
+      freshAttempt &&
+      freshAttempt.status === "in_progress" &&
+      isDeadlinePassed(exam, freshAttempt)
+    ) {
+      const submitted = await finalizeAttempt(
+        freshAttempt,
+        exam
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "The exam deadline passed. Saved answers were submitted.",
+        data: submitted,
       });
     }
 
@@ -697,8 +779,7 @@ export async function submitExamHandler(req, res, next) {
       });
     }
 
-    // Finalization is allowed for both early submissions
-    // and expired attempts.
+    // finalizeAttempt fetches the latest saved answers before marking.
     const submitted = await finalizeAttempt(
       attempt,
       exam
@@ -714,7 +795,13 @@ export async function submitExamHandler(req, res, next) {
     return res.status(200).json({
       success: true,
       message: "Exam submitted successfully.",
-      data: submitted,
+      data: {
+        _id: submitted._id,
+        score: submitted.score,
+        totalMarks: submitted.totalMarks,
+        submittedAt: submitted.submittedAt,
+        status: submitted.status,
+      },
     });
   } catch (error) {
     next(error);
@@ -745,13 +832,13 @@ export async function listStudentExamsHandler(req, res, next) {
 
     const now = new Date();
 
-    // Include published exams and closed exams where this
-    // student already has an attempt to resume or review.
     const existingAttempts = await ExamAttempt.find({
       schoolId: req.user.schoolId,
       studentId: student._id,
     })
-      .select("examId status startedAt submittedAt score totalMarks")
+      .select(
+        "examId status startedAt submittedAt score totalMarks"
+      )
       .lean();
 
     const attemptedExamIds = existingAttempts.map(
@@ -784,56 +871,91 @@ export async function listStudentExamsHandler(req, res, next) {
       ])
     );
 
-    const data = exams.map((exam) => {
-      const attempt = attemptsByExam.get(
-        String(exam._id)
-      );
+    const data = await Promise.all(
+      exams.map(async (exam) => {
+        let attempt = attemptsByExam.get(
+          String(exam._id)
+        );
 
-      const startsAt = new Date(exam.startsAt);
-      const endsAt = new Date(exam.endsAt);
+        // Expired in-progress attempts are finalized when the
+        // student refreshes their exam list.
+        if (attempt?.status === "in_progress") {
+          const deadline = new Date(
+            Math.min(
+              new Date(exam.endsAt).getTime(),
+              new Date(attempt.startedAt).getTime() +
+                Number(exam.durationMinutes) * 60_000
+            )
+          );
 
-      let availability = "upcoming";
+          if (now >= deadline) {
+            const fullExam = await Exam.findOne({
+              _id: exam._id,
+              schoolId: req.user.schoolId,
+              classId: student.classId,
+            });
 
-      if (
-        exam.status === "published" &&
-        now >= startsAt &&
-        now < endsAt
-      ) {
-        availability = "available";
-      }
+            if (fullExam) {
+              const submitted = await finalizeAttempt(
+                attempt,
+                fullExam
+              );
 
-      if (attempt?.status === "in_progress") {
-        availability = "in_progress";
-      }
+              if (submitted) {
+                attempt = submitted.toObject
+                  ? submitted.toObject()
+                  : submitted;
+              }
+            }
+          }
+        }
 
-      if (attempt?.status === "submitted") {
-        availability = "submitted";
-      }
+        const startsAt = new Date(exam.startsAt);
+        const endsAt = new Date(exam.endsAt);
 
-      return {
-        _id: exam._id,
-        title: exam.title,
-        instructions: exam.instructions,
-        durationMinutes: exam.durationMinutes,
-        startsAt: exam.startsAt,
-        endsAt: exam.endsAt,
-        availability,
+        let availability = "upcoming";
 
-        attemptId: attempt?._id || null,
-        startedAt: attempt?.startedAt || null,
-        submittedAt: attempt?.submittedAt || null,
+        if (
+          exam.status === "published" &&
+          now >= startsAt &&
+          now < endsAt
+        ) {
+          availability = "available";
+        }
 
-        score:
-          attempt?.status === "submitted"
-            ? attempt.score
-            : null,
+        if (attempt?.status === "in_progress") {
+          availability = "in_progress";
+        }
 
-        totalMarks:
-          attempt?.status === "submitted"
-            ? attempt.totalMarks
-            : null,
-      };
-    });
+        if (attempt?.status === "submitted") {
+          availability = "submitted";
+        }
+
+        return {
+          _id: exam._id,
+          title: exam.title,
+          instructions: exam.instructions,
+          durationMinutes: exam.durationMinutes,
+          startsAt: exam.startsAt,
+          endsAt: exam.endsAt,
+          availability,
+
+          attemptId: attempt?._id || null,
+          startedAt: attempt?.startedAt || null,
+          submittedAt: attempt?.submittedAt || null,
+
+          score:
+            attempt?.status === "submitted"
+              ? attempt.score
+              : null,
+
+          totalMarks:
+            attempt?.status === "submitted"
+              ? attempt.totalMarks
+              : null,
+        };
+      })
+    );
 
     return res.status(200).json({
       success: true,
@@ -995,7 +1117,6 @@ export async function reviewExamAttemptHandler(req, res, next) {
       });
     }
 
-    // Only retrieve an exam belonging to this school.
     const exam = await Exam.findOne({
       _id: examId,
       schoolId,
@@ -1012,7 +1133,6 @@ export async function reviewExamAttemptHandler(req, res, next) {
       });
     }
 
-    // Attempt must belong to this school and this exam.
     const attempt = await ExamAttempt.findOne({
       _id: attemptId,
       examId: exam._id,
@@ -1044,7 +1164,6 @@ export async function reviewExamAttemptHandler(req, res, next) {
         ? attempt.studentId
         : null;
 
-    // Mongoose Map values may appear as a Map or plain object.
     const answers =
       attempt.answers instanceof Map
         ? Object.fromEntries(attempt.answers)
@@ -1054,61 +1173,68 @@ export async function reviewExamAttemptHandler(req, res, next) {
     let wrongCount = 0;
     let unansweredCount = 0;
 
-    const questions = exam.questions.map((question, index) => {
-      const questionId = String(question._id);
-      const selectedIndex = answers[questionId];
+    const questions = exam.questions.map(
+      (question, index) => {
+        const questionId = String(question._id);
+        const selectedIndex = answers[questionId];
 
-      const hasAnswer =
-        Number.isInteger(selectedIndex) &&
-        selectedIndex >= 0 &&
-        selectedIndex < question.options.length;
+        const hasAnswer =
+          Number.isInteger(selectedIndex) &&
+          selectedIndex >= 0 &&
+          selectedIndex < question.options.length;
 
-      const isCorrect =
-        hasAnswer &&
-        selectedIndex === question.correctOptionIndex;
+        const isCorrect =
+          hasAnswer &&
+          selectedIndex === question.correctOptionIndex;
 
-      const marksAwarded = isCorrect
-        ? Number(question.marks || 0)
-        : 0;
+        const marksAwarded = isCorrect
+          ? Number(question.marks || 0)
+          : 0;
 
-      if (!hasAnswer) {
-        unansweredCount++;
-      } else if (isCorrect) {
-        correctCount++;
-      } else {
-        wrongCount++;
+        if (!hasAnswer) {
+          unansweredCount++;
+        } else if (isCorrect) {
+          correctCount++;
+        } else {
+          wrongCount++;
+        }
+
+        return {
+          questionId,
+          questionNumber: index + 1,
+          questionText: question.text,
+
+          options: question.options.map(
+            (option, optionIndex) => ({
+              index: optionIndex,
+              text: option,
+              isCorrect:
+                optionIndex === question.correctOptionIndex,
+              isSelected:
+                hasAnswer && optionIndex === selectedIndex,
+            })
+          ),
+
+          selectedAnswer: hasAnswer
+            ? question.options[selectedIndex]
+            : null,
+
+          correctAnswer:
+            question.options[question.correctOptionIndex],
+
+          selectedOptionIndex: hasAnswer
+            ? selectedIndex
+            : null,
+
+          correctOptionIndex:
+            question.correctOptionIndex,
+
+          isCorrect: hasAnswer ? isCorrect : false,
+          marks: Number(question.marks || 0),
+          marksAwarded,
+        };
       }
-
-      return {
-        questionId,
-        questionNumber: index + 1,
-        questionText: question.text,
-
-        options: question.options.map((option, optionIndex) => ({
-          index: optionIndex,
-          text: option,
-          isCorrect: optionIndex === question.correctOptionIndex,
-          isSelected: hasAnswer && optionIndex === selectedIndex,
-        })),
-
-        selectedAnswer: hasAnswer
-          ? question.options[selectedIndex]
-          : null,
-
-        correctAnswer:
-          question.options[question.correctOptionIndex],
-
-        selectedOptionIndex: hasAnswer
-          ? selectedIndex
-          : null,
-
-        correctOptionIndex: question.correctOptionIndex,
-
-        isCorrect: hasAnswer ? isCorrect : false,
-        marks: Number(question.marks || 0),
-        marksAwarded,
-      };
-    });
+    );
 
     const totalQuestions = questions.length;
     const score = Number(attempt.score ?? 0);
@@ -1132,9 +1258,12 @@ export async function reviewExamAttemptHandler(req, res, next) {
                 student.firstName,
                 student.middleName,
                 student.lastName,
-              ].filter(Boolean).join(" ")
+              ]
+                .filter(Boolean)
+                .join(" ")
             : "Student record unavailable",
-          admissionNumber: student?.admissionNumber ?? "",
+          admissionNumber:
+            student?.admissionNumber ?? "",
         },
 
         attempt: {
@@ -1146,7 +1275,9 @@ export async function reviewExamAttemptHandler(req, res, next) {
           totalMarks,
           percentage:
             totalMarks > 0
-              ? Math.round((score / totalMarks) * 10000) / 100
+              ? Math.round(
+                  (score / totalMarks) * 10000
+                ) / 100
               : 0,
         },
 
@@ -1164,5 +1295,3 @@ export async function reviewExamAttemptHandler(req, res, next) {
     next(error);
   }
 }
-
-
