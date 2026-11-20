@@ -121,12 +121,13 @@ export async function syncCbtResults({
       "CBT exam not found in this school."
     );
   }
-
   if (
-    !exam.assessmentKey ||
-    !Number.isFinite(Number(exam.assessmentMaxScore)) ||
-    !exam.assessmentSchemeVersion
-  ) {
+  !exam.assessmentKey ||
+  !Number.isFinite(Number(exam.assessmentMaxScore)) ||
+  Number(exam.assessmentMaxScore) <= 0 ||
+  !exam.assessmentSchemeVersion
+) {
+  
     throw new ApiError(
       400,
       "This CBT exam has no valid assessment snapshot. Recreate or configure the exam before synchronization."
@@ -264,7 +265,8 @@ if (!matchingExams.length) {
   }
 
   const studentIds = [...attemptsByStudent.keys()];
-
+  const synced = [];
+  const skipped = [];
 const validStudents = await Student.find({
   _id: { $in: studentIds },
   schoolId,
@@ -318,8 +320,7 @@ if (!eligibleStudentIds.length) {
     ])
   );
 
-  const synced = [];
-  const skipped = [];
+  
 
   for (const [studentId, studentAttempts] of attemptsByStudent) {
 
