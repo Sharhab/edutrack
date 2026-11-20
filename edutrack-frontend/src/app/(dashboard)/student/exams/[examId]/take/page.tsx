@@ -1,8 +1,9 @@
 
 
+
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -13,6 +14,8 @@ import {
   Loader2,
   Save,
   Send,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import api from "../../../../../../lib/axios";
 
@@ -38,6 +41,16 @@ type ExamAttemptData = {
   answers: Record<string, number>;
 };
 
+type SaveStatus =
+  | "saved"
+  | "saving"
+  | "unsaved"
+  | "offline"
+  | "failed";
+
+const AUTOSAVE_DELAY = 1000;
+const BACKUP_INTERVAL = 15000;
+
 export default function StudentTakeExamPage() {
   const params = useParams<{ examId: string }>();
   const router = useRouter();
@@ -53,6 +66,82 @@ export default function StudentTakeExamPage() {
   const [notice, setNotice] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+  const [online, setOnline] = useState(true);
+
+  const answersRef = useRef<Record<string, number>>({});
+  const savedAnswersRef = useRef<Record<string, number>>({});
+  const saveInFlightRef = useRef(false);
+  const submitInFlightRef = useRef(false);
+  const submittedRef = useRef(false);
+  const deadlineRef = useRef<number | null>(null);
+  const attemptRef = useRef<ExamAttemptData | null>(null);
+  const autoSubmitStartedRef = useRef(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+
+  const storageKey = attempt
+    ? `edutrack-cbt-${attempt.attemptId}`
+    : null;
+
+  const storeLocally = useCallback(
+    (
+      attemptId: string,
+      value: Record<string, number>
+    ) => {
+      try {
+        localStorage.setItem(
+          `edutrack-cbt-${attemptId}`,
+          JSON.stringify({
+            answers: value,
+            updatedAt: Date.now(),
+          })
+        );
+      } catch {
+        // Local recovery is optional; server saves remain authoritative.
+      }
+    },
+    []
+  );
+
+  const removeLocalBackup = useCallback((attemptId: string) => {
+    try {
+      localStorage.removeItem(`edutrack-cbt-${attemptId}`);
+    } catch {
+      // Ignore unavailable local storage.
+    }
+  }, []);
+
+  const loadLocalBackup = useCallback(
+    (attemptId: string): Record<string, number> => {
+      try {
+        const raw = localStorage.getItem(
+          `edutrack-cbt-${attemptId}`
+        );
+
+        if (!raw) return {};
+
+        const parsed = JSON.parse(raw);
+        const value = parsed?.answers;
+
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          return {};
+        }
+
+        return Object.fromEntries(
+          Object.entries(value).filter(
+            ([, index]) =>
+              Number.isInteger(index) &&
+              Number(index) >= 0
+          )
+        ) as Record<string, number>;
+      } catch {
+        return {};
+      }
+    },
+    []
+  );
 
   const loadAttempt = useCallback(async () => {
     setLoading(true);
@@ -64,16 +153,65 @@ export default function StudentTakeExamPage() {
       const data: ExamAttemptData = response.data?.data;
 
       if (!data?.attemptId || !data?.exam) {
-        throw new Error("The exam information returned by the server is incomplete.");
+        throw new Error(
+          "The exam information returned by the server is incomplete."
+        );
       }
 
       if (!Array.isArray(data.exam.questions)) {
-        throw new Error("The server did not return the exam questions correctly.");
+        throw new Error(
+          "The server did not return the exam questions correctly."
+        );
       }
 
+      const serverAnswers = data.answers || {};
+      const localAnswers = loadLocalBackup(data.attemptId);
+
+      // Server answers take precedence. Local backup fills only
+      // answers that were not yet acknowledged by the server.
+      const recoveredAnswers = {
+        ...localAnswers,
+        ...serverAnswers,
+      };
+
+      const validQuestionIds = new Set(
+        data.exam.questions.map((question) => question._id)
+      );
+
+      const filteredAnswers = Object.fromEntries(
+        Object.entries(recoveredAnswers).filter(
+          ([questionId, index]) =>
+            validQuestionIds.has(questionId) &&
+            Number.isInteger(index) &&
+            index >= 0 &&
+            index <
+              (data.exam.questions.find(
+                (question) => question._id === questionId
+              )?.options.length || 0)
+        )
+      );
+
       setAttempt(data);
-      setAnswers(data.answers || {});
+      attemptRef.current = data;
+
+      answersRef.current = filteredAnswers;
+      savedAnswersRef.current = serverAnswers;
+
+      setAnswers(filteredAnswers);
       setCurrentQuestion(0);
+
+      deadlineRef.current = new Date(data.deadline).getTime();
+
+      storeLocally(data.attemptId, filteredAnswers);
+
+      if (
+        JSON.stringify(filteredAnswers) !==
+        JSON.stringify(serverAnswers)
+      ) {
+        setSaveStatus("unsaved");
+      } else {
+        setSaveStatus("saved");
+      }
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||
@@ -83,33 +221,320 @@ export default function StudentTakeExamPage() {
     } finally {
       setLoading(false);
     }
-  }, [examId]);
+  }, [examId, loadLocalBackup, storeLocally]);
 
   useEffect(() => {
     if (examId) void loadAttempt();
   }, [examId, loadAttempt]);
 
   useEffect(() => {
+    const updateOnline = () => setOnline(true);
+    const updateOffline = () => setOnline(false);
+
+    setOnline(navigator.onLine);
+
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOffline);
+
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOffline);
+    };
+  }, []);
+
+  const questions = attempt?.exam.questions ?? [];
+
+  const persistAnswers = useCallback(
+    async (
+      snapshot: Record<string, number>,
+      force = false
+    ): Promise<boolean> => {
+      const currentAttempt = attemptRef.current;
+
+      if (
+        !currentAttempt ||
+        submittedRef.current ||
+        submitInFlightRef.current
+      ) {
+        return false;
+      }
+
+      if (
+        !force &&
+        deadlineRef.current !== null &&
+        Date.now() >= deadlineRef.current
+      ) {
+        return false;
+      }
+
+      if (!navigator.onLine) {
+        storeLocally(currentAttempt.attemptId, snapshot);
+        setSaveStatus("offline");
+        return false;
+      }
+
+      if (saveInFlightRef.current) {
+        return false;
+      }
+
+      saveInFlightRef.current = true;
+      setSaving(true);
+      setSaveStatus("saving");
+
+      try {
+        await api.patch(
+          `/cbt/exams/attempts/${currentAttempt.attemptId}/answers`,
+          { answers: snapshot }
+        );
+
+        savedAnswersRef.current = snapshot;
+
+        storeLocally(currentAttempt.attemptId, snapshot);
+        setSaveStatus("saved");
+        setError("");
+
+        return true;
+      } catch (err: any) {
+        setSaveStatus(navigator.onLine ? "failed" : "offline");
+
+        setError(
+          err?.response?.data?.message ||
+            "Your answers could not be saved. They are stored on this device and will be retried."
+        );
+
+        storeLocally(currentAttempt.attemptId, snapshot);
+
+        return false;
+      } finally {
+        saveInFlightRef.current = false;
+        setSaving(false);
+      }
+    },
+    [storeLocally]
+  );
+
+  const submitExam = useCallback(
+    async (automatic = false) => {
+      const currentAttempt = attemptRef.current;
+
+      if (
+        !currentAttempt ||
+        submittedRef.current ||
+        submitInFlightRef.current
+      ) {
+        return;
+      }
+
+      if (
+        !automatic &&
+        deadlineRef.current !== null &&
+        Date.now() >= deadlineRef.current
+      ) {
+        setError("The exam deadline has passed.");
+        return;
+      }
+
+      if (saveInFlightRef.current) {
+        return;
+      }
+
+      if (!automatic) {
+        const unanswered =
+          currentAttempt.exam.questions.length -
+          currentAttempt.exam.questions.filter(
+            (question) =>
+              answersRef.current[question._id] !== undefined
+          ).length;
+
+        const confirmation =
+          unanswered > 0
+            ? `You have ${unanswered} unanswered question(s). They will receive no marks. Submit your exam?`
+            : "Are you sure you want to submit your exam? You cannot change your answers afterward.";
+
+        if (!window.confirm(confirmation)) return;
+      }
+
+      submitInFlightRef.current = true;
+      setSubmitting(true);
+      setError("");
+      setNotice("");
+
+      try {
+        // Save the latest snapshot before submitting.
+        if (navigator.onLine) {
+          await api.patch(
+            `/cbt/exams/attempts/${currentAttempt.attemptId}/answers`,
+            { answers: answersRef.current }
+          );
+        }
+
+        // The backend marks the attempt using its saved answers.
+        // Never submit an unsynchronized local-only answer set.
+        if (!navigator.onLine) {
+          throw new Error(
+            "You are offline. Your answers are backed up on this device. Reconnect to submit your exam."
+          );
+        }
+
+        const response = await api.post(
+          `/cbt/exams/attempts/${currentAttempt.attemptId}/submit`
+        );
+
+        const result = response.data?.data;
+
+        submittedRef.current = true;
+        setSubmitted(true);
+        setSaveStatus("saved");
+
+        removeLocalBackup(currentAttempt.attemptId);
+
+        if (
+          typeof result?.score === "number" &&
+          typeof result?.totalMarks === "number"
+        ) {
+          setNotice(
+            `Your exam was submitted successfully. Score: ${result.score}/${result.totalMarks}.`
+          );
+        } else {
+          setNotice("Your exam was submitted successfully.");
+        }
+      } catch (err: any) {
+        setError(
+          err?.response?.data?.message ||
+            err?.message ||
+            "Submission failed. Reconnect and try again."
+        );
+      } finally {
+        submitInFlightRef.current = false;
+        setSubmitting(false);
+      }
+    },
+    [removeLocalBackup]
+  );
+
+  // Keep refs synchronized with current React state.
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    attemptRef.current = attempt;
+  }, [attempt]);
+
+  useEffect(() => {
+    submittedRef.current = submitted;
+  }, [submitted]);
+
+  // Update the countdown.
+  useEffect(() => {
     if (!attempt || submitted) return;
 
     const updateTime = () => {
+      const deadline = deadlineRef.current;
+
+      if (deadline === null) return;
+
       setRemainingSeconds(
         Math.max(
           0,
-          Math.floor(
-            (new Date(attempt.deadline).getTime() - Date.now()) / 1000
-          )
+          Math.floor((deadline - Date.now()) / 1000)
         )
       );
     };
 
     updateTime();
+
     const timer = window.setInterval(updateTime, 1000);
 
     return () => window.clearInterval(timer);
   }, [attempt, submitted]);
 
   const deadlinePassed = remainingSeconds <= 0;
+
+  // Automatically save after an answer changes.
+  useEffect(() => {
+    if (!attempt || submitted || !Object.keys(answers).length) {
+      return;
+    }
+
+    storeLocally(attempt.attemptId, answers);
+    setSaveStatus("unsaved");
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      void persistAnswers(answers);
+    }, AUTOSAVE_DELAY);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [answers, attempt, submitted, persistAnswers, storeLocally]);
+
+  // Periodic server backup.
+  useEffect(() => {
+    if (!attempt || submitted) return;
+
+    const backup = window.setInterval(() => {
+      if (
+        JSON.stringify(answersRef.current) !==
+        JSON.stringify(savedAnswersRef.current)
+      ) {
+        void persistAnswers(answersRef.current);
+      }
+    }, BACKUP_INTERVAL);
+
+    return () => window.clearInterval(backup);
+  }, [attempt, submitted, persistAnswers]);
+
+  // Retry pending saves when internet returns.
+  useEffect(() => {
+    if (!online || !attempt || submitted) return;
+
+    if (
+      JSON.stringify(answersRef.current) !==
+      JSON.stringify(savedAnswersRef.current)
+    ) {
+      void persistAnswers(answersRef.current);
+    }
+  }, [online, attempt, submitted, persistAnswers]);
+
+  // Automatic submission when time expires.
+  useEffect(() => {
+    if (
+      !attempt ||
+      submitted ||
+      !deadlinePassed ||
+      autoSubmitStartedRef.current
+    ) {
+      return;
+    }
+
+    autoSubmitStartedRef.current = true;
+
+    void submitExam(true);
+  }, [attempt, deadlinePassed, submitted, submitExam]);
+
+  // Preserve a local copy when the page is closed or backgrounded.
+  useEffect(() => {
+    if (!attempt) return;
+
+    const preserve = () => {
+      storeLocally(attempt.attemptId, answersRef.current);
+    };
+
+    window.addEventListener("pagehide", preserve);
+    document.addEventListener("visibilitychange", preserve);
+
+    return () => {
+      window.removeEventListener("pagehide", preserve);
+      document.removeEventListener("visibilitychange", preserve);
+    };
+  }, [attempt, storeLocally]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -123,99 +548,27 @@ export default function StudentTakeExamPage() {
     ].join(":");
   };
 
-  const questions = attempt?.exam.questions ?? [];
   const question = questions[currentQuestion];
 
   const answeredCount = questions.filter(
     (item) => answers[item._id] !== undefined
   ).length;
 
-  const saveAnswers = async () => {
-    if (!attempt || deadlinePassed || submitted || saving || submitting) {
-      return false;
-    }
-
-    setSaving(true);
-    setError("");
-    setNotice("");
-
-    try {
-      await api.patch(
-        `/cbt/exams/attempts/${attempt.attemptId}/answers`,
-        { answers }
-      );
-
-      setNotice("Your answers have been saved successfully.");
-      return true;
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          "We could not save your answers. Check your connection and try again."
-      );
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const submitExam = async () => {
-    if (!attempt || deadlinePassed || submitted || submitting || saving) {
-      return;
-    }
-
-    const unanswered = questions.length - answeredCount;
-
-    const confirmation =
-      unanswered > 0
-        ? `You have ${unanswered} unanswered question(s). Unanswered questions will receive no marks. Do you want to submit your exam?`
-        : "Are you sure you want to submit your exam? You cannot change your answers afterward.";
-
-    if (!window.confirm(confirmation)) return;
-
-    setSubmitting(true);
-    setError("");
-    setNotice("");
-
-    try {
-      // Save the latest answers before submitting.
-      await api.patch(
-        `/cbt/exams/attempts/${attempt.attemptId}/answers`,
-        { answers }
-      );
-
-      const response = await api.post(
-        `/cbt/exams/attempts/${attempt.attemptId}/submit`
-      );
-
-      const result = response.data?.data;
-
-      setSubmitted(true);
-
-      if (
-        typeof result?.score === "number" &&
-        typeof result?.totalMarks === "number"
-      ) {
-        setNotice(
-          `Your exam was submitted successfully. Score: ${result.score}/${result.totalMarks}.`
-        );
-      } else {
-        setNotice("Your exam was submitted successfully.");
-      }
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          "Submission failed. Please check your connection and try again."
-      );
-    } finally {
-      setSubmitting(false);
-    }
+  const saveStatusText: Record<SaveStatus, string> = {
+    saved: "All answers saved",
+    saving: "Saving answers...",
+    unsaved: "Unsaved changes",
+    offline: "Offline - backed up on device",
+    failed: "Save failed - retrying",
   };
 
   if (loading) {
     return (
       <main className="flex min-h-[50vh] items-center justify-center gap-3 bg-slate-50 p-6 text-slate-800">
         <Loader2 className="h-6 w-6 animate-spin text-blue-700" />
-        <p className="font-medium">Loading your exam questions...</p>
+        <p className="font-medium">
+          Loading your exam questions...
+        </p>
       </main>
     );
   }
@@ -225,7 +578,11 @@ export default function StudentTakeExamPage() {
       <main className="mx-auto max-w-2xl p-4 sm:p-6">
         <section className="rounded-2xl border border-red-200 bg-white p-5 text-slate-900 shadow-sm">
           <AlertCircle className="mb-3 h-7 w-7 text-red-600" />
-          <h1 className="text-xl font-bold">Unable to open your exam</h1>
+
+          <h1 className="text-xl font-bold">
+            Unable to open your exam
+          </h1>
+
           <p className="mt-2 break-words text-sm leading-6 text-slate-700">
             {error || "We could not load the exam."}
           </p>
@@ -234,14 +591,15 @@ export default function StudentTakeExamPage() {
             <button
               type="button"
               onClick={() => void loadAttempt()}
-              className="rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800"
+              className="rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white"
             >
               Try again
             </button>
+
             <button
               type="button"
               onClick={() => router.push("/student/exams")}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-800 hover:bg-slate-50"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-800"
             >
               Return to my exams
             </button>
@@ -254,12 +612,13 @@ export default function StudentTakeExamPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-900 sm:px-6 sm:py-6">
       <div className="mx-auto w-full max-w-3xl space-y-4 sm:space-y-6">
-        {/* Top navigation and timer */}
+
+        {/* Navigation and timer */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button
             type="button"
             onClick={() => router.push("/student/exams")}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
           >
             <ArrowLeft className="h-4 w-4" />
             My exams
@@ -271,7 +630,7 @@ export default function StudentTakeExamPage() {
             className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 font-mono text-base font-bold ${
               remainingSeconds < 300
                 ? "border-red-300 bg-red-50 text-red-700"
-                : "border-slate-200 bg-white text-slate-900"
+                : "border-slate-200 bg-white"
             }`}
           >
             <Clock3 className="h-5 w-5" />
@@ -287,9 +646,10 @@ export default function StudentTakeExamPage() {
             </div>
 
             <div className="min-w-0 flex-1">
-              <h1 className="break-words text-xl font-bold leading-tight text-slate-950 sm:text-2xl">
+              <h1 className="break-words text-xl font-bold sm:text-2xl">
                 {attempt.exam.title}
               </h1>
+
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Read each question carefully and select your answer.
               </p>
@@ -301,6 +661,7 @@ export default function StudentTakeExamPage() {
               <h2 className="text-sm font-bold text-blue-950">
                 Instructions
               </h2>
+
               <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
                 {attempt.exam.instructions}
               </p>
@@ -309,28 +670,28 @@ export default function StudentTakeExamPage() {
 
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs font-medium text-slate-600">
+              <p className="text-xs text-slate-600">
                 Total questions
               </p>
-              <p className="mt-1 text-lg font-bold text-slate-950">
+              <p className="mt-1 text-lg font-bold">
                 {questions.length}
               </p>
             </div>
 
             <div className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs font-medium text-slate-600">
+              <p className="text-xs text-slate-600">
                 Questions answered
               </p>
-              <p className="mt-1 text-lg font-bold text-slate-950">
+              <p className="mt-1 text-lg font-bold">
                 {answeredCount} of {questions.length}
               </p>
             </div>
 
             <div className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs font-medium text-slate-600">
+              <p className="text-xs text-slate-600">
                 Time allowed
               </p>
-              <p className="mt-1 text-lg font-bold text-slate-950">
+              <p className="mt-1 text-lg font-bold">
                 {attempt.exam.durationMinutes} minutes
               </p>
             </div>
@@ -349,18 +710,44 @@ export default function StudentTakeExamPage() {
                 <div
                   className="h-full rounded-full bg-blue-700 transition-all"
                   style={{
-                    width: `${(answeredCount / questions.length) * 100}%`,
+                    width: `${
+                      (answeredCount / questions.length) * 100
+                    }%`,
                   }}
                 />
               </div>
+
               <p className="mt-2 text-xs text-slate-600">
-                {answeredCount === questions.length
-                  ? "You have answered every question."
-                  : `${questions.length - answeredCount} question(s) remaining.`}
+                {questions.length - answeredCount} question(s) remaining.
               </p>
             </div>
           )}
         </section>
+
+        {/* Save and connection status */}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+          <div className="flex items-center gap-2">
+            {online ? (
+              <Wifi className="h-4 w-4 text-green-600" />
+            ) : (
+              <WifiOff className="h-4 w-4 text-red-600" />
+            )}
+
+            <span>{online ? "Connected" : "No internet connection"}</span>
+          </div>
+
+          <div className="flex items-center gap-2 font-medium">
+            {saveStatus === "saving" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : saveStatus === "saved" ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : (
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+            )}
+
+            <span>{saveStatusText[saveStatus]}</span>
+          </div>
+        </div>
 
         {/* Alerts */}
         {error && (
@@ -368,7 +755,7 @@ export default function StudentTakeExamPage() {
             role="alert"
             className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-900"
           >
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" />
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
             <p className="break-words">{error}</p>
           </div>
         )}
@@ -378,15 +765,16 @@ export default function StudentTakeExamPage() {
             role="status"
             className="flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-900"
           >
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-700" />
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
             <p className="break-words">{notice}</p>
           </div>
         )}
 
         {deadlinePassed && !submitted && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-            Your exam time has ended. The system is not accepting late
-            submissions. Please contact your school administrator for help.
+            Your exam time has ended. The system is attempting to submit your
+            saved answers. Reconnect to the internet if submission cannot
+            complete.
           </div>
         )}
 
@@ -396,9 +784,10 @@ export default function StudentTakeExamPage() {
             <h2 className="font-bold text-amber-950">
               No questions were returned
             </h2>
+
             <p className="mt-2 text-sm leading-6 text-amber-900">
-              This exam does not contain any questions in the data received
-              from the server. Please contact your school administrator.
+              This exam does not contain any questions. Please contact your
+              school administrator.
             </p>
           </section>
         )}
@@ -407,30 +796,34 @@ export default function StudentTakeExamPage() {
         {submitted ? (
           <section className="rounded-2xl border border-green-200 bg-white p-6 text-center shadow-sm sm:p-8">
             <CheckCircle2 className="mx-auto h-12 w-12 text-green-600" />
-            <h2 className="mt-4 text-xl font-bold text-slate-950">
+
+            <h2 className="mt-4 text-xl font-bold">
               Exam submitted successfully
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+
+            <p className="mt-2 text-sm text-slate-600">
               Your answers have been submitted to your school.
             </p>
+
             <button
               type="button"
               onClick={() => router.push("/student/exams")}
-              className="mt-6 min-h-11 rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800"
+              className="mt-6 min-h-11 rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white"
             >
               Return to my exams
             </button>
           </section>
         ) : question ? (
           <>
-            {/* Question and answers */}
+            {/* Question */}
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-blue-700">
                     Question {currentQuestion + 1} of {questions.length}
                   </p>
-                  <h2 className="mt-3 whitespace-pre-wrap break-words text-lg font-bold leading-7 text-slate-950 sm:text-xl">
+
+                  <h2 className="mt-3 whitespace-pre-wrap break-words text-lg font-bold leading-7 sm:text-xl">
                     {question.text || "Question text is missing."}
                   </h2>
                 </div>
@@ -450,20 +843,36 @@ export default function StudentTakeExamPage() {
                 question.options.length > 0 ? (
                   <div className="space-y-3">
                     {question.options.map((option, index) => {
-                      const selected = answers[question._id] === index;
+                      const selected =
+                        answers[question._id] === index;
+
                       const letter = String.fromCharCode(65 + index);
 
                       return (
                         <button
                           key={`${question._id}-${index}`}
                           type="button"
-                          disabled={deadlinePassed}
+                          disabled={deadlinePassed || submitting}
                           aria-pressed={selected}
                           onClick={() => {
-                            setAnswers((previous) => ({
-                              ...previous,
-                              [question._id]: index,
-                            }));
+                            setAnswers((previous) => {
+                              const updated = {
+                                ...previous,
+                                [question._id]: index,
+                              };
+
+                              answersRef.current = updated;
+
+                              if (attempt) {
+                                storeLocally(
+                                  attempt.attemptId,
+                                  updated
+                                );
+                              }
+
+                              return updated;
+                            });
+
                             setNotice("");
                             setError("");
                           }}
@@ -477,13 +886,13 @@ export default function StudentTakeExamPage() {
                             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
                               selected
                                 ? "border-blue-700 bg-blue-700 text-white"
-                                : "border-slate-300 bg-white text-slate-800"
+                                : "border-slate-300 bg-white"
                             }`}
                           >
                             {letter}
                           </span>
 
-                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-1 text-base leading-6 text-slate-950">
+                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-1 text-base leading-6">
                             {option || "(Empty answer option)"}
                           </span>
 
@@ -500,9 +909,7 @@ export default function StudentTakeExamPage() {
                       Answer options are missing
                     </p>
                     <p className="mt-2 text-sm leading-6 text-amber-900">
-                      The server returned this question without any answer
-                      options. Your school administrator needs to check the
-                      question in the exam editor.
+                      Please contact your school administrator.
                     </p>
                   </div>
                 )}
@@ -514,9 +921,11 @@ export default function StudentTakeExamPage() {
                   type="button"
                   disabled={currentQuestion === 0}
                   onClick={() =>
-                    setCurrentQuestion((value) => Math.max(0, value - 1))
+                    setCurrentQuestion((value) =>
+                      Math.max(0, value - 1)
+                    )
                   }
-                  className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold"
                 >
                   Previous
                 </button>
@@ -529,21 +938,22 @@ export default function StudentTakeExamPage() {
                       Math.min(questions.length - 1, value + 1)
                     )
                   }
-                  className="min-h-11 rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="min-h-11 rounded-xl bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
                 >
                   Next question
                 </button>
               </div>
             </section>
 
-            {/* Review and submission */}
+            {/* Review answers */}
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-              <h2 className="text-lg font-bold text-slate-950">
+              <h2 className="text-lg font-bold">
                 Review your answers
               </h2>
+
               <p className="mt-2 text-sm leading-6 text-slate-700">
                 Choose a question number to review it. Unanswered questions
-                receive no marks. Submit when you are ready.
+                receive no marks.
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
@@ -555,6 +965,7 @@ export default function StudentTakeExamPage() {
                     <button
                       key={item._id}
                       type="button"
+                      disabled={deadlinePassed}
                       onClick={() => setCurrentQuestion(index)}
                       aria-label={`Open question ${index + 1}${
                         answered ? ", answered" : ", unanswered"
@@ -565,7 +976,7 @@ export default function StudentTakeExamPage() {
                           ? "border-blue-700 bg-blue-700 text-white"
                           : answered
                             ? "border-green-300 bg-green-50 text-green-900"
-                            : "border-slate-300 bg-white text-slate-800"
+                            : "border-slate-300 bg-white"
                       }`}
                     >
                       {index + 1}
@@ -574,14 +985,16 @@ export default function StudentTakeExamPage() {
                 })}
               </div>
 
-              <p className="mt-3 text-xs leading-5 text-slate-600">
+              <p className="mt-3 text-xs text-slate-600">
                 Blue: current question. Green: answered. White: unanswered.
               </p>
 
               <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => void saveAnswers()}
+                  onClick={() =>
+                    void persistAnswers(answersRef.current)
+                  }
                   disabled={
                     saving ||
                     submitting ||
@@ -589,19 +1002,20 @@ export default function StudentTakeExamPage() {
                     submitted ||
                     questions.length === 0
                   }
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold disabled:opacity-50"
                 >
                   {saving ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
                     <Save className="h-5 w-5" />
                   )}
+
                   {saving ? "Saving answers..." : "Save my answers"}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => void submitExam()}
+                  onClick={() => void submitExam(false)}
                   disabled={
                     submitting ||
                     saving ||
@@ -609,14 +1023,17 @@ export default function StudentTakeExamPage() {
                     submitted ||
                     questions.length === 0
                   }
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white disabled:opacity-50"
                 >
                   {submitting ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
                     <Send className="h-5 w-5" />
                   )}
-                  {submitting ? "Submitting exam..." : "Submit my exam"}
+
+                  {submitting
+                    ? "Submitting exam..."
+                    : "Submit my exam"}
                 </button>
               </div>
             </section>
