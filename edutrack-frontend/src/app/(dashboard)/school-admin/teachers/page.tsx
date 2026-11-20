@@ -289,94 +289,141 @@ export default function TeachersPage() {
     setOpen(true);
   }
 
-  function openEdit(teacher: Teacher) {
-    const user = getUser(teacher);
+  
+function openEdit(teacher: Teacher) {
+  const user = getUser(teacher);
 
-    setSelected(teacher);
-    setActionError("");
-    setNotice("");
+  setSelected(teacher);
+  setActionError("");
+  setNotice("");
 
-    setForm({
-      ...initialForm,
+  setForm({
+    ...initialForm,
 
-      firstName: user.firstName || teacher.firstName || "",
-      middleName: teacher.middleName || "",
-      lastName: user.lastName || teacher.lastName || "",
+    // Personal information
+    firstName: user.firstName || teacher.firstName || "",
+    middleName: teacher.middleName || "",
+    lastName: user.lastName || teacher.lastName || "",
+    gender: teacher.gender || "male",
+    dateOfBirth: teacher.dateOfBirth
+      ? String(teacher.dateOfBirth).substring(0, 10)
+      : "",
+    maritalStatus: teacher.maritalStatus || "",
 
-      email: user.email || teacher.email || "",
-      phone: user.phone || teacher.phone || "",
+    // Contact
+    email: user.email || teacher.email || "",
+    phone: user.phone || teacher.phone || "",
+    address: teacher.address || "",
 
-      employeeId: teacher.employeeId || "",
-      qualification: teacher.qualification || "",
-      designation: teacher.designation || "",
+    // Location
+    stateOfOrigin: teacher.stateOfOrigin || "",
+    lga: teacher.lga || "",
+    nationality: teacher.nationality || "Nigerian",
 
-      // Retain legacy subject IDs for existing records,
-      // but do not expose manual subject assignment in the form.
+    // Employment
+    employeeId: teacher.employeeId || "",
+    qualification: teacher.qualification || "",
+    designation: teacher.designation || "",
+    staffCategory: teacher.staffCategory || "",
+    employmentDate: teacher.employmentDate
+      ? String(teacher.employmentDate).substring(0, 10)
+      : "",
+    employmentType: teacher.employmentType || "full_time",
+
+    // Class access
+    classIds: (teacher.classIds || [])
+      .map(getId)
+      .filter(Boolean),
+
+    // Subject assignments remain managed separately.
+    subjectIds: [],
+
+    // Emergency contact
+    emergencyName: teacher.emergencyName || "",
+    emergencyPhone: teacher.emergencyPhone || "",
+
+    // Optional medical information
+    bloodGroup: teacher.bloodGroup || "",
+    genotype: teacher.genotype || "",
+
+    // Identification
+    nin: teacher.nin || "",
+    photo: teacher.photo || "",
+
+    // Account
+    isActive: isTeacherActive(teacher),
+    status: isTeacherActive(teacher) ? "active" : "inactive",
+
+    // Never prefill an existing password.
+    password: "",
+  });
+
+  setOpen(true);
+}
+
+  
+async function handleSave() {
+  setActionError("");
+
+  if (!form.firstName.trim() || !form.lastName.trim()) {
+    setActionError("First name and last name are required.");
+    return;
+  }
+
+  if (!form.classIds?.length) {
+    setActionError("Assign at least one class to this teacher.");
+    return;
+  }
+
+  // Backend requires a password when creating a new teacher.
+  if (!selected && form.password.trim().length < 6) {
+    setActionError(
+      "Enter a password containing at least 6 characters."
+    );
+    return;
+  }
+
+  if (selected && form.password.trim()) {
+    setActionError(
+      "Use Reset Password to change an existing teacher's password."
+    );
+    return;
+  }
+
+  try {
+    setSubmitting(true);
+
+    const payload: TeacherFormValues = {
+      ...form,
       subjectIds: [],
+      status: form.isActive ? "active" : "inactive",
+    };
 
-      classIds: (teacher.classIds || [])
-        .map(getId)
-        .filter(Boolean),
-
-      gender: teacher.gender || "male",
-      address: teacher.address || "",
-
-      dateOfBirth: teacher.dateOfBirth
-        ? String(teacher.dateOfBirth).substring(0, 10)
-        : "",
-
-      employmentDate: teacher.employmentDate
-        ? String(teacher.employmentDate).substring(0, 10)
-        : "",
-
-      employmentType: teacher.employmentType || "full_time",
-
-      isActive: isTeacherActive(teacher),
-      status: isTeacherActive(teacher) ? "active" : "inactive",
-
-      password: "",
-    });
-
-    setOpen(true);
-  }
-
-  async function handleSave() {
-    if (!form.classIds?.length) {
-      setActionError("Assign at least one class to this teacher.");
-      return;
+    if (selected?._id) {
+      await updateTeacher(selected._id, payload);
+      setNotice("Teacher profile updated successfully.");
+    } else {
+      await createTeacher(payload);
+      setNotice("Teacher created successfully.");
     }
 
-    try {
-      setSubmitting(true);
-      setActionError("");
+    setOpen(false);
+    resetForm();
 
-      const payload: TeacherFormValues = {
-        ...form,
-        subjectIds: [],
-        status: form.isActive ? "active" : "inactive",
-      };
+    await loadData();
+  } catch (error: unknown) {
+    const message = axios.isAxiosError(error)
+      ? error.response?.data?.message
+      : undefined;
 
-      if (selected?._id) {
-        await updateTeacher(selected._id, payload);
-        setNotice("Teacher updated successfully.");
-      } else {
-        await createTeacher(payload);
-        setNotice("Teacher created successfully.");
-      }
-
-      setOpen(false);
-      resetForm();
-
-      await loadData();
-    } catch (error: any) {
-      setActionError(
-        error?.response?.data?.message ||
-          "Unable to save teacher. Please try again."
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    setActionError(
+      message || "Unable to save teacher. Please try again."
+    );
+  } finally {
+    setSubmitting(false);
   }
+}
+
 
   /* =====================================================
      DELETE TEACHER
