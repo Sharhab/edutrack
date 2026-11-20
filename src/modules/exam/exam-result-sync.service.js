@@ -1,6 +1,6 @@
 
 import mongoose from "mongoose";
-
+import { Student } from "../students/student.model.js";
 import { ApiError } from "../../utils/apiError.js";
 import { Exam } from "./exam.model.js";
 import { ExamAttempt } from "./attempt.model.js";
@@ -144,25 +144,32 @@ export async function syncCbtResults({
   }
 
   // Find all exams in the same academic and assessment context.
-  const matchingExams = await Exam.find({
-    schoolId,
-    classId: exam.classId,
-    subjectId: exam.subjectId,
-    sessionId: exam.sessionId,
-    termId: exam.termId,
-    assessmentKey: exam.assessmentKey,
-  })
-    .select(
-      "_id assessmentKey assessmentMaxScore assessmentSchemeVersion assessmentAggregationMethod"
-    )
-    .lean();
+  
+// Find only exams with a complete, matching assessment snapshot.
+// Older CBT exams without these fields are safely excluded.
+const matchingExams = await Exam.find({
+  schoolId,
+  classId: exam.classId,
+  subjectId: exam.subjectId,
+  sessionId: exam.sessionId,
+  termId: exam.termId,
+  assessmentKey: exam.assessmentKey,
+  assessmentMaxScore: exam.assessmentMaxScore,
+  assessmentSchemeVersion: exam.assessmentSchemeVersion,
+  assessmentAggregationMethod: aggregationMethod,
+})
+  .select(
+    "_id assessmentKey assessmentMaxScore assessmentSchemeVersion assessmentAggregationMethod"
+  )
+  .lean();
 
-  if (!matchingExams.length) {
-    throw new ApiError(
-      404,
-      "No matching CBT exams were found."
-    );
-  }
+if (!matchingExams.length) {
+  throw new ApiError(
+    404,
+    "No CBT exams with matching assessment settings were found."
+  );
+}
+
 
   // Never combine exams created against different component settings.
   const inconsistentExam = matchingExams.find((item) => (
@@ -258,13 +265,50 @@ export async function syncCbtResults({
 
   const studentIds = [...attemptsByStudent.keys()];
 
+const validStudents = await Student.find({
+  _id: { $in: studentIds },
+  schoolId,
+  classId: exam.classId,
+  status: "active",
+})
+  .select("_id")
+  .lean();
+
+const validStudentIds = new Set(
+  validStudents.map((student) => String(student._id))
+);
+
+// Do not create or update results for students who are
+// inactive, transferred, or outside this school/class.
+for (const studentId of studentIds) {
+  if (!validStudentIds.has(studentId)) {
+    skipped.push({
+      studentId,
+      reason:
+        "Student is inactive or no longer belongs to this school and class.",
+    });
+  }
+}
+
+const eligibleStudentIds = studentIds.filter(
+  (studentId) => validStudentIds.has(studentId)
+);
+
+if (!eligibleStudentIds.length) {
+  throw new ApiError(
+    400,
+    "No submitted attempts belong to active students in this class."
+  );
+}
+
+  
   const existingResults = await Result.find({
     schoolId,
     classId: exam.classId,
     subjectId: exam.subjectId,
     sessionId: exam.sessionId,
     termId: exam.termId,
-    studentId: { $in: studentIds },
+    studentId: { $in: eligibleStudentIds },
   }).lean();
 
   const resultsByStudent = new Map(
@@ -278,6 +322,12 @@ export async function syncCbtResults({
   const skipped = [];
 
   for (const [studentId, studentAttempts] of attemptsByStudent) {
+
+    // Skip students who are inactive or outside this school/class.
+    if (!validStudentIds.has(studentId)) {
+      continue;
+    }
+
     const existing = resultsByStudent.get(studentId);
 
     if (
