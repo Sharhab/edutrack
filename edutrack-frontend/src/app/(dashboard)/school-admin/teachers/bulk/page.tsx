@@ -1,8 +1,10 @@
 
 
+
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Plus,
   Trash2,
@@ -10,7 +12,6 @@ import {
   ClipboardPaste,
   RefreshCw,
   UserRound,
-  BookOpen,
   GraduationCap,
   LockKeyhole,
   CheckCircle2,
@@ -18,10 +19,7 @@ import {
 } from "lucide-react";
 
 import api from "../../../../../lib/axios";
-import {
-  getClassOptions,
-  getSubjectOptions,
-} from "../../../../../lib/options";
+import { getClassOptions } from "../../../../../lib/options";
 
 /* =====================================================
    TYPES
@@ -31,19 +29,15 @@ type Row = {
   firstName: string;
   middleName: string;
   lastName: string;
-
   email: string;
   phone: string;
-  employeeId: string;
 
   qualification: string;
   designation: string;
 
-  subjectIds: string[];
   classIds: string[];
 
   gender: "male" | "female";
-
   address: string;
   dateOfBirth: string;
   maritalStatus: string;
@@ -62,18 +56,11 @@ type Row = {
   genotype: string;
   nin: string;
 
-  isActive: boolean;
   status: "active" | "inactive";
-
   password: string;
 };
 
 type ClassOption = {
-  _id: string;
-  name: string;
-};
-
-type SubjectOption = {
   _id: string;
   name: string;
 };
@@ -101,19 +88,15 @@ function createEmptyRow(): Row {
     firstName: "",
     middleName: "",
     lastName: "",
-
     email: "",
     phone: "",
-    employeeId: "",
 
     qualification: "",
     designation: "",
 
-    subjectIds: [],
     classIds: [],
 
     gender: "male",
-
     address: "",
     dateOfBirth: "",
     maritalStatus: "",
@@ -132,9 +115,7 @@ function createEmptyRow(): Row {
     genotype: "",
     nin: "",
 
-    isActive: true,
     status: "active",
-
     password: "",
   };
 }
@@ -142,16 +123,12 @@ function createEmptyRow(): Row {
 function isFilled(row: Row) {
   return Boolean(
     row.firstName.trim() ||
-    row.middleName.trim() ||
-    row.lastName.trim() ||
-    row.email.trim() ||
-    row.phone.trim()
+      row.middleName.trim() ||
+      row.lastName.trim() ||
+      row.email.trim() ||
+      row.phone.trim()
   );
 }
-
-/* =====================================================
-   REUSABLE INPUT
-===================================================== */
 
 function Field({
   label,
@@ -186,12 +163,42 @@ function Field({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
+}) {
+  return (
+    <label className="block min-w-0 space-y-1.5">
+      <span className="text-xs font-medium text-slate-300">{label}</span>
+
+      <select
+        className="input min-h-[42px] w-full"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function SectionTitle({
   icon,
   title,
   description,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   description?: string;
 }) {
@@ -204,9 +211,7 @@ function SectionTitle({
       <div className="min-w-0">
         <h3 className="text-sm font-semibold text-white">{title}</h3>
         {description && (
-          <p className="mt-0.5 text-xs text-slate-400">
-            {description}
-          </p>
+          <p className="mt-0.5 text-xs text-slate-400">{description}</p>
         )}
       </div>
     </div>
@@ -219,9 +224,7 @@ function SectionTitle({
 
 export default function TeacherBulkEntryPage() {
   const [rows, setRows] = useState<Row[]>([createEmptyRow()]);
-
   const [classes, setClasses] = useState<ClassOption[]>([]);
-  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
 
   const [pasteText, setPasteText] = useState("");
   const [pasteMessage, setPasteMessage] = useState("");
@@ -233,7 +236,7 @@ export default function TeacherBulkEntryPage() {
   const [saveResult, setSaveResult] = useState<BulkResult | null>(null);
 
   /* =====================================================
-     LOAD OPTIONS
+     LOAD SCHOOL CLASSES
   ===================================================== */
 
   async function loadOptions() {
@@ -241,19 +244,14 @@ export default function TeacherBulkEntryPage() {
       setFetching(true);
       setError("");
 
-      const [classRes, subjectRes] = await Promise.all([
-        getClassOptions(),
-        getSubjectOptions(),
-      ]);
-
+      const classRes = await getClassOptions();
       setClasses(classRes || []);
-      setSubjects(subjectRes || []);
     } catch (err: any) {
-      console.error("Teacher options error:", err);
+      console.error("Teacher class options error:", err);
 
       setError(
         err?.response?.data?.message ||
-          "Unable to load school classes and subjects."
+          "Unable to load school classes."
       );
     } finally {
       setFetching(false);
@@ -301,22 +299,18 @@ export default function TeacherBulkEntryPage() {
     setSaveResult(null);
   }
 
-  function toggleMultiSelect(
-    index: number,
-    field: "classIds" | "subjectIds",
-    value: string
-  ) {
+  function toggleClass(index: number, classId: string) {
     setRows((previous) =>
       previous.map((row, i) => {
         if (i !== index) return row;
 
-        const selected = row[field].includes(value);
+        const selected = row.classIds.includes(classId);
 
         return {
           ...row,
-          [field]: selected
-            ? row[field].filter((id) => id !== value)
-            : [...row[field], value],
+          classIds: selected
+            ? row.classIds.filter((id) => id !== classId)
+            : [...row.classIds, classId],
         };
       })
     );
@@ -327,151 +321,143 @@ export default function TeacherBulkEntryPage() {
   /* =====================================================
      PASTE IMPORT
 
-     First | Middle | Last | Email (Optional) | Phone |
+     First | Middle | Last | Email | Phone |
      Qualification | Designation | Gender | DOB | State
   ===================================================== */
 
-function importPastedTeachers() {
-  setError("");
-  setPasteMessage("");
-  setSaveResult(null);
+  function importPastedTeachers() {
+    setError("");
+    setPasteMessage("");
+    setSaveResult(null);
 
-  if (!pasteText.trim()) {
-    setError("Paste teacher records first.");
-    return;
-  }
+    if (!pasteText.trim()) {
+      setError("Paste teacher records first.");
+      return;
+    }
 
-  const lines = pasteText
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0);
+    const lines = pasteText
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
 
-  if (!lines.length) {
-    setError("No teacher records found.");
-    return;
-  }
+    const firstLine = lines[0]?.toLowerCase() || "";
 
-  const firstLine = lines[0].toLowerCase();
+    const hasHeader =
+      firstLine.includes("first") &&
+      (firstLine.includes("last") || firstLine.includes("email"));
 
-  const hasHeader =
-    firstLine.includes("first") &&
-    (firstLine.includes("last") || firstLine.includes("email"));
+    const dataLines = hasHeader ? lines.slice(1) : lines;
 
-  const dataLines = hasHeader ? lines.slice(1) : lines;
+    if (!dataLines.length) {
+      setError("The pasted content contains only a header.");
+      return;
+    }
 
-  if (!dataLines.length) {
-    setError("The pasted content contains only a header.");
-    return;
-  }
+    const importedRows: Row[] = [];
 
-  const importedRows: Row[] = [];
+    for (let index = 0; index < dataLines.length; index++) {
+      const columns = dataLines[index]
+        .split("\t")
+        .map((column) => column.trim());
 
-  for (let index = 0; index < dataLines.length; index++) {
-    const columns = dataLines[index]
-      .split("\t")
-      .map((column) => column.trim());
+      const genderIndex = columns.findIndex((column) =>
+        ["male", "female"].includes(column.toLowerCase())
+      );
 
-    // Find the actual gender column instead of assuming its position.
-    const genderIndex = columns.findIndex(
-      (column) => ["male", "female"].includes(column.toLowerCase())
-    );
+      if (genderIndex === -1) {
+        setError(
+          `Row ${index + 1}: Gender must be Male or Female. Check your pasted columns.`
+        );
+        return;
+      }
 
-    if (genderIndex === -1) {
+      if (genderIndex < 6) {
+        setError(
+          `Row ${index + 1}: Not enough columns were supplied.`
+        );
+        return;
+      }
+
+      const hasEmailColumn = genderIndex >= 7;
+
+      const email = hasEmailColumn ? columns[3] || "" : "";
+      const phoneIndex = hasEmailColumn ? 4 : 3;
+      const qualificationIndex = hasEmailColumn ? 5 : 4;
+      const designationIndex = hasEmailColumn ? 6 : 5;
+
+      const dateOfBirth = columns[genderIndex + 1] || "";
+      const stateOfOrigin = columns[genderIndex + 2] || "";
+
+      if (
+        dateOfBirth &&
+        !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)
+      ) {
+        setError(
+          `Row ${index + 1}: Invalid date of birth "${dateOfBirth}". Use YYYY-MM-DD or leave it blank.`
+        );
+        return;
+      }
+
+      importedRows.push({
+        ...createEmptyRow(),
+
+        firstName: columns[0] || "",
+        middleName: columns[1] || "",
+        lastName: columns[2] || "",
+
+        email,
+        phone: columns[phoneIndex] || "",
+
+        qualification: columns[qualificationIndex] || "",
+        designation: columns[designationIndex] || "",
+
+        gender:
+          columns[genderIndex].toLowerCase() === "female"
+            ? "female"
+            : "male",
+
+        dateOfBirth,
+        stateOfOrigin,
+      });
+    }
+
+    const invalidRows = importedRows
+      .map((row, index) => ({ row, number: index + 1 }))
+      .filter(
+        ({ row }) =>
+          row.firstName.trim().length < 2 ||
+          row.lastName.trim().length < 2
+      );
+
+    if (invalidRows.length) {
       setError(
-        `Row ${index + 1}: Gender must be Male or Female. Check your pasted columns.`
+        `Rows ${invalidRows
+          .map((item) => item.number)
+          .join(", ")}: First name and last name are required.`
       );
       return;
     }
 
-    if (genderIndex < 6) {
-      setError(
-        `Row ${index + 1}: The teacher data does not contain enough columns.`
-      );
+    const emails = importedRows
+      .map((row) => row.email.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (new Set(emails).size !== emails.length) {
+      setError("Duplicate email addresses found in the pasted records.");
       return;
     }
 
-    const hasEmailColumn = genderIndex >= 7;
+    setRows((previous) => [
+      ...previous.filter(isFilled),
+      ...importedRows,
+    ]);
 
-    const email = hasEmailColumn
-      ? columns[3] || ""
-      : "";
-
-    const phoneIndex = hasEmailColumn ? 4 : 3;
-    const qualificationIndex = hasEmailColumn ? 5 : 4;
-    const designationIndex = hasEmailColumn ? 6 : 5;
-
-    const dateOfBirth = columns[genderIndex + 1] || "";
-    const stateOfOrigin = columns[genderIndex + 2] || "";
-
-    if (
-      dateOfBirth &&
-      !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)
-    ) {
-      setError(
-        `Row ${index + 1}: Invalid date of birth "${dateOfBirth}". Use YYYY-MM-DD or leave it blank.`
-      );
-      return;
-    }
-
-    importedRows.push({
-      ...createEmptyRow(),
-
-      firstName: columns[0] || "",
-      middleName: columns[1] || "",
-      lastName: columns[2] || "",
-
-      email,
-      phone: columns[phoneIndex] || "",
-
-      qualification: columns[qualificationIndex] || "",
-      designation: columns[designationIndex] || "",
-
-      gender:
-        columns[genderIndex].toLowerCase() === "female"
-          ? "female"
-          : "male",
-
-      dateOfBirth,
-      stateOfOrigin,
-    });
-  }
-
-  const invalidRows = importedRows
-    .map((row, index) => ({ row, number: index + 1 }))
-    .filter(
-      ({ row }) =>
-        row.firstName.length < 2 ||
-        row.lastName.length < 2
+    setPasteMessage(
+      `${importedRows.length} teacher(s) imported. Assign classes and passwords below.`
     );
 
-  if (invalidRows.length) {
-    setError(
-      `Rows ${invalidRows.map((item) => item.number).join(", ")}: First name and last name are required.`
-    );
-    return;
+    setPasteText("");
   }
 
-  const emails = importedRows
-    .map((row) => row.email.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (new Set(emails).size !== emails.length) {
-    setError("Duplicate email addresses found in the pasted records.");
-    return;
-  }
-
-  setRows((previous) => [
-    ...previous.filter(isFilled),
-    ...importedRows,
-  ]);
-
-  setPasteMessage(
-    `${importedRows.length} teacher(s) imported. Assign subjects, classes and passwords below.`
-  );
-
-  setPasteText("");
-}
-
-  
   /* =====================================================
      VALIDATION
   ===================================================== */
@@ -485,10 +471,6 @@ function importPastedTeachers() {
 
     if (!classes.length) {
       return "No classes are available. Create school classes first.";
-    }
-
-    if (!subjects.length) {
-      return "No subjects are available. Create school subjects first.";
     }
 
     for (let index = 0; index < filledRows.length; index++) {
@@ -520,10 +502,6 @@ function importPastedTeachers() {
         return `Row ${rowNumber}: Password must contain at least 6 characters.`;
       }
 
-      if (!row.subjectIds.length) {
-        return `Row ${rowNumber}: Select at least one subject.`;
-      }
-
       if (!row.classIds.length) {
         return `Row ${rowNumber}: Select at least one class.`;
       }
@@ -541,7 +519,7 @@ function importPastedTeachers() {
   }
 
   /* =====================================================
-     PAYLOAD
+     API PAYLOAD
   ===================================================== */
 
   function cleanRow(row: Row) {
@@ -555,12 +533,11 @@ function importPastedTeachers() {
       ...(email ? { email } : {}),
 
       phone: row.phone.trim(),
-
-      // Employee ID is generated by the backend.
       qualification: row.qualification.trim(),
       designation: row.designation.trim(),
 
-      subjectIds: row.subjectIds,
+      // Class assignment is handled by the current bulk API.
+      // Subject IDs are intentionally not submitted here.
       classIds: row.classIds,
 
       gender: row.gender,
@@ -618,13 +595,10 @@ function importPastedTeachers() {
 
       setSaveResult(result);
 
-      const failed = result.failed || 0;
-
-      if (failed === 0) {
+      if ((result.failed || 0) === 0) {
         setRows([createEmptyRow()]);
         setPasteMessage("");
       }
-
     } catch (err: any) {
       console.error("Bulk teacher save failed:", err);
 
@@ -645,38 +619,34 @@ function importPastedTeachers() {
     return (
       <div className="flex min-h-[300px] items-center justify-center gap-3 text-slate-400">
         <Loader2 size={20} className="animate-spin" />
-        Loading school classes and subjects...
+        Loading school classes...
       </div>
     );
   }
+
+  const filledCount = rows.filter(isFilled).length;
 
   /* =====================================================
      PAGE
   ===================================================== */
 
-  const filledCount = rows.filter(isFilled).length;
-
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-6 pb-10 text-white">
-
       {/* HEADER */}
 
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
-              <GraduationCap size={22} />
-            </div>
+        <div className="flex items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
+            <GraduationCap size={22} />
+          </div>
 
-            <div>
-              <h1 className="text-xl font-bold sm:text-2xl">
-                Bulk Teacher Entry
-              </h1>
-
-              <p className="text-xs text-slate-400 sm:text-sm">
-                Import teacher records and create their school accounts.
-              </p>
-            </div>
+          <div>
+            <h1 className="text-xl font-bold sm:text-2xl">
+              Bulk Teacher Entry
+            </h1>
+            <p className="text-xs text-slate-400 sm:text-sm">
+              Import teacher records and create their school accounts.
+            </p>
           </div>
         </div>
 
@@ -687,13 +657,13 @@ function importPastedTeachers() {
           className="btn-secondary inline-flex items-center justify-center gap-2"
         >
           <RefreshCw size={16} />
-          Refresh Classes & Subjects
+          Refresh Classes
         </button>
       </div>
 
       {/* QUICK SUMMARY */}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
           <p className="text-xs text-slate-400">Teacher rows</p>
           <p className="mt-1 text-2xl font-bold">{rows.length}</p>
@@ -709,11 +679,6 @@ function importPastedTeachers() {
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
           <p className="text-xs text-slate-400">School classes</p>
           <p className="mt-1 text-2xl font-bold">{classes.length}</p>
-        </div>
-
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <p className="text-xs text-slate-400">School subjects</p>
-          <p className="mt-1 text-2xl font-bold">{subjects.length}</p>
         </div>
       </div>
 
@@ -732,7 +697,6 @@ function importPastedTeachers() {
         <section className="space-y-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:p-5">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="text-emerald-400" size={20} />
-
             <h2 className="font-semibold text-emerald-300">
               Teacher processing result
             </h2>
@@ -755,7 +719,7 @@ function importPastedTeachers() {
             ))}
           </div>
 
-          {saveResult.results?.length ? (
+          {!!saveResult.results?.length && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">
                 Generated Employee IDs and results
@@ -767,73 +731,67 @@ function importPastedTeachers() {
                   className="flex flex-col justify-between gap-2 rounded-lg border border-white/10 bg-slate-950/40 p-3 text-xs sm:flex-row sm:items-center"
                 >
                   <div>
-                    <span className="text-slate-400">
+                    <p className="font-medium text-white">
                       Row {item.row}
-                    </span>
-
-                    {item.email && (
-                      <span className="ml-2 text-slate-300">
-                        {item.email}
-                      </span>
-                    )}
+                      {item.email ? ` — ${item.email}` : ""}
+                    </p>
 
                     {item.employeeId && (
-                      <span className="ml-2 font-semibold text-cyan-300">
-                        {item.employeeId}
-                      </span>
+                      <p className="mt-1 text-slate-400">
+                        Employee ID: {item.employeeId}
+                      </p>
+                    )}
+
+                    {item.error && (
+                      <p className="mt-1 text-red-400">{item.error}</p>
                     )}
                   </div>
 
                   <span
-                    className={
-                      item.action === "failed"
-                        ? "text-red-400"
-                        : "text-emerald-400"
-                    }
+                    className={`w-fit rounded-full px-2.5 py-1 font-semibold ${
+                      item.action === "created"
+                        ? "bg-emerald-500/10 text-emerald-300"
+                        : item.action === "updated"
+                          ? "bg-cyan-500/10 text-cyan-300"
+                          : "bg-red-500/10 text-red-300"
+                    }`}
                   >
                     {item.action.toUpperCase()}
-                    {item.error ? ` — ${item.error}` : ""}
                   </span>
                 </div>
               ))}
             </div>
-          ) : null}
+          )}
         </section>
       )}
 
       {/* PASTE IMPORT */}
 
-      <section className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+      <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4 sm:p-5">
         <SectionTitle
-          icon={<ClipboardPaste size={19} />}
-          title="Import from Excel or Google Sheets"
-          description="Copy multiple teacher rows and paste them here."
+          icon={<ClipboardPaste size={18} />}
+          title="Paste Teacher Records"
+          description="Copy rows from Excel or Google Sheets and paste them below."
         />
 
-        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
-          <p className="text-xs font-semibold text-cyan-300">
-            Spreadsheet column order
+        <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 text-xs leading-6 text-slate-300">
+          <p className="font-semibold text-cyan-300">
+            Supported column order
           </p>
-
-          <p className="mt-2 break-words text-xs leading-6 text-slate-300">
-            First Name | Middle Name | Last Name | Email (Optional) |
-            Phone | Qualification | Designation | Gender | Date of Birth |
-            State of Origin
-          </p>
-
-          <p className="mt-2 text-xs text-slate-400">
-            Do not include Employee ID. EduTrack generates it.
-            Subjects, classes and passwords are assigned below.
+          First Name | Middle Name | Last Name | Email (optional) | Phone |
+          Qualification | Designation | Gender | Date of Birth | State of
+          Origin
+          <p className="mt-1 text-slate-400">
+            Gender must be Male or Female. Date of birth should use YYYY-MM-DD.
           </p>
         </div>
 
         <textarea
+          rows={6}
           value={pasteText}
           onChange={(event) => setPasteText(event.target.value)}
-          rows={6}
-          placeholder={`First Name\tMiddle Name\tLast Name\tEmail\tPhone\tQualification\tDesignation\tGender\tDOB\tState
-Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
-          className="w-full rounded-xl border border-white/10 bg-slate-950 p-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-500"
+          placeholder="Paste teacher records copied from Excel here..."
+          className="input min-h-[140px] w-full resize-y font-mono text-xs"
         />
 
         <div className="flex flex-wrap items-center gap-3">
@@ -859,9 +817,7 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
         </div>
 
         {pasteMessage && (
-          <p className="text-sm text-emerald-400">
-            {pasteMessage}
-          </p>
+          <p className="text-sm text-emerald-400">{pasteMessage}</p>
         )}
       </section>
 
@@ -906,7 +862,6 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                       ? ` — ${row.firstName} ${row.lastName}`.trim()
                       : ""}
                   </h3>
-
                   <p className="text-xs text-slate-500">
                     Employee ID: Generated when saved
                   </p>
@@ -936,7 +891,6 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
             </div>
 
             <div className="space-y-6 p-4 sm:p-5">
-
               {/* PERSONAL INFORMATION */}
 
               <div className="space-y-3">
@@ -976,40 +930,27 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                     label="Email (Optional)"
                     type="email"
                     value={row.email}
-                    onChange={(value) =>
-                      updateRow(index, "email", value)
-                    }
+                    onChange={(value) => updateRow(index, "email", value)}
                     placeholder="teacher@example.com"
                   />
 
                   <Field
                     label="Phone Number"
                     value={row.phone}
-                    onChange={(value) =>
-                      updateRow(index, "phone", value)
-                    }
+                    onChange={(value) => updateRow(index, "phone", value)}
                   />
 
-                  <label className="block space-y-1.5">
-                    <span className="text-xs font-medium text-slate-300">
-                      Gender
-                    </span>
-
-                    <select
-                      className="input min-h-[42px] w-full"
-                      value={row.gender}
-                      onChange={(event) =>
-                        updateRow(
-                          index,
-                          "gender",
-                          event.target.value as Row["gender"]
-                        )
-                      }
-                    >
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                    </select>
-                  </label>
+                  <SelectField
+                    label="Gender"
+                    value={row.gender}
+                    onChange={(value) =>
+                      updateRow(index, "gender", value as Row["gender"])
+                    }
+                    options={[
+                      { label: "Male", value: "male" },
+                      { label: "Female", value: "female" },
+                    ]}
+                  />
 
                   <Field
                     label="Date of Birth"
@@ -1023,9 +964,7 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                   <Field
                     label="Address"
                     value={row.address}
-                    onChange={(value) =>
-                      updateRow(index, "address", value)
-                    }
+                    onChange={(value) => updateRow(index, "address", value)}
                   />
 
                   <Field
@@ -1039,9 +978,7 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                   <Field
                     label="LGA"
                     value={row.lga}
-                    onChange={(value) =>
-                      updateRow(index, "lga", value)
-                    }
+                    onChange={(value) => updateRow(index, "lga", value)}
                   />
 
                   <Field
@@ -1077,7 +1014,6 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                     <span className="text-xs font-medium text-slate-300">
                       Employee ID
                     </span>
-
                     <div className="flex min-h-[42px] items-center rounded-lg border border-dashed border-cyan-500/30 bg-cyan-500/5 px-3 text-xs text-cyan-300">
                       Automatically generated
                     </div>
@@ -1101,24 +1037,19 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                     placeholder="e.g. Class Teacher"
                   />
 
-                  <label className="block space-y-1.5">
-                    <span className="text-xs font-medium text-slate-300">
-                      Employment Type
-                    </span>
-
-                    <select
-                      className="input min-h-[42px] w-full"
-                      value={row.employmentType}
-                      onChange={(event) =>
-                        updateRow(index, "employmentType", event.target.value)
-                      }
-                    >
-                      <option value="full_time">Full Time</option>
-                      <option value="part_time">Part Time</option>
-                      <option value="contract">Contract</option>
-                      <option value="visiting">Visiting</option>
-                    </select>
-                  </label>
+                  <SelectField
+                    label="Employment Type"
+                    value={row.employmentType}
+                    onChange={(value) =>
+                      updateRow(index, "employmentType", value)
+                    }
+                    options={[
+                      { label: "Full Time", value: "full_time" },
+                      { label: "Part Time", value: "part_time" },
+                      { label: "Contract", value: "contract" },
+                      { label: "Visiting", value: "visiting" },
+                    ]}
+                  />
 
                   <Field
                     label="Employment Date"
@@ -1129,73 +1060,18 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                     }
                   />
 
-                  <label className="block space-y-1.5">
-                    <span className="text-xs font-medium text-slate-300">
-                      Account Status
-                    </span>
-
-                    <select
-                      className="input min-h-[42px] w-full"
-                      value={row.status}
-                      onChange={(event) =>
-                        updateRow(
-                          index,
-                          "status",
-                          event.target.value as Row["status"]
-                        )
-                      }
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </label>
+                  <SelectField
+                    label="Account Status"
+                    value={row.status}
+                    onChange={(value) =>
+                      updateRow(index, "status", value as Row["status"])
+                    }
+                    options={[
+                      { label: "Active", value: "active" },
+                      { label: "Inactive", value: "inactive" },
+                    ]}
+                  />
                 </div>
-              </div>
-
-              <div className="border-t border-white/10" />
-
-              {/* SUBJECT ASSIGNMENT */}
-
-              <div className="space-y-3">
-                <SectionTitle
-                  icon={<BookOpen size={18} />}
-                  title="Subject Assignment"
-                  description="Select all subjects this teacher will teach."
-                />
-
-                <div className="flex flex-wrap gap-2">
-                  {subjects.map((subject) => {
-                    const selected = row.subjectIds.includes(subject._id);
-
-                    return (
-                      <button
-                        key={subject._id}
-                        type="button"
-                        onClick={() =>
-                          toggleMultiSelect(index, "subjectIds", subject._id)
-                        }
-                        className={`rounded-lg border px-3 py-2 text-xs transition ${
-                          selected
-                            ? "border-cyan-400 bg-cyan-500/15 text-cyan-300"
-                            : "border-white/10 bg-white/[0.02] text-slate-300 hover:border-cyan-500/50"
-                        }`}
-                      >
-                        {selected ? "✓ " : ""}
-                        {subject.name}
-                      </button>
-                    );
-                  })}
-
-                  {!subjects.length && (
-                    <p className="text-xs text-amber-400">
-                      No subjects found. Create subjects first.
-                    </p>
-                  )}
-                </div>
-
-                <p className="text-xs text-slate-500">
-                  {row.subjectIds.length} subject(s) selected
-                </p>
               </div>
 
               <div className="border-t border-white/10" />
@@ -1206,7 +1082,7 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                 <SectionTitle
                   icon={<GraduationCap size={18} />}
                   title="Class Assignment"
-                  description="Select all classes assigned to this teacher."
+                  description="Select all classes assigned to this teacher. Subject access follows the current class-based arrangement."
                 />
 
                 <div className="flex flex-wrap gap-2">
@@ -1217,9 +1093,7 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                       <button
                         key={schoolClass._id}
                         type="button"
-                        onClick={() =>
-                          toggleMultiSelect(index, "classIds", schoolClass._id)
-                        }
+                        onClick={() => toggleClass(index, schoolClass._id)}
                         className={`rounded-lg border px-3 py-2 text-xs transition ${
                           selected
                             ? "border-purple-400 bg-purple-500/15 text-purple-300"
@@ -1292,9 +1166,7 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                   <Field
                     label="NIN"
                     value={row.nin}
-                    onChange={(value) =>
-                      updateRow(index, "nin", value)
-                    }
+                    onChange={(value) => updateRow(index, "nin", value)}
                   />
                 </div>
               </details>
@@ -1307,7 +1179,7 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                 <SectionTitle
                   icon={<LockKeyhole size={18} />}
                   title="Teacher Login Password"
-                  description="Set an initial password for this teacher."
+                  description="Set an initial password for this teacher account."
                 />
 
                 <div className="max-w-md">
@@ -1323,8 +1195,7 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
                   />
 
                   <p className="mt-2 text-xs text-slate-500">
-                    Passwords are sent securely to the backend and should
-                    be hashed before storage.
+                    The backend must hash passwords before storing them.
                   </p>
                 </div>
               </div>
@@ -1364,12 +1235,21 @@ Fatima\t\tAbdulqadir\t\t08012345678\tNCE\tClass Teacher 1\tFemale\t\tKatsina`}
           </button>
         </div>
 
+        {/* IMPORTANT INFORMATION */}
+
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
           <p className="text-xs leading-6 text-slate-400">
             Employee IDs are generated by the backend. Email addresses are
-            optional. Each teacher must have a password and at least one
-            subject and class. The backend must validate assignments against
-            the current school before saving.
+            optional. Each teacher must have a password of at least 6
+            characters and at least one class. Subject access follows the
+            current class-based arrangement. Form Master assignment is
+            managed separately.
+          </p>
+
+          <p className="mt-2 text-xs leading-6 text-amber-300">
+            Important: If an email already belongs to a teacher account in
+            this school, the current bulk API may update that teacher and
+            replace their password. Check existing accounts before importing.
           </p>
         </div>
       </section>
