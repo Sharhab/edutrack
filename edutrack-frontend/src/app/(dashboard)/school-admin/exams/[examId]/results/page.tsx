@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,6 +15,9 @@ import {
   ClipboardList,
   AlertCircle,
   Eye,
+  Upload,
+  Info,
+  XCircle,
 } from "lucide-react";
 
 import api from "../../../../../../lib/axios";
@@ -57,6 +61,28 @@ type ResultsResponse = {
 };
 
 type FilterStatus = "all" | AttemptStatus;
+
+type SyncedStudent = {
+  studentId: string;
+  componentKey: string;
+  score: number;
+  maxScore: number;
+  attemptsUsed: number;
+};
+
+type SkippedStudent = {
+  studentId: string;
+  reason: string;
+};
+
+type SyncReport = {
+  syncedCount: number;
+  skippedCount: number;
+  synced: SyncedStudent[];
+  skipped: SkippedStudent[];
+  assessmentKey?: string;
+  aggregationMethod?: "average" | "highest" | "selected";
+};
 
 function getErrorMessage(error: any, fallback: string) {
   return (
@@ -109,6 +135,14 @@ function statusStyle(status: AttemptStatus) {
     : "border-amber-400/30 bg-amber-500/10 text-amber-300";
 }
 
+function formatAggregationMethod(
+  method?: SyncReport["aggregationMethod"]
+) {
+  if (method === "highest") return "Highest score";
+  if (method === "selected") return "Selected score";
+  return "Average score";
+}
+
 export default function CbtExamResultsPage() {
   const params = useParams<{ examId: string }>();
   const router = useRouter();
@@ -116,12 +150,20 @@ export default function CbtExamResultsPage() {
   const examId = params.examId;
 
   const [data, setData] = useState<ResultsResponse | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
   const [error, setError] = useState("");
+  const [syncError, setSyncError] = useState("");
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<FilterStatus>("all");
+
+  const [syncReport, setSyncReport] =
+    useState<SyncReport | null>(null);
 
   const loadResults = useCallback(
     async (refresh = false) => {
@@ -226,6 +268,66 @@ export default function CbtExamResultsPage() {
         ) / scoredResults.length
       : null;
 
+  async function syncCbtMarks() {
+    if (!examId || syncing || loading || refreshing) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Synchronize submitted CBT marks into student results?\n\n" +
+        "Only the assessment component linked to this CBT exam will be updated. " +
+        "Other teacher-entered marks will be preserved. Published and locked results will be skipped."
+    );
+
+    if (!confirmed) return;
+
+    setSyncing(true);
+    setSyncError("");
+    setSyncReport(null);
+
+    try {
+      const response = await api.post(
+        `/cbt/exams/${examId}/sync-results`
+      );
+
+      const report = response.data?.data;
+
+      if (
+        !report ||
+        typeof report.syncedCount !== "number" ||
+        typeof report.skippedCount !== "number"
+      ) {
+        throw new Error(
+          "The server returned an unexpected synchronization response."
+        );
+      }
+
+      setSyncReport({
+        syncedCount: report.syncedCount,
+        skippedCount: report.skippedCount,
+        synced: Array.isArray(report.synced)
+          ? report.synced
+          : [],
+        skipped: Array.isArray(report.skipped)
+          ? report.skipped
+          : [],
+        assessmentKey: report.assessmentKey,
+        aggregationMethod: report.aggregationMethod,
+      });
+
+      await loadResults(true);
+    } catch (err: any) {
+      setSyncError(
+        getErrorMessage(
+          err,
+          "Could not synchronize CBT marks."
+        )
+      );
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   function openAnswerReview(result: ExamResult) {
     if (
       result.status !== "submitted" ||
@@ -295,16 +397,16 @@ export default function CbtExamResultsPage() {
 
   return (
     <main className="space-y-6">
-      {/* Header */}
+      {/* Page header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
+        <div className="flex min-w-0 items-start gap-3">
           <button
             type="button"
             onClick={() =>
               router.push("/school-admin/exams")
             }
             aria-label="Back to exams"
-            className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white hover:bg-white/10"
+            className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white transition hover:bg-white/10"
           >
             <ArrowLeft size={20} />
           </button>
@@ -314,19 +416,19 @@ export default function CbtExamResultsPage() {
               CBT Exam Results
             </h1>
 
-            <p className="mt-1 text-sm text-slate-400">
-              Review student attempts, scores, submitted
-              answers and examination progress.
+            <p className="mt-1 text-sm leading-6 text-slate-400">
+              Review student attempts, scores, submitted answers
+              and examination progress.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 sm:justify-end">
           <button
             type="button"
             onClick={() => void loadResults(true)}
-            disabled={loading || refreshing}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
+            disabled={loading || refreshing || syncing}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw
               size={16}
@@ -334,16 +436,18 @@ export default function CbtExamResultsPage() {
                 refreshing ? "animate-spin" : ""
               }
             />
-            Refresh
+            {refreshing ? "Refreshing..." : "Refresh"}
           </button>
 
           <button
             type="button"
             onClick={downloadCsv}
             disabled={
-              !data || filteredResults.length === 0
+              !data ||
+              filteredResults.length === 0 ||
+              syncing
             }
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download size={16} />
             Export CSV
@@ -351,7 +455,7 @@ export default function CbtExamResultsPage() {
         </div>
       </div>
 
-      {/* Error */}
+      {/* Results loading error */}
       {error && (
         <div
           role="alert"
@@ -384,8 +488,14 @@ export default function CbtExamResultsPage() {
 
       {/* Initial loading */}
       {loading && !data && (
-        <div className="rounded-2xl border border-white/10 p-10 text-center text-slate-400">
-          Loading examination results...
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-10 text-center text-slate-400">
+          <RefreshCw
+            size={24}
+            className="mx-auto animate-spin"
+          />
+          <p className="mt-3">
+            Loading examination results...
+          </p>
         </div>
       )}
 
@@ -418,7 +528,219 @@ export default function CbtExamResultsPage() {
             </div>
           </section>
 
-          {/* Summary */}
+          {/* CBT synchronization */}
+          <section className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.04] p-4 sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-300">
+                  <Upload size={20} />
+                </div>
+
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-white">
+                    Assessment results synchronization
+                  </h2>
+
+                  <p className="mt-1 text-sm leading-6 text-slate-400">
+                    Transfer submitted CBT marks into the
+                    assessment component selected when this
+                    examination was created.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void syncCbtMarks()}
+                disabled={
+                  syncing ||
+                  loading ||
+                  refreshing
+                }
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {syncing ? (
+                  <RefreshCw
+                    size={16}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Upload size={16} />
+                )}
+
+                {syncing
+                  ? "Synchronizing..."
+                  : "Sync CBT Marks"}
+              </button>
+            </div>
+
+            <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/10 bg-slate-950/30 p-3 text-xs leading-5 text-slate-400">
+              <Info
+                size={16}
+                className="mt-0.5 shrink-0 text-cyan-300"
+              />
+
+              <p>
+                Only submitted attempts are synchronized.
+                Existing teacher-entered component scores are
+                preserved. Published or locked results are
+                protected and will be skipped.
+              </p>
+            </div>
+
+            {syncError && (
+              <div
+                role="alert"
+                className="mt-4 flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200"
+              >
+                <AlertCircle
+                  size={18}
+                  className="mt-0.5 shrink-0"
+                />
+
+                <div className="min-w-0">
+                  <p className="font-semibold">
+                    Synchronization failed
+                  </p>
+                  <p className="mt-1 break-words">
+                    {syncError}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {syncReport && (
+              <div className="mt-4 space-y-4 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.06] p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2
+                    size={20}
+                    className="mt-0.5 shrink-0 text-emerald-300"
+                  />
+
+                  <div>
+                    <h3 className="font-semibold text-white">
+                      Synchronization completed
+                    </h3>
+
+                    <p className="mt-1 text-sm text-slate-400">
+                      The CBT synchronization request
+                      completed. Review the summary below.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-slate-950/50 p-3">
+                    <p className="text-xs text-slate-400">
+                      Results synchronized
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold text-emerald-300">
+                      {syncReport.syncedCount}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-950/50 p-3">
+                    <p className="text-xs text-slate-400">
+                      Records skipped
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold text-amber-300">
+                      {syncReport.skippedCount}
+                    </p>
+                  </div>
+                </div>
+
+                {(syncReport.assessmentKey ||
+                  syncReport.aggregationMethod) && (
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {syncReport.assessmentKey && (
+                      <span className="rounded-full border border-white/10 bg-slate-950/50 px-3 py-1.5 text-slate-300">
+                        Component:{" "}
+                        <strong className="text-white">
+                          {syncReport.assessmentKey}
+                        </strong>
+                      </span>
+                    )}
+
+                    {syncReport.aggregationMethod && (
+                      <span className="rounded-full border border-white/10 bg-slate-950/50 px-3 py-1.5 text-slate-300">
+                        Method:{" "}
+                        <strong className="text-white">
+                          {formatAggregationMethod(
+                            syncReport.aggregationMethod
+                          )}
+                        </strong>
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {syncReport.synced.length > 0 && (
+                  <div className="space-y-2 border-t border-white/10 pt-3">
+                    <h4 className="text-sm font-semibold text-white">
+                      Synchronized student scores
+                    </h4>
+
+                    <div className="max-h-56 space-y-2 overflow-y-auto">
+                      {syncReport.synced.map(
+                        (item, index) => (
+                          <div
+                            key={`${item.studentId}-${index}`}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-950/40 px-3 py-2 text-sm"
+                          >
+                            <span className="min-w-0 break-all text-slate-300">
+                              Student {item.studentId}
+                            </span>
+
+                            <span className="shrink-0 font-semibold text-emerald-300">
+                              {item.score} / {item.maxScore}
+                            </span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {syncReport.skipped.length > 0 && (
+                  <div className="space-y-2 border-t border-white/10 pt-3">
+                    <div className="flex items-center gap-2">
+                      <XCircle
+                        size={17}
+                        className="text-amber-300"
+                      />
+
+                      <h4 className="text-sm font-semibold text-white">
+                        Skipped records
+                      </h4>
+                    </div>
+
+                    <div className="max-h-56 space-y-2 overflow-y-auto">
+                      {syncReport.skipped.map(
+                        (item, index) => (
+                          <div
+                            key={`${item.studentId}-${index}`}
+                            className="rounded-lg bg-slate-950/40 p-3"
+                          >
+                            <p className="break-all text-xs font-semibold text-slate-300">
+                              Student {item.studentId}
+                            </p>
+
+                            <p className="mt-1 text-xs leading-5 text-slate-400">
+                              {item.reason}
+                            </p>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* Summary cards */}
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               {
@@ -617,7 +939,7 @@ export default function CbtExamResultsPage() {
                           onClick={() =>
                             openAnswerReview(result)
                           }
-                          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+                          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
                         >
                           <Eye size={17} />
                           Review answers
@@ -666,7 +988,7 @@ export default function CbtExamResultsPage() {
                       {filteredResults.map((result) => (
                         <tr
                           key={result.attemptId}
-                          className="hover:bg-white/[0.03]"
+                          className="transition hover:bg-white/[0.03]"
                         >
                           <td className="px-5 py-4 font-medium text-white">
                             {result.studentName ||
@@ -712,7 +1034,7 @@ export default function CbtExamResultsPage() {
                                 onClick={() =>
                                   openAnswerReview(result)
                                 }
-                                className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-400"
+                                className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400"
                               >
                                 <Eye size={15} />
                                 Review answers
@@ -736,5 +1058,3 @@ export default function CbtExamResultsPage() {
     </main>
   );
 }
-
-
