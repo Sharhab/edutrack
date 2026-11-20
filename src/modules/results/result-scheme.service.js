@@ -1,8 +1,15 @@
+
 import mongoose from "mongoose";
 
 import { ResultScheme } from "./result-scheme.model.js";
 import { ClassModel } from "../classes/class.model.js";
 import { ApiError } from "../../utils/apiError.js";
+
+const AGGREGATION_METHODS = [
+  "average",
+  "highest",
+  "selected",
+];
 
 const DEFAULT_COMPONENTS = [
   {
@@ -11,6 +18,7 @@ const DEFAULT_COMPONENTS = [
     maxScore: 10,
     enabled: true,
     order: 0,
+    aggregationMethod: "average",
   },
   {
     key: "ca1",
@@ -18,6 +26,7 @@ const DEFAULT_COMPONENTS = [
     maxScore: 10,
     enabled: true,
     order: 1,
+    aggregationMethod: "average",
   },
   {
     key: "ca2",
@@ -25,6 +34,7 @@ const DEFAULT_COMPONENTS = [
     maxScore: 10,
     enabled: true,
     order: 2,
+    aggregationMethod: "average",
   },
   {
     key: "exam",
@@ -32,6 +42,7 @@ const DEFAULT_COMPONENTS = [
     maxScore: 70,
     enabled: true,
     order: 3,
+    aggregationMethod: "average",
   },
 ];
 
@@ -47,6 +58,30 @@ function getSchoolId(user) {
   }
 
   return new mongoose.Types.ObjectId(user.schoolId);
+}
+
+function normalizeAggregationMethod(value) {
+  const method = String(value || "average")
+    .trim()
+    .toLowerCase();
+
+  if (!AGGREGATION_METHODS.includes(method)) {
+    throw new ApiError(
+      400,
+      "Aggregation method must be average, highest, or selected."
+    );
+  }
+
+  return method;
+}
+
+function normalizeComponent(component) {
+  return {
+    ...component,
+    aggregationMethod: normalizeAggregationMethod(
+      component?.aggregationMethod
+    ),
+  };
 }
 
 function validateScheme(input) {
@@ -106,9 +141,7 @@ function validateScheme(input) {
         item?.maxScore
       );
 
-      if (
-        !/^[a-z][a-z0-9_]*$/.test(key)
-      ) {
+      if (!/^[a-z][a-z0-9_]*$/.test(key)) {
         throw new ApiError(
           400,
           "Each assessment needs a valid key."
@@ -147,11 +180,12 @@ function validateScheme(input) {
         label,
         maxScore,
         enabled: item?.enabled !== false,
-        order: Number.isFinite(
-          Number(item?.order)
-        )
+        order: Number.isFinite(Number(item?.order))
           ? Number(item.order)
           : index,
+        aggregationMethod: normalizeAggregationMethod(
+          item?.aggregationMethod
+        ),
       };
     }
   ).sort((a, b) => a.order - b.order);
@@ -168,8 +202,7 @@ function validateScheme(input) {
   }
 
   const calculatedTotal = enabledComponents.reduce(
-    (sum, component) =>
-      sum + component.maxScore,
+    (sum, component) => sum + component.maxScore,
     0
   );
 
@@ -200,7 +233,9 @@ function formatScheme(scheme, source) {
     level: scheme.level || "",
     classId: scheme.classId || null,
     totalMax: scheme.totalMax,
-    components: scheme.components,
+    components: (scheme.components || []).map(
+      normalizeComponent
+    ),
     version: scheme.version,
     updatedAt: scheme.updatedAt,
     source: source || scheme.scope,
@@ -215,9 +250,7 @@ export async function getResultScheme(
 
   // Priority 1: class-specific scheme.
   if (classId) {
-    if (
-      !mongoose.Types.ObjectId.isValid(classId)
-    ) {
+    if (!mongoose.Types.ObjectId.isValid(classId)) {
       throw new ApiError(
         400,
         "Invalid class ID."
@@ -236,19 +269,15 @@ export async function getResultScheme(
       );
     }
 
-    const classScheme =
-      await ResultScheme.findOne({
-        schoolId,
-        scope: "class",
-        scopeKey: String(classDoc._id),
-      }).lean();
+    const classScheme = await ResultScheme.findOne({
+      schoolId,
+      scope: "class",
+      scopeKey: String(classDoc._id),
+    }).lean();
 
     if (classScheme) {
       return {
-        scheme: formatScheme(
-          classScheme,
-          "class"
-        ),
+        scheme: formatScheme(classScheme, "class"),
         inherited: false,
       };
     }
@@ -259,37 +288,29 @@ export async function getResultScheme(
     ).trim();
 
     if (classLevel) {
-      const levelScheme =
-        await ResultScheme.findOne({
-          schoolId,
-          scope: "level",
-          scopeKey: classLevel.toLowerCase(),
-        }).lean();
+      const levelScheme = await ResultScheme.findOne({
+        schoolId,
+        scope: "level",
+        scopeKey: classLevel.toLowerCase(),
+      }).lean();
 
       if (levelScheme) {
         return {
-          scheme: formatScheme(
-            levelScheme,
-            "level"
-          ),
+          scheme: formatScheme(levelScheme, "level"),
           inherited: true,
         };
       }
     }
 
     // Priority 3: school default.
-    const schoolScheme =
-      await ResultScheme.findOne({
-        schoolId,
-        scope: "school",
-        scopeKey: "school",
-      }).lean();
+    const schoolScheme = await ResultScheme.findOne({
+      schoolId,
+      scope: "school",
+      scopeKey: "school",
+    }).lean();
 
     return {
-      scheme: formatScheme(
-        schoolScheme,
-        "school"
-      ),
+      scheme: formatScheme(schoolScheme, "school"),
       inherited: true,
     };
   }
@@ -306,50 +327,37 @@ export async function getResultScheme(
       );
     }
 
-    const levelScheme =
-      await ResultScheme.findOne({
-        schoolId,
-        scope: "level",
-        scopeKey: levelKey,
-      }).lean();
+    const levelScheme = await ResultScheme.findOne({
+      schoolId,
+      scope: "level",
+      scopeKey: levelKey,
+    }).lean();
 
     if (levelScheme) {
       return {
-        scheme: formatScheme(
-          levelScheme,
-          "level"
-        ),
+        scheme: formatScheme(levelScheme, "level"),
         inherited: false,
       };
     }
   }
 
-  const schoolScheme =
-    await ResultScheme.findOne({
-      schoolId,
-      scope: "school",
-      scopeKey: "school",
-    }).lean();
+  const schoolScheme = await ResultScheme.findOne({
+    schoolId,
+    scope: "school",
+    scopeKey: "school",
+  }).lean();
 
   return {
-    scheme: formatScheme(
-      schoolScheme,
-      "school"
-    ),
+    scheme: formatScheme(schoolScheme, "school"),
     inherited: false,
   };
 }
 
-export async function saveResultScheme(
-  user,
-  input
-) {
+export async function saveResultScheme(user, input) {
   const schoolId = getSchoolId(user);
   const scope = input?.scope;
 
-  if (
-    !["school", "level", "class"].includes(scope)
-  ) {
+  if (!["school", "level", "class"].includes(scope)) {
     throw new ApiError(
       400,
       "Scheme scope must be school, level, or class."
@@ -361,9 +369,7 @@ export async function saveResultScheme(
   let classId = null;
 
   if (scope === "level") {
-    level = String(
-      input?.level ?? ""
-    ).trim();
+    level = String(input?.level ?? "").trim();
 
     if (!level) {
       throw new ApiError(
@@ -378,9 +384,7 @@ export async function saveResultScheme(
   if (scope === "class") {
     if (
       !input?.classId ||
-      !mongoose.Types.ObjectId.isValid(
-        input.classId
-      )
+      !mongoose.Types.ObjectId.isValid(input.classId)
     ) {
       throw new ApiError(
         400,
