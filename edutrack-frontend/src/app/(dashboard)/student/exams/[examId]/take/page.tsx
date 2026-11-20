@@ -424,6 +424,7 @@ export default function StudentTakeExamPage() {
     [drainSaveQueue, storeLocally]
   );
 
+  
   const submitExam = useCallback(
     async (automatic = false) => {
       const currentAttempt = attemptRef.current;
@@ -470,34 +471,37 @@ export default function StudentTakeExamPage() {
         if (!window.confirm(confirmation)) return;
       }
 
+      // Save before activating the submission lock.
+      const deadlineHasPassed =
+        deadlineRef.current !== null &&
+        Date.now() >= deadlineRef.current;
+
+      if (!deadlineHasPassed) {
+        const saved = await persistAnswers(answersRef.current);
+
+        if (!saved) {
+          setError(
+            "Some answers are not yet saved. Please check your connection and try again."
+          );
+          return;
+        }
+      }
+
+      if (!navigator.onLine) {
+        setSaveStatus("offline");
+        setError("Your connection was lost. Reconnect to submit your exam.");
+        return;
+      }
+
+      // Prevent duplicate submission requests.
+      if (submitInFlightRef.current || submittedRef.current) return;
+
       submitInFlightRef.current = true;
       setSubmitting(true);
       setError("");
       setNotice("");
 
       try {
-        // At the deadline, the backend may reject a late save and
-        // finalize the attempt using answers already received.
-        const deadlineHasPassed =
-          deadlineRef.current !== null &&
-          Date.now() >= deadlineRef.current;
-
-        if (!deadlineHasPassed) {
-          const saved = await persistAnswers(answersRef.current);
-
-          if (!saved) {
-            throw new Error(
-              "Some answers are not yet saved. Please check your connection and try again."
-            );
-          }
-        }
-
-        if (!navigator.onLine) {
-          throw new Error(
-            "Your connection was lost. Reconnect to submit your exam."
-          );
-        }
-
         const response = await api.post(
           `/cbt/exams/attempts/${currentAttempt.attemptId}/submit`
         );
@@ -522,15 +526,13 @@ export default function StudentTakeExamPage() {
           setNotice("Your exam was submitted successfully.");
         }
       } catch (err: any) {
-        const status = err?.response?.status;
-
         setError(
           err?.response?.data?.message ||
             err?.message ||
             "Submission failed. Reconnect and try again."
         );
 
-        if (status === 409) {
+        if (err?.response?.status === 409) {
           setNotice(
             "The exam may already have been finalized by the server. Return to your exam list and refresh its status."
           );
@@ -542,6 +544,7 @@ export default function StudentTakeExamPage() {
     },
     [persistAnswers, removeLocalBackup]
   );
+
 
   // Keep refs synchronized with React state.
   useEffect(() => {
