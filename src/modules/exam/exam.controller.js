@@ -441,24 +441,32 @@ try {
       });
     }
 
-    const exam = await Exam.create({
-      schoolId,
-      title: title.trim(),
-      instructions: instructions.trim(),
-      classId,
-      subjectId,
-      sessionId,
-      termId,
-      assessmentKey: assessmentComponent.key,
-      questions: questionResult.questions,
-      durationMinutes: scheduleResult.duration,
-      startsAt: scheduleResult.start,
-      endsAt: scheduleResult.end,
-      shuffleQuestions,
-      shuffleOptions,
-      createdBy: req.user._id,
-      status: "draft",
-    });
+    
+const exam = await Exam.create({
+  schoolId,
+  title: title.trim(),
+  instructions: instructions.trim(),
+  classId,
+  subjectId,
+  sessionId,
+  termId,
+
+  // Assessment component snapshot from the server-side scheme.
+  assessmentKey: assessmentComponent.key,
+  assessmentMaxScore: assessmentComponent.maxScore,
+  assessmentSchemeVersion: assessmentComponent.schemeVersion,
+  assessmentAggregationMethod:
+    assessmentComponent.aggregationMethod || "average",
+
+  questions: questionResult.questions,
+  durationMinutes: scheduleResult.duration,
+  startsAt: scheduleResult.start,
+  endsAt: scheduleResult.end,
+  shuffleQuestions,
+  shuffleOptions,
+  createdBy: req.user._id,
+  status: "draft",
+});
 
     return res.status(201).json({
       success: true,
