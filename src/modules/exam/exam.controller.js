@@ -1,4 +1,5 @@
 
+
 import mongoose from "mongoose";
 
 import { Exam } from "./exam.model.js";
@@ -6,9 +7,9 @@ import { ClassModel } from "../classes/class.model.js";
 import { SubjectModel } from "../subjects/subject.model.js";
 import { Session } from "../sessions/session.model.js";
 import { Term } from "../terms/term.model.js";
-import { Teacher } from "../teachers/teacher.model.js";
 
 const isValidId = (id) =>
+  typeof id === "string" &&
   mongoose.Types.ObjectId.isValid(id);
 
 const OBJECT_ID_FIELDS = [
@@ -58,6 +59,12 @@ function normalizeQuestions(questions) {
       };
     }
 
+    if (question.text.trim().length > 5000) {
+      return {
+        error: `Question ${index + 1} exceeds the maximum text length.`,
+      };
+    }
+
     if (
       !Array.isArray(question.options) ||
       question.options.length < 2 ||
@@ -75,6 +82,12 @@ function normalizeQuestions(questions) {
     if (options.some((option) => !option)) {
       return {
         error: `Question ${index + 1} contains an empty option.`,
+      };
+    }
+
+    if (options.some((option) => option.length > 1000)) {
+      return {
+        error: `Question ${index + 1} has an option that is too long.`,
       };
     }
 
@@ -109,7 +122,7 @@ function normalizeQuestions(questions) {
       marks > 100
     ) {
       return {
-        error: `Question ${index + 1} must have valid whole-number marks.`,
+        error: `Question ${index + 1} must have whole-number marks between 1 and 100.`,
       };
     }
 
@@ -169,7 +182,18 @@ function validateSchedule({
 
 /**
  * Validate academic context.
- * All records must belong to the authenticated school.
+ *
+ * Every selected record must belong to the authenticated school.
+ *
+ * Additional checks:
+ * - Subject must be assigned to the selected class.
+ * - Term must belong to the selected session.
+ * - If the class has a sessionId, it must match the selected session.
+ * - If the class has a termId, it must match the selected term.
+ *
+ * Teacher assignment is deliberately not mandatory here.
+ * School administrators can create examinations independently
+ * of whether a teacher assignment has been configured.
  */
 async function validateExamContext({
   schoolId,
@@ -187,25 +211,33 @@ async function validateExamContext({
     ClassModel.findOne({
       _id: classId,
       schoolId,
-    }).select("_id isActive"),
+    })
+      .select("_id isActive sessionId termId")
+      .lean(),
 
     SubjectModel.findOne({
       _id: subjectId,
       schoolId,
       isActive: true,
       classIds: classId,
-    }).select("_id classIds teacherIds"),
+    })
+      .select("_id classIds")
+      .lean(),
 
     Session.findOne({
       _id: sessionId,
       schoolId,
-    }).select("_id"),
+    })
+      .select("_id")
+      .lean(),
 
     Term.findOne({
       _id: termId,
       schoolId,
       sessionId,
-    }).select("_id sessionId"),
+    })
+      .select("_id sessionId")
+      .lean(),
   ]);
 
   if (!classDoc) {
@@ -223,7 +255,7 @@ async function validateExamContext({
   if (!subjectDoc) {
     return {
       error:
-        "Selected subject is inactive or is not assigned to this class.",
+        "Selected subject is inactive, does not belong to this school, or is not assigned to this class.",
     };
   }
 
@@ -240,6 +272,28 @@ async function validateExamContext({
     };
   }
 
+  // Some schools do not configure academic periods on classes.
+  // When configured, enforce consistency.
+  if (
+    classDoc.sessionId &&
+    String(classDoc.sessionId) !== String(sessionId)
+  ) {
+    return {
+      error:
+        "The selected academic session does not match the class academic session.",
+    };
+  }
+
+  if (
+    classDoc.termId &&
+    String(classDoc.termId) !== String(termId)
+  ) {
+    return {
+      error:
+        "The selected academic term does not match the class academic term.",
+    };
+  }
+
   return {
     classDoc,
     subjectDoc,
@@ -249,96 +303,11 @@ async function validateExamContext({
 }
 
 /**
- * Confirm that the school has a teacher assigned
- * to the selected class and subject.
- *
- * Supports:
- * 1. Explicit assignment pairs.
- * 2. Legacy classIds + subjectIds assignments.
- *
- * This does not require the teacher to be the
- * authenticated user because exam creation is
- * handled by the school administrator.
- */
-async function validateTeacherAssignment({
-  schoolId,
-  classId,
-  subjectId,
-  subjectDoc,
-}) {
-  const explicitAssignment = await Teacher.findOne({
-    schoolId,
-    isActive: true,
-    status: "active",
-    assignments: {
-      $elemMatch: {
-        classId: new mongoose.Types.ObjectId(classId),
-        subjectId: new mongoose.Types.ObjectId(subjectId),
-      },
-    },
-  })
-    .select("_id")
-    .lean();
-
-  let legacyAssignment = null;
-
-  if (!explicitAssignment) {
-    legacyAssignment = await Teacher.findOne({
-      schoolId,
-      isActive: true,
-      status: "active",
-      classIds: classId,
-      subjectIds: subjectId,
-    })
-      .select("_id userId")
-      .lean();
-  }
-
-  const assignedTeacher =
-    explicitAssignment || legacyAssignment;
-
-  if (!assignedTeacher) {
-    return {
-      error:
-        "No active teacher is assigned to this subject in the selected class.",
-    };
-  }
-
-  // If the subject has explicit teacher restrictions,
-  // ensure the selected teacher is included.
-  if (
-    Array.isArray(subjectDoc.teacherIds) &&
-    subjectDoc.teacherIds.length > 0
-  ) {
-    const teacherUserId = legacyAssignment?.userId;
-
-    // Explicit assignment records do not necessarily
-    // expose userId in the query above, so verify using
-    // the teacher record when restrictions are configured.
-    const teacher = await Teacher.findById(
-      assignedTeacher._id
-    )
-      .select("userId")
-      .lean();
-
-    const allowed = subjectDoc.teacherIds.some(
-      (id) => String(id) === String(teacher?.userId)
-    );
-
-    if (!allowed) {
-      return {
-        error:
-          "The assigned teacher is not allowed to teach this subject.",
-      };
-    }
-  }
-
-  return { success: true };
-}
-
-/**
  * CREATE EXAM
  * POST /
+ *
+ * Creates a draft examination.
+ * Only school administrators can access this route.
  */
 export async function createExamHandler(req, res, next) {
   try {
@@ -444,21 +413,6 @@ export async function createExamHandler(req, res, next) {
       );
     }
 
-    const assignment =
-      await validateTeacherAssignment({
-        schoolId,
-        classId,
-        subjectId,
-        subjectDoc: context.subjectDoc,
-      });
-
-    if (assignment.error) {
-      return badRequest(
-        res,
-        assignment.error
-      );
-    }
-
     if (!req.user?._id) {
       return res.status(401).json({
         success: false,
@@ -551,7 +505,7 @@ export async function listExamsHandler(req, res, next) {
       .sort({ createdAt: -1 })
       .lean();
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       count: exams.length,
       data: exams,
@@ -564,6 +518,8 @@ export async function listExamsHandler(req, res, next) {
 /**
  * PUBLISH EXAM
  * PATCH /:examId/publish
+ *
+ * Only valid draft examinations can be published.
  */
 export async function publishExamHandler(req, res, next) {
   try {
@@ -633,13 +589,13 @@ export async function publishExamHandler(req, res, next) {
       );
     }
 
-    // Revalidate academic records before publishing.
+    // Revalidate all academic records before publishing.
     const context = await validateExamContext({
       schoolId,
-      classId: exam.classId,
-      subjectId: exam.subjectId,
-      sessionId: exam.sessionId,
-      termId: exam.termId,
+      classId: String(exam.classId),
+      subjectId: String(exam.subjectId),
+      sessionId: String(exam.sessionId),
+      termId: String(exam.termId),
     });
 
     if (context.error) {
@@ -649,23 +605,10 @@ export async function publishExamHandler(req, res, next) {
       );
     }
 
-    const assignment =
-      await validateTeacherAssignment({
-        schoolId,
-        classId: exam.classId,
-        subjectId: exam.subjectId,
-        subjectDoc: context.subjectDoc,
-      });
+    // Teacher assignment is intentionally not required.
+    // Academic ownership and subject/class assignment
+    // are the required publishing checks.
 
-    if (assignment.error) {
-      return badRequest(
-        res,
-        `Cannot publish exam: ${assignment.error}`
-      );
-    }
-
-    // Conditional update prevents two concurrent
-    // publish requests from changing the same draft.
     const updatedExam = await Exam.findOneAndUpdate(
       {
         _id: examId,
@@ -691,7 +634,7 @@ export async function publishExamHandler(req, res, next) {
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "Exam published successfully.",
       data: {
@@ -710,6 +653,9 @@ export async function publishExamHandler(req, res, next) {
 /**
  * CLOSE EXAM
  * PATCH /:examId/close
+ *
+ * Closing an exam prevents new attempts.
+ * Existing attempts are handled by the attempt controller.
  */
 export async function closeExamHandler(req, res, next) {
   try {
@@ -751,7 +697,9 @@ export async function closeExamHandler(req, res, next) {
       const existing = await Exam.findOne({
         _id: examId,
         schoolId,
-      }).select("_id status");
+      })
+        .select("_id status")
+        .lean();
 
       if (!existing) {
         return res.status(404).json({
@@ -767,7 +715,7 @@ export async function closeExamHandler(req, res, next) {
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "Exam closed successfully.",
       data: {
@@ -780,6 +728,3 @@ export async function closeExamHandler(req, res, next) {
     next(error);
   }
 }
-
-
-
