@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,7 +13,9 @@ import {
   Clock3,
   ClipboardList,
   AlertCircle,
+  Eye,
 } from "lucide-react";
+
 import api from "../../../../../../lib/axios";
 
 type AttemptStatus = "submitted" | "in_progress";
@@ -35,8 +36,14 @@ type ExamResult = {
 type ExamInfo = {
   _id: string;
   title: string;
-  classId?: { name?: string; level?: string } | string | null;
-  subjectId?: { name?: string; code?: string } | string | null;
+  classId?: {
+    name?: string;
+    level?: string;
+  } | string | null;
+  subjectId?: {
+    name?: string;
+    code?: string;
+  } | string | null;
 };
 
 type ResultsResponse = {
@@ -105,6 +112,7 @@ function statusStyle(status: AttemptStatus) {
 export default function CbtExamResultsPage() {
   const params = useParams<{ examId: string }>();
   const router = useRouter();
+
   const examId = params.examId;
 
   const [data, setData] = useState<ResultsResponse | null>(null);
@@ -115,47 +123,50 @@ export default function CbtExamResultsPage() {
   const [statusFilter, setStatusFilter] =
     useState<FilterStatus>("all");
 
-  const loadResults = useCallback(async (refresh = false) => {
-    if (!examId) return;
+  const loadResults = useCallback(
+    async (refresh = false) => {
+      if (!examId) return;
 
-    if (refresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    setError("");
-
-    try {
-      const response = await api.get(
-        `/cbt/exams/${examId}/results`
-      );
-
-      const result = response.data?.data;
-
-      if (
-        !result ||
-        !Array.isArray(result.results) ||
-        !result.exam
-      ) {
-        throw new Error(
-          "The server returned an unexpected results format."
-        );
+      if (refresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
 
-      setData(result);
-    } catch (err: any) {
-      setError(
-        getErrorMessage(
-          err,
-          "Could not load this exam's results."
-        )
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [examId]);
+      setError("");
+
+      try {
+        const response = await api.get(
+          `/cbt/exams/${examId}/results`
+        );
+
+        const result = response.data?.data;
+
+        if (
+          !result ||
+          !Array.isArray(result.results) ||
+          !result.exam
+        ) {
+          throw new Error(
+            "The server returned an unexpected results format."
+          );
+        }
+
+        setData(result);
+      } catch (err: any) {
+        setError(
+          getErrorMessage(
+            err,
+            "Could not load this exam's results."
+          )
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [examId]
+  );
 
   useEffect(() => {
     void loadResults();
@@ -186,11 +197,15 @@ export default function CbtExamResultsPage() {
 
   const submittedCount =
     data?.summary?.submitted ??
-    results.filter((item) => item.status === "submitted").length;
+    results.filter(
+      (item) => item.status === "submitted"
+    ).length;
 
   const inProgressCount =
     data?.summary?.inProgress ??
-    results.filter((item) => item.status === "in_progress").length;
+    results.filter(
+      (item) => item.status === "in_progress"
+    ).length;
 
   const totalAttempts =
     data?.summary?.totalAttempts ?? results.length;
@@ -205,10 +220,24 @@ export default function CbtExamResultsPage() {
   const averagePercentage =
     scoredResults.length > 0
       ? scoredResults.reduce(
-          (sum, result) => sum + (result.percentage ?? 0),
+          (sum, result) =>
+            sum + (result.percentage ?? 0),
           0
         ) / scoredResults.length
       : null;
+
+  function openAnswerReview(result: ExamResult) {
+    if (
+      result.status !== "submitted" ||
+      !result.attemptId
+    ) {
+      return;
+    }
+
+    router.push(
+      `/school-admin/exams/${examId}/results/${result.attemptId}`
+    );
+  }
 
   function downloadCsv() {
     if (!data || filteredResults.length === 0) return;
@@ -235,8 +264,12 @@ export default function CbtExamResultsPage() {
       result.percentage == null
         ? ""
         : `${result.percentage}%`,
-      result.startedAt ? formatDate(result.startedAt) : "",
-      result.submittedAt ? formatDate(result.submittedAt) : "",
+      result.startedAt
+        ? formatDate(result.startedAt)
+        : "",
+      result.submittedAt
+        ? formatDate(result.submittedAt)
+        : "",
     ]);
 
     const csv = [headers, ...rows]
@@ -267,7 +300,9 @@ export default function CbtExamResultsPage() {
         <div className="flex items-start gap-3">
           <button
             type="button"
-            onClick={() => router.push("/school-admin/exams")}
+            onClick={() =>
+              router.push("/school-admin/exams")
+            }
             aria-label="Back to exams"
             className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-white hover:bg-white/10"
           >
@@ -278,8 +313,10 @@ export default function CbtExamResultsPage() {
             <h1 className="text-2xl font-bold text-white">
               CBT Exam Results
             </h1>
+
             <p className="mt-1 text-sm text-slate-400">
-              Review student attempts, scores and examination progress.
+              Review student attempts, scores, submitted
+              answers and examination progress.
             </p>
           </div>
         </div>
@@ -293,7 +330,9 @@ export default function CbtExamResultsPage() {
           >
             <RefreshCw
               size={16}
-              className={refreshing ? "animate-spin" : ""}
+              className={
+                refreshing ? "animate-spin" : ""
+              }
             />
             Refresh
           </button>
@@ -301,7 +340,9 @@ export default function CbtExamResultsPage() {
           <button
             type="button"
             onClick={downloadCsv}
-            disabled={!data || filteredResults.length === 0}
+            disabled={
+              !data || filteredResults.length === 0
+            }
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download size={16} />
@@ -316,12 +357,20 @@ export default function CbtExamResultsPage() {
           role="alert"
           className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200"
         >
-          <AlertCircle size={19} className="mt-0.5 shrink-0" />
+          <AlertCircle
+            size={19}
+            className="mt-0.5 shrink-0"
+          />
+
           <div>
             <p className="font-semibold">
               Unable to load exam results
             </p>
-            <p className="mt-1 break-words">{error}</p>
+
+            <p className="mt-1 break-words">
+              {error}
+            </p>
+
             <button
               type="button"
               onClick={() => void loadResults(true)}
@@ -411,7 +460,11 @@ export default function CbtExamResultsPage() {
                     <p className="text-sm text-slate-400">
                       {item.label}
                     </p>
-                    <Icon size={20} className={item.color} />
+
+                    <Icon
+                      size={20}
+                      className={item.color}
+                    />
                   </div>
 
                   <p className="mt-3 text-3xl font-bold text-white">
@@ -422,15 +475,17 @@ export default function CbtExamResultsPage() {
             })}
           </section>
 
-          {/* Results */}
+          {/* Student submissions */}
           <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
             <div className="space-y-4 border-b border-white/10 p-4 sm:p-5">
               <div>
                 <h2 className="text-lg font-semibold text-white">
                   Student submissions
                 </h2>
+
                 <p className="mt-1 text-sm text-slate-400">
-                  Showing {filteredResults.length} of {results.length} attempts.
+                  Showing {filteredResults.length} of{" "}
+                  {results.length} attempts.
                 </p>
               </div>
 
@@ -440,10 +495,13 @@ export default function CbtExamResultsPage() {
                     size={16}
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                   />
+
                   <input
                     type="search"
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) =>
+                      setSearch(event.target.value)
+                    }
                     placeholder="Search name or admission number"
                     aria-label="Search students"
                     className="min-h-11 w-full rounded-xl border border-white/10 bg-slate-900 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
@@ -453,24 +511,33 @@ export default function CbtExamResultsPage() {
                 <select
                   value={statusFilter}
                   onChange={(event) =>
-                    setStatusFilter(event.target.value as FilterStatus)
+                    setStatusFilter(
+                      event.target.value as FilterStatus
+                    )
                   }
                   aria-label="Filter by attempt status"
                   className="min-h-11 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white focus:border-cyan-400 focus:outline-none"
                 >
                   <option value="all">All attempts</option>
                   <option value="submitted">Submitted</option>
-                  <option value="in_progress">In progress</option>
+                  <option value="in_progress">
+                    In progress
+                  </option>
                 </select>
               </div>
             </div>
 
             {filteredResults.length === 0 ? (
               <div className="p-10 text-center">
-                <Users size={36} className="mx-auto text-slate-500" />
+                <Users
+                  size={36}
+                  className="mx-auto text-slate-500"
+                />
+
                 <h3 className="mt-3 font-semibold text-white">
                   No matching attempts
                 </h3>
+
                 <p className="mt-2 text-sm text-slate-400">
                   Try changing your search or status filter.
                 </p>
@@ -487,10 +554,13 @@ export default function CbtExamResultsPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <h3 className="break-words font-semibold text-white">
-                            {result.studentName || "Unknown student"}
+                            {result.studentName ||
+                              "Unknown student"}
                           </h3>
+
                           <p className="mt-1 text-xs text-slate-400">
-                            Admission No.: {result.admissionNumber || "—"}
+                            Admission No.:{" "}
+                            {result.admissionNumber || "—"}
                           </p>
                         </div>
 
@@ -505,7 +575,10 @@ export default function CbtExamResultsPage() {
 
                       <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-900/70 p-3">
                         <div>
-                          <p className="text-xs text-slate-400">Score</p>
+                          <p className="text-xs text-slate-400">
+                            Score
+                          </p>
+
                           <p className="mt-1 font-semibold text-white">
                             {result.status === "submitted" &&
                             result.score !== null
@@ -518,6 +591,7 @@ export default function CbtExamResultsPage() {
                           <p className="text-xs text-slate-400">
                             Percentage
                           </p>
+
                           <p className="mt-1 font-semibold text-white">
                             {result.status === "submitted" &&
                             result.percentage !== null
@@ -528,24 +602,63 @@ export default function CbtExamResultsPage() {
                       </div>
 
                       <div className="text-xs leading-5 text-slate-400">
-                        <p>Started: {formatDate(result.startedAt)}</p>
-                        <p>Submitted: {formatDate(result.submittedAt)}</p>
+                        <p>
+                          Started: {formatDate(result.startedAt)}
+                        </p>
+
+                        <p>
+                          Submitted: {formatDate(result.submittedAt)}
+                        </p>
                       </div>
+
+                      {result.status === "submitted" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openAnswerReview(result)
+                          }
+                          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+                        >
+                          <Eye size={17} />
+                          Review answers
+                        </button>
+                      )}
                     </article>
                   ))}
                 </div>
 
                 {/* Desktop table */}
                 <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full min-w-[850px] text-left text-sm">
+                  <table className="w-full min-w-[1050px] text-left text-sm">
                     <thead className="bg-slate-900/80 text-xs uppercase tracking-wide text-slate-400">
                       <tr>
-                        <th className="px-5 py-4">Student name</th>
-                        <th className="px-5 py-4">Admission number</th>
-                        <th className="px-5 py-4">Status</th>
-                        <th className="px-5 py-4">Score</th>
-                        <th className="px-5 py-4">Percentage</th>
-                        <th className="px-5 py-4">Submitted at</th>
+                        <th className="px-5 py-4">
+                          Student name
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Admission number
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Status
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Score
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Percentage
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Submitted at
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Action
+                        </th>
                       </tr>
                     </thead>
 
@@ -556,7 +669,8 @@ export default function CbtExamResultsPage() {
                           className="hover:bg-white/[0.03]"
                         >
                           <td className="px-5 py-4 font-medium text-white">
-                            {result.studentName || "Unknown student"}
+                            {result.studentName ||
+                              "Unknown student"}
                           </td>
 
                           <td className="px-5 py-4 text-slate-300">
@@ -590,6 +704,25 @@ export default function CbtExamResultsPage() {
                           <td className="px-5 py-4 text-slate-400">
                             {formatDate(result.submittedAt)}
                           </td>
+
+                          <td className="px-5 py-4">
+                            {result.status === "submitted" ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openAnswerReview(result)
+                                }
+                                className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-400"
+                              >
+                                <Eye size={15} />
+                                Review answers
+                              </button>
+                            ) : (
+                              <span className="text-xs text-slate-500">
+                                Not submitted
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -603,3 +736,5 @@ export default function CbtExamResultsPage() {
     </main>
   );
 }
+
+
