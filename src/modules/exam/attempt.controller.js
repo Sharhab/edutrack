@@ -1,4 +1,5 @@
 
+
 import mongoose from "mongoose";
 import { Exam } from "./exam.model.js";
 import { ExamAttempt } from "./attempt.model.js";
@@ -14,20 +15,16 @@ function studentSafeExam(exam) {
     durationMinutes: exam.durationMinutes,
     startsAt: exam.startsAt,
     endsAt: exam.endsAt,
-    questions: exam.questions.map((q) => ({
-      _id: q._id,
-      text: q.text,
-      options: q.options,
-      marks: q.marks,
+    questions: exam.questions.map((question) => ({
+      _id: question._id,
+      text: question.text,
+      options: question.options,
+      marks: question.marks,
     })),
   };
 }
 
-
 async function getStudent(req) {
-  // Student login accounts are linked through User.studentId.
-  // The protect middleware loads the authenticated User document
-  // into req.user, so we can use its trusted studentId.
   if (
     !req.user ||
     req.user.role !== "student" ||
@@ -44,7 +41,6 @@ async function getStudent(req) {
   }).select("_id classId");
 }
 
-
 function deadlineFor(exam, attempt) {
   return new Date(
     Math.min(
@@ -53,6 +49,79 @@ function deadlineFor(exam, attempt) {
         exam.durationMinutes * 60_000
     )
   );
+}
+
+function calculateScore(exam, answers) {
+  let score = 0;
+
+  for (const question of exam.questions) {
+    const selected = answers?.get
+      ? answers.get(String(question._id))
+      : answers?.[String(question._id)];
+
+    if (selected === question.correctOptionIndex) {
+      score += Number(question.marks || 0);
+    }
+  }
+
+  const totalMarks = exam.questions.reduce(
+    (total, question) => total + Number(question.marks || 0),
+    0
+  );
+
+  return { score, totalMarks };
+}
+
+/**
+ * Finalizes an attempt exactly once.
+ *
+ * This is also used for expired attempts. The score is calculated
+ * from answers already persisted in the database.
+ */
+async function finalizeAttempt(attempt, exam) {
+  const { score, totalMarks } = calculateScore(
+    exam,
+    attempt.answers
+  );
+
+  const submitted = await ExamAttempt.findOneAndUpdate(
+    {
+      _id: attempt._id,
+      schoolId: attempt.schoolId,
+      studentId: attempt.studentId,
+      examId: attempt.examId,
+      status: "in_progress",
+    },
+    {
+      $set: {
+        score,
+        totalMarks,
+        submittedAt: new Date(),
+        status: "submitted",
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
+  ).select("_id score totalMarks submittedAt status");
+
+  if (submitted) return submitted;
+
+  // Another request may have finalized it at the same time.
+  return ExamAttempt.findOne({
+    _id: attempt._id,
+    schoolId: attempt.schoolId,
+    studentId: attempt.studentId,
+    examId: attempt.examId,
+  }).select("_id score totalMarks submittedAt status");
+}
+
+async function getAttemptExam(attempt, schoolId) {
+  return Exam.findOne({
+    _id: attempt.examId,
+    schoolId,
+  });
 }
 
 export async function startExamHandler(req, res, next) {
@@ -75,25 +144,76 @@ export async function startExamHandler(req, res, next) {
       });
     }
 
-    const now = new Date();
+    if (!student.classId) {
+      return res.status(400).json({
+        success: false,
+        message: "No class has been assigned to this student.",
+      });
+    }
 
     const exam = await Exam.findOne({
       _id: examId,
       schoolId: req.user.schoolId,
       classId: student.classId,
-      status: "published",
-      startsAt: { $lte: now },
-      endsAt: { $gt: now },
     });
 
     if (!exam) {
       return res.status(404).json({
         success: false,
-        message: "Exam is unavailable or not open for your class.",
+        message: "Exam not found for your class.",
       });
     }
 
-    let attempt;
+    // Check for an existing attempt first. This allows a student
+    // to resume an attempt that was started before the exam was closed.
+    let attempt = await ExamAttempt.findOne({
+      schoolId: req.user.schoolId,
+      examId: exam._id,
+      studentId: student._id,
+    });
+
+    const now = new Date();
+
+    if (attempt?.status === "submitted") {
+      return res.status(409).json({
+        success: false,
+        message: "This exam has already been submitted.",
+      });
+    }
+
+    if (attempt?.status === "in_progress") {
+      if (now >= deadlineFor(exam, attempt)) {
+        await finalizeAttempt(attempt, exam);
+
+        return res.status(409).json({
+          success: false,
+          message: "Your exam time has ended and your attempt was submitted.",
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          attemptId: attempt._id,
+          deadline: deadlineFor(exam, attempt),
+          exam: studentSafeExam(exam),
+          answers: Object.fromEntries(attempt.answers || []),
+        },
+      });
+    }
+
+    // A new attempt can only be created while the exam is published
+    // and inside its scheduled availability window.
+    if (
+      exam.status !== "published" ||
+      now < new Date(exam.startsAt) ||
+      now >= new Date(exam.endsAt)
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam is not currently open for your class.",
+      });
+    }
 
     try {
       attempt = await ExamAttempt.findOneAndUpdate(
@@ -110,21 +230,32 @@ export async function startExamHandler(req, res, next) {
             startedAt: now,
             status: "in_progress",
             totalMarks: exam.questions.reduce(
-              (sum, q) => sum + q.marks,
+              (total, question) =>
+                total + Number(question.marks || 0),
               0
             ),
           },
         },
-        { upsert: true, new: true, runValidators: true }
+        {
+          upsert: true,
+          new: true,
+          runValidators: true,
+        }
       );
     } catch (error) {
-      // Concurrent start requests may race against the unique index.
       if (error.code !== 11000) throw error;
 
       attempt = await ExamAttempt.findOne({
         schoolId: req.user.schoolId,
         examId: exam._id,
         studentId: student._id,
+      });
+    }
+
+    if (!attempt) {
+      return res.status(500).json({
+        success: false,
+        message: "Could not create your exam attempt.",
       });
     }
 
@@ -135,10 +266,12 @@ export async function startExamHandler(req, res, next) {
       });
     }
 
-    if (new Date() >= deadlineFor(exam, attempt)) {
-      return res.status(403).json({
+    if (now >= deadlineFor(exam, attempt)) {
+      await finalizeAttempt(attempt, exam);
+
+      return res.status(409).json({
         success: false,
-        message: "The exam deadline has passed.",
+        message: "Your exam time has ended.",
       });
     }
 
@@ -159,10 +292,14 @@ export async function startExamHandler(req, res, next) {
 export async function saveAnswersHandler(req, res, next) {
   try {
     const { attemptId } = req.params;
-    const { answers } = req.body;
+    const { answers } = req.body || {};
 
-    if (!validId(attemptId) || !answers || typeof answers !== "object" ||
-        Array.isArray(answers)) {
+    if (
+      !validId(attemptId) ||
+      !answers ||
+      typeof answers !== "object" ||
+      Array.isArray(answers)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid attempt or answers.",
@@ -188,25 +325,36 @@ export async function saveAnswersHandler(req, res, next) {
     if (!attempt) {
       return res.status(404).json({
         success: false,
-        message: "Active attempt not found.",
+        message: "Active attempt not found or already submitted.",
       });
     }
 
-    const exam = await Exam.findOne({
-      _id: attempt.examId,
-      schoolId: req.user.schoolId,
-      status: "published",
-    });
+    const exam = await getAttemptExam(
+      attempt,
+      req.user.schoolId
+    );
 
-    if (!exam || new Date() >= deadlineFor(exam, attempt)) {
-      return res.status(403).json({
+    if (!exam) {
+      return res.status(404).json({
         success: false,
-        message: "The exam deadline has passed.",
+        message: "Exam not found.",
       });
     }
 
+    // Finalize expired attempts rather than leaving them stuck.
+    if (new Date() >= deadlineFor(exam, attempt)) {
+      const finalized = await finalizeAttempt(attempt, exam);
+
+      return res.status(200).json({
+        success: true,
+        message: "The exam deadline passed. Your saved answers were submitted.",
+        data: finalized,
+      });
+    }
+
+    const updates = {};
     const questionIds = new Set(
-      exam.questions.map((q) => String(q._id))
+      exam.questions.map((question) => String(question._id))
     );
 
     for (const [questionId, optionIndex] of Object.entries(answers)) {
@@ -214,6 +362,7 @@ export async function saveAnswersHandler(req, res, next) {
 
       if (
         !questionIds.has(questionId) ||
+        !question ||
         !Number.isInteger(optionIndex) ||
         optionIndex < 0 ||
         optionIndex >= question.options.length
@@ -224,14 +373,42 @@ export async function saveAnswersHandler(req, res, next) {
         });
       }
 
-      attempt.answers.set(questionId, optionIndex);
+      updates[`answers.${questionId}`] = optionIndex;
     }
 
-    await attempt.save();
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid answers were provided.",
+      });
+    }
+
+    // Atomic update prevents saving answers to a submitted attempt.
+    const updated = await ExamAttempt.findOneAndUpdate(
+      {
+        _id: attempt._id,
+        schoolId: req.user.schoolId,
+        studentId: student._id,
+        status: "in_progress",
+      },
+      { $set: updates },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select("_id status updatedAt");
+
+    if (!updated) {
+      return res.status(409).json({
+        success: false,
+        message: "This attempt is no longer editable.",
+      });
+    }
 
     return res.json({
       success: true,
-      message: "Answers saved.",
+      message: "Answers saved successfully.",
+      data: updated,
     });
   } catch (error) {
     next(error);
@@ -262,20 +439,33 @@ export async function submitExamHandler(req, res, next) {
       _id: attemptId,
       schoolId: req.user.schoolId,
       studentId: student._id,
-      status: "in_progress",
     });
 
     if (!attempt) {
-      return res.status(409).json({
+      return res.status(404).json({
         success: false,
-        message: "Attempt not found or already submitted.",
+        message: "Exam attempt not found.",
       });
     }
 
-    const exam = await Exam.findOne({
-      _id: attempt.examId,
-      schoolId: req.user.schoolId,
-    });
+    if (attempt.status === "submitted") {
+      return res.status(200).json({
+        success: true,
+        message: "This exam was already submitted.",
+        data: {
+          _id: attempt._id,
+          score: attempt.score,
+          totalMarks: attempt.totalMarks,
+          submittedAt: attempt.submittedAt,
+          status: attempt.status,
+        },
+      });
+    }
+
+    const exam = await getAttemptExam(
+      attempt,
+      req.user.schoolId
+    );
 
     if (!exam) {
       return res.status(404).json({
@@ -284,57 +474,18 @@ export async function submitExamHandler(req, res, next) {
       });
     }
 
-    const now = new Date();
-
-    // Do not accept submissions after the deadline.
-    if (now >= deadlineFor(exam, attempt)) {
-      return res.status(403).json({
-        success: false,
-        message: "The exam deadline has passed.",
-      });
-    }
-
-    let score = 0;
-    const totalMarks = exam.questions.reduce(
-      (sum, q) => sum + q.marks,
-      0
-    );
-
-    for (const question of exam.questions) {
-      const selected = attempt.answers.get(String(question._id));
-
-      if (selected === question.correctOptionIndex) {
-        score += question.marks;
-      }
-    }
-
-    // Atomic status transition: only one concurrent submission wins.
-    const submitted = await ExamAttempt.findOneAndUpdate(
-      {
-        _id: attempt._id,
-        schoolId: req.user.schoolId,
-        studentId: student._id,
-        status: "in_progress",
-      },
-      {
-        $set: {
-          score,
-          totalMarks,
-          submittedAt: now,
-          status: "submitted",
-        },
-      },
-      { new: true, runValidators: true }
-    ).select("_id score totalMarks submittedAt status");
+    // If the deadline has passed, submit the answers already saved
+    // on the server. Do not reject and strand the attempt.
+    const submitted = await finalizeAttempt(attempt, exam);
 
     if (!submitted) {
       return res.status(409).json({
         success: false,
-        message: "Attempt has already been submitted.",
+        message: "Could not finalize this exam attempt.",
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "Exam submitted successfully.",
       data: submitted,
@@ -343,6 +494,7 @@ export async function submitExamHandler(req, res, next) {
     next(error);
   }
 }
+
 export async function listStudentExamsHandler(req, res, next) {
   try {
     const student = await getStudent(req);
@@ -363,17 +515,13 @@ export async function listStudentExamsHandler(req, res, next) {
 
     const now = new Date();
 
-    // Only published exams belonging to this student's school and class.
-    // Keep upcoming exams visible, but exclude exams whose end time passed.
     const exams = await Exam.find({
       schoolId: req.user.schoolId,
       classId: student.classId,
       status: "published",
       endsAt: { $gt: now },
     })
-      .select(
-        "_id title instructions durationMinutes startsAt endsAt"
-      )
+      .select("_id title instructions durationMinutes startsAt endsAt")
       .sort({ startsAt: 1 })
       .lean();
 
@@ -400,14 +548,11 @@ export async function listStudentExamsHandler(req, res, next) {
       const attempt = attemptsByExam.get(String(exam._id));
       const startsAt = new Date(exam.startsAt);
       const endsAt = new Date(exam.endsAt);
-
       const isOpen = now >= startsAt && now < endsAt;
 
       let availability = "upcoming";
 
-      if (isOpen) {
-        availability = "available";
-      }
+      if (isOpen) availability = "available";
 
       if (attempt?.status === "submitted") {
         availability = "submitted";
@@ -426,12 +571,14 @@ export async function listStudentExamsHandler(req, res, next) {
         attemptId: attempt?._id || null,
         startedAt: attempt?.startedAt || null,
         submittedAt: attempt?.submittedAt || null,
-        score: attempt?.status === "submitted"
-          ? attempt.score
-          : null,
-        totalMarks: attempt?.status === "submitted"
-          ? attempt.totalMarks
-          : null,
+        score:
+          attempt?.status === "submitted"
+            ? attempt.score
+            : null,
+        totalMarks:
+          attempt?.status === "submitted"
+            ? attempt.totalMarks
+            : null,
       };
     });
 
@@ -445,13 +592,12 @@ export async function listStudentExamsHandler(req, res, next) {
   }
 }
 
-
 export async function listExamResultsHandler(req, res, next) {
   try {
     const { examId } = req.params;
     const schoolId = req.user?.schoolId;
 
-    if (!mongoose.Types.ObjectId.isValid(examId)) {
+    if (!validId(examId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid exam ID.",
@@ -465,7 +611,6 @@ export async function listExamResultsHandler(req, res, next) {
       });
     }
 
-    // Confirm the exam belongs to the authenticated school.
     const exam = await Exam.findOne({
       _id: examId,
       schoolId,
@@ -486,7 +631,10 @@ export async function listExamResultsHandler(req, res, next) {
       schoolId,
       examId: exam._id,
     })
-      .populate("studentId", "firstName lastName admissionNumber")
+      .populate(
+        "studentId",
+        "firstName middleName lastName admissionNumber"
+      )
       .sort({ submittedAt: -1, startedAt: -1 })
       .lean();
 
@@ -505,12 +653,20 @@ export async function listExamResultsHandler(req, res, next) {
 
       const totalMarks = attempt.totalMarks ?? 0;
 
+      const studentName = student
+        ? [
+            student.firstName,
+            student.middleName,
+            student.lastName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        : "Student record unavailable";
+
       return {
         attemptId: attempt._id,
         studentId: student?._id ?? null,
-        studentName: student
-          ? `${student.firstName || ""} ${student.lastName || ""}`.trim()
-          : "Student record unavailable",
+        studentName,
         admissionNumber: student?.admissionNumber ?? "",
         status: attempt.status,
         score,
@@ -544,6 +700,3 @@ export async function listExamResultsHandler(req, res, next) {
     next(error);
   }
 }
-
-
-
