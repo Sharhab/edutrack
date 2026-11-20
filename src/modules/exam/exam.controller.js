@@ -1,7 +1,9 @@
 
 
 import mongoose from "mongoose";
-
+import {
+  getExamAssessmentComponent,
+} from "./exam-assessment.service.js";
 import { Exam } from "./exam.model.js";
 import { ClassModel } from "../classes/class.model.js";
 import { SubjectModel } from "../subjects/subject.model.js";
@@ -321,20 +323,20 @@ export async function createExamHandler(req, res, next) {
     }
 
     const {
-      title,
-      instructions = "",
-      classId,
-      subjectId,
-      sessionId,
-      termId,
-      questions,
-      durationMinutes,
-      startsAt,
-      endsAt,
-      shuffleQuestions = false,
-      shuffleOptions = false,
-    } = req.body || {};
-
+  title,
+  instructions = "",
+  classId,
+  subjectId,
+  sessionId,
+  termId,
+  assessmentKey,
+  questions,
+  durationMinutes,
+  startsAt,
+  endsAt,
+  shuffleQuestions = false,
+  shuffleOptions = false,
+} = req.body || {};
     if (
       typeof title !== "string" ||
       !title.trim() ||
@@ -413,6 +415,25 @@ export async function createExamHandler(req, res, next) {
       );
     }
 
+    let assessmentComponent;
+
+try {
+  assessmentComponent = await getExamAssessmentComponent({
+    user: req.user,
+    classId,
+    assessmentKey,
+  });
+} catch (error) {
+  if (error.statusCode || error.status) {
+    return res.status(error.statusCode || error.status).json({
+      success: false,
+      message: error.message,
+    });
+  }
+
+  throw error;
+}
+
     if (!req.user?._id) {
       return res.status(401).json({
         success: false,
@@ -428,6 +449,7 @@ export async function createExamHandler(req, res, next) {
       subjectId,
       sessionId,
       termId,
+      assessmentKey: assessmentComponent.key,
       questions: questionResult.questions,
       durationMinutes: scheduleResult.duration,
       startsAt: scheduleResult.start,
