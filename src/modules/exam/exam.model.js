@@ -1,4 +1,5 @@
 
+
 import mongoose from "mongoose";
 
 const questionSchema = new mongoose.Schema(
@@ -90,6 +91,18 @@ const examSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Links this CBT exam to a component in the school's
+    // configurable result assessment scheme.
+    // Example: ca1, ca2, assignment, exam.
+    // Optional so existing CBT exams remain valid.
+    assessmentKey: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      maxlength: 80,
+      default: null,
+    },
+
     questions: {
       type: [questionSchema],
       default: [],
@@ -147,4 +160,3 @@ examSchema.index({
 });
 
 export const Exam = mongoose.model("Exam", examSchema);
-
