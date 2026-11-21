@@ -1,23 +1,33 @@
 
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import { Plus, Save, Trash2, RefreshCw, ClipboardList } from "lucide-react";
+import {
+  Award,
+  BookOpen,
+  CheckCircle2,
+  LoaderCircle,
+  Plus,
+  Save,
+  Trash2,
+  RefreshCw,
+  AlertCircle,
+} from "lucide-react";
 
 import api from "../../../../lib/axios";
-import { getClasses } from "../../../../lib/classes";
-import SectionCard from "../../../../components/ui/SectionCard";
-import PageLoader from "../../../../components/ui/PageLoader";
+import { useTenant } from "../../../../components/tenant/TenantProvider";
 
 type Scope = "school" | "level" | "class";
+type AggregationMethod = "average" | "highest" | "selected";
 
-type Component = {
+type AssessmentComponent = {
   key: string;
   label: string;
   maxScore: number;
   enabled: boolean;
   order: number;
+  aggregationMethod: AggregationMethod;
 };
 
 type ClassOption = {
@@ -26,556 +36,1030 @@ type ClassOption = {
   level?: string;
 };
 
-type Scheme = {
-  _id?: string;
-  name: string;
-  scope: Scope;
-  scopeKey: string;
-  level?: string;
-  classId?: string | { _id: string };
-  totalMax: number;
-  version?: number;
-  components: Component[];
+type SchemeResponse = {
+  scheme?: {
+    _id?: string;
+    name?: string;
+    scope?: Scope;
+    scopeKey?: string;
+    level?: string;
+    classId?: string | { _id?: string };
+    totalMax?: number;
+    components?: AssessmentComponent[];
+    version?: number;
+  } | null;
+  inherited?: boolean;
 };
 
-const DEFAULT_COMPONENTS: Component[] = [
-  { key: "assignment", label: "Assignment", maxScore: 10, enabled: true, order: 0 },
-  { key: "ca1", label: "First CA", maxScore: 10, enabled: true, order: 1 },
-  { key: "ca2", label: "Second CA", maxScore: 10, enabled: true, order: 2 },
-  { key: "exam", label: "Examination", maxScore: 70, enabled: true, order: 3 },
+const DEFAULT_COMPONENTS: AssessmentComponent[] = [
+  {
+    key: "assignment",
+    label: "Assignment",
+    maxScore: 10,
+    enabled: true,
+    order: 0,
+    aggregationMethod: "average",
+  },
+  {
+    key: "ca1",
+    label: "1st CA",
+    maxScore: 10,
+    enabled: true,
+    order: 1,
+    aggregationMethod: "average",
+  },
+  {
+    key: "ca2",
+    label: "2nd CA",
+    maxScore: 10,
+    enabled: true,
+    order: 2,
+    aggregationMethod: "average",
+  },
+  {
+    key: "exam",
+    label: "Exam",
+    maxScore: 70,
+    enabled: true,
+    order: 3,
+    aggregationMethod: "average",
+  },
 ];
 
-const emptyScheme = (): Scheme => ({
-  name: "Results Scheme",
-  scope: "school",
-  scopeKey: "school",
-  level: "",
-  classId: "",
-  totalMax: 100,
-  components: DEFAULT_COMPONENTS.map((item) => ({ ...item })),
-});
-
-function errorMessage(error: unknown, fallback: string) {
-  if (axios.isAxiosError(error)) {
-    return error.response?.data?.message || fallback;
-  }
-  return fallback;
+function getErrorMessage(error: any, fallback: string) {
+  return (
+    error?.response?.data?.message ||
+    error?.message ||
+    fallback
+  );
 }
 
-function normalizeClassId(value: Scheme["classId"]) {
-  if (typeof value === "string") return value;
-  return value?._id || "";
+function createKey(label: string) {
+  return (
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "assessment"
+  );
 }
 
-export default function ResultsSchemePage() {
+function cloneDefaults() {
+  return DEFAULT_COMPONENTS.map((item) => ({ ...item }));
+}
+
+function normalizeComponents(items: AssessmentComponent[]) {
+  return [...items]
+    .map((item, index) => ({
+      key: item.key || `component_${index + 1}`,
+      label: item.label || "",
+      maxScore: Number(item.maxScore),
+      enabled: item.enabled !== false,
+      order: index,
+      aggregationMethod: item.aggregationMethod || "average",
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
+export default function ResultSchemePage() {
+  const { tenant } = useTenant();
+  const brandColor = tenant?.themeColor || "#06b6d4";
+
+  const [scope, setScope] = useState<Scope>("school");
   const [classes, setClasses] = useState<ClassOption[]>([]);
-  const [schemes, setSchemes] = useState<Scheme[]>([]);
-  const [scheme, setScheme] = useState<Scheme>(emptyScheme());
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedLevel, setSelectedLevel] = useState("");
 
-  const [loading, setLoading] = useState(true);
+  const [schemeName, setSchemeName] = useState("Standard Results Scheme");
+  const [components, setComponents] =
+    useState<AssessmentComponent[]>(cloneDefaults());
+
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [loadingScheme, setLoadingScheme] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const [configured, setConfigured] = useState(false);
+  const [inherited, setInherited] = useState(false);
+  const [version, setVersion] = useState<number | null>(null);
+
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const levels = useMemo(() => {
+    return Array.from(
+      new Set(
+        classes
+          .map((item) => String(item.level || "").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [classes]);
 
   const enabledTotal = useMemo(
     () =>
-      scheme.components.reduce(
-        (sum, component) =>
-          sum + (component.enabled ? Number(component.maxScore || 0) : 0),
-        0
-      ),
-    [scheme.components]
+      components
+        .filter((item) => item.enabled)
+        .reduce(
+          (sum, item) => sum + (Number(item.maxScore) || 0),
+          0
+        ),
+    [components]
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const enabledCount = components.filter(
+    (item) => item.enabled
+  ).length;
+
+  const totalIsValid =
+    enabledCount > 0 &&
+    Math.abs(enabledTotal - 100) < 0.001;
+
+  const loadClasses = useCallback(async () => {
+    setLoadingClasses(true);
 
     try {
-      const [classData, schemeResponse] = await Promise.all([
-        getClasses(),
-        api.get("/result-scheme/all"),
-      ]);
+      const response = await api.get("/classes");
 
-      setClasses((classData || []) as ClassOption[]);
-      setSchemes(schemeResponse.data?.data || []);
-    } catch (err) {
-      setError(errorMessage(err, "Could not load classes and assessment schemes."));
+      const raw = Array.isArray(response.data?.data)
+        ? response.data.data
+        : [];
+
+      const options: ClassOption[] = raw
+        .filter((item: any) => item?._id && item?.name)
+        .map((item: any) => ({
+          _id: String(item._id),
+          name: String(item.name),
+          level: String(item.level || ""),
+        }));
+
+      setClasses(options);
+    } catch (err: any) {
+      setError(
+        getErrorMessage(err, "Could not load school classes.")
+      );
     } finally {
-      setLoading(false);
+      setLoadingClasses(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadClasses();
+  }, [loadClasses]);
 
-  function updateScheme<K extends keyof Scheme>(field: K, value: Scheme[K]) {
-    setScheme((previous) => ({ ...previous, [field]: value }));
-    setMessage("");
-    setError("");
-  }
+  const loadScheme = useCallback(async () => {
+    if (scope === "class" && !selectedClassId) return;
+    if (scope === "level" && !selectedLevel) return;
 
-  function chooseScope(scope: Scope) {
-    setScheme({
-      ...emptyScheme(),
-      scope,
-      scopeKey: scope === "school" ? "school" : "",
-    });
-    setMessage("");
+    setLoadingScheme(true);
     setError("");
+    setSuccess("");
+
+    const params: Record<string, string> = {};
+
+    if (scope === "class") {
+      params.classId = selectedClassId;
+    }
+
+    if (scope === "level") {
+      params.level = selectedLevel;
+    }
+
+    try {
+      const response = await api.get("/result-scheme", {
+        params,
+      });
+
+      const result: SchemeResponse =
+        response.data?.data ?? {};
+
+      const scheme = result.scheme;
+
+      if (scheme) {
+        setSchemeName(
+          scheme.name || "Standard Results Scheme"
+        );
+
+        setComponents(
+          normalizeComponents(
+            Array.isArray(scheme.components)
+              ? scheme.components
+              : cloneDefaults()
+          )
+        );
+
+        setConfigured(true);
+        setInherited(Boolean(result.inherited));
+        setVersion(
+          Number.isFinite(Number(scheme.version))
+            ? Number(scheme.version)
+            : null
+        );
+      } else {
+        setSchemeName("Standard Results Scheme");
+        setComponents(cloneDefaults());
+        setConfigured(false);
+        setInherited(false);
+        setVersion(null);
+      }
+    } catch (err: any) {
+      setError(
+        getErrorMessage(
+          err,
+          "Could not load the assessment scheme."
+        )
+      );
+    } finally {
+      setLoadingScheme(false);
+    }
+  }, [scope, selectedClassId, selectedLevel]);
+
+  useEffect(() => {
+    if (scope === "class" && !selectedClassId) {
+      setComponents(cloneDefaults());
+      setConfigured(false);
+      setInherited(false);
+      setVersion(null);
+      return;
+    }
+
+    if (scope === "level" && !selectedLevel) {
+      setComponents(cloneDefaults());
+      setConfigured(false);
+      setInherited(false);
+      setVersion(null);
+      return;
+    }
+
+    void loadScheme();
+  }, [
+    scope,
+    selectedClassId,
+    selectedLevel,
+    loadScheme,
+  ]);
+
+  function changeScope(nextScope: Scope) {
+    setScope(nextScope);
+    setError("");
+    setSuccess("");
   }
 
   function updateComponent(
     index: number,
-    field: keyof Component,
+    field: keyof AssessmentComponent,
     value: string | number | boolean
   ) {
-    setScheme((previous) => ({
-      ...previous,
-      components: previous.components.map((component, i) =>
-        i === index ? { ...component, [field]: value } : component
-      ),
-    }));
-    setMessage("");
+    setComponents((current) =>
+      current.map((item, i) => {
+        if (i !== index) return item;
+
+        return {
+          ...item,
+          [field]: value,
+        };
+      })
+    );
+
     setError("");
+    setSuccess("");
   }
 
   function addComponent() {
-    if (scheme.components.length >= 12) {
-      setError("A scheme can contain at most 12 components.");
+    if (components.length >= 12) {
+      setError("You can add a maximum of 12 components.");
       return;
     }
 
-    const baseKey = `assessment_${scheme.components.length + 1}`;
+    const nextNumber = components.length + 1;
+    const label = `Assessment ${nextNumber}`;
 
-    setScheme((previous) => ({
-      ...previous,
-      components: [
-        ...previous.components,
-        {
-          key: baseKey,
-          label: "",
-          maxScore: 10,
-          enabled: true,
-          order: previous.components.length,
-        },
-      ],
-    }));
+    let key = createKey(label);
+    let suffix = 1;
+
+    while (components.some((item) => item.key === key)) {
+      suffix += 1;
+      key = `${createKey(label)}_${suffix}`;
+    }
+
+    setComponents((current) => [
+      ...current,
+      {
+        key,
+        label,
+        maxScore: 10,
+        enabled: true,
+        order: current.length,
+        aggregationMethod: "average",
+      },
+    ]);
+
+    setError("");
+    setSuccess("");
   }
 
   function removeComponent(index: number) {
-    setScheme((previous) => ({
-      ...previous,
-      components: previous.components
+    if (components.length <= 1) {
+      setError("At least one component is required.");
+      return;
+    }
+
+    setComponents((current) =>
+      current
         .filter((_, i) => i !== index)
-        .map((component, order) => ({ ...component, order })),
-    }));
-  }
-
-  function loadExistingScheme() {
-    const selected = schemes.find((item) => {
-      if (item.scope !== scheme.scope) return false;
-
-      if (scheme.scope === "school") return true;
-
-      if (scheme.scope === "level") {
-        return (
-          (item.level || item.scopeKey).toLowerCase() ===
-          scheme.level?.trim().toLowerCase()
-        );
-      }
-
-      return normalizeClassId(item.classId) === String(scheme.classId);
-    });
-
-    if (!selected) {
-      setError("No saved scheme exists for this selection. You can create one below.");
-      setMessage("");
-      return;
-    }
-
-    setScheme({
-      ...selected,
-      classId: normalizeClassId(selected.classId),
-      level: selected.level || "",
-      components: selected.components.map((component, order) => ({
-        ...component,
-        enabled: component.enabled !== false,
-        order: component.order ?? order,
-      })),
-    });
+        .map((item, order) => ({ ...item, order }))
+    );
 
     setError("");
-    setMessage("Saved scheme loaded. Review it before making changes.");
+    setSuccess("");
   }
 
-  async function save() {
-    setError("");
-    setMessage("");
-
-    if (!scheme.name.trim()) {
-      setError("Enter a scheme name.");
-      return;
+  function validateScheme() {
+    if (!schemeName.trim()) {
+      return "Enter a name for this assessment scheme.";
     }
 
-    if (scheme.components.length < 1 || scheme.components.length > 12) {
-      setError("Add between 1 and 12 assessment components.");
-      return;
+    if (components.length === 0) {
+      return "Add at least one assessment component.";
     }
 
-    if (!scheme.components.some((component) => component.enabled)) {
-      setError("Enable at least one assessment component.");
-      return;
+    if (components.length > 12) {
+      return "You can configure up to 12 components.";
     }
 
-    if (Math.abs(enabledTotal - 100) > 0.001) {
-      setError(`Enabled components must total 100. Your current total is ${enabledTotal}.`);
-      return;
-    }
+    const keys = new Set<string>();
 
-    const seenKeys = new Set<string>();
-
-    for (const component of scheme.components) {
-      if (!/^[a-z][a-z0-9_]*$/.test(component.key.trim().toLowerCase())) {
-        setError(`Invalid component key "${component.key}". Use lowercase letters, numbers, and underscores.`);
-        return;
+    for (const item of components) {
+      if (!item.label.trim()) {
+        return "Every component needs a label.";
       }
 
-      if (seenKeys.has(component.key.trim().toLowerCase())) {
-        setError(`Duplicate component key: ${component.key}.`);
-        return;
+      if (!/^[a-z][a-z0-9_]*$/.test(item.key)) {
+        return `Invalid component key "${item.key}". Use lowercase letters, numbers, and underscores.`;
       }
 
-      seenKeys.add(component.key.trim().toLowerCase());
-
-      if (!component.label.trim()) {
-        setError("Every component needs a display name.");
-        return;
+      if (keys.has(item.key)) {
+        return `Duplicate component key "${item.key}".`;
       }
+
+      keys.add(item.key);
 
       if (
-        !Number.isFinite(Number(component.maxScore)) ||
-        Number(component.maxScore) <= 0 ||
-        Number(component.maxScore) > 100
+        !Number.isFinite(Number(item.maxScore)) ||
+        Number(item.maxScore) <= 0 ||
+        Number(item.maxScore) > 100
       ) {
-        setError(`Enter a valid maximum score for ${component.label}.`);
-        return;
+        return `Enter a valid maximum score for ${item.label}.`;
       }
     }
 
-    if (scheme.scope === "level" && !scheme.level?.trim()) {
-      setError("Enter the academic level for this scheme.");
+    if (!enabledCount) {
+      return "Enable at least one assessment component.";
+    }
+
+    if (!totalIsValid) {
+      return `Enabled components must total exactly 100. Your current total is ${enabledTotal.toFixed(2)}.`;
+    }
+
+    if (scope === "class" && !selectedClassId) {
+      return "Select a class for this scheme.";
+    }
+
+    if (scope === "level" && !selectedLevel) {
+      return "Select an academic level for this scheme.";
+    }
+
+    return "";
+  }
+
+  async function saveScheme() {
+    const validationError = validateScheme();
+
+    if (validationError) {
+      setError(validationError);
+      setSuccess("");
       return;
     }
 
-    if (scheme.scope === "class" && !scheme.classId) {
-      setError("Select a class for this scheme.");
-      return;
-    }
+    setSaving(true);
+    setError("");
+    setSuccess("");
 
-    const payload = {
-      name: scheme.name.trim(),
-      scope: scheme.scope,
+    const payload: Record<string, any> = {
+      scope,
+      name: schemeName.trim(),
       totalMax: 100,
-      ...(scheme.scope === "level"
-        ? { level: scheme.level?.trim() }
-        : {}),
-      ...(scheme.scope === "class"
-        ? { classId: normalizeClassId(scheme.classId) }
-        : {}),
-      components: scheme.components.map((component, order) => ({
-        key: component.key.trim().toLowerCase(),
-        label: component.label.trim(),
-        maxScore: Number(component.maxScore),
-        enabled: component.enabled,
-        order,
+      components: components.map((item, index) => ({
+        key: item.key.trim().toLowerCase(),
+        label: item.label.trim(),
+        maxScore: Number(item.maxScore),
+        enabled: item.enabled,
+        order: index,
+        aggregationMethod: item.aggregationMethod,
       })),
     };
 
-    setSaving(true);
+    if (scope === "class") {
+      payload.classId = selectedClassId;
+    }
+
+    if (scope === "level") {
+      payload.level = selectedLevel;
+    }
 
     try {
-      await api.put("/result-scheme", payload);
-      setMessage("Results scheme saved successfully.");
-      await load();
-    } catch (err) {
-      setError(errorMessage(err, "Failed to save results scheme."));
+      const response = await api.put(
+        "/result-scheme",
+        payload
+      );
+
+      const saved = response.data?.data;
+
+      if (saved?.components) {
+        setComponents(
+          normalizeComponents(saved.components)
+        );
+      }
+
+      setSchemeName(saved?.name || schemeName);
+      setConfigured(true);
+      setInherited(false);
+      setVersion(
+        Number.isFinite(Number(saved?.version))
+          ? Number(saved.version)
+          : null
+      );
+
+      setSuccess(
+        "Assessment scheme saved successfully. CBT exams can now use its enabled components."
+      );
+    } catch (err: any) {
+      setError(
+        getErrorMessage(
+          err,
+          "Could not save the assessment scheme."
+        )
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) return <PageLoader />;
+  function resetToDefaults() {
+    setSchemeName("Standard Results Scheme");
+    setComponents(cloneDefaults());
+    setError("");
+    setSuccess("");
+  }
+
+  const scopeDescription =
+    scope === "school"
+      ? "This scheme is used by classes without their own class or level scheme."
+      : scope === "level"
+        ? "This scheme is inherited by classes at the selected academic level unless a class-specific scheme exists."
+        : "This scheme applies only to the selected class and overrides inherited schemes.";
+
+  const canLoadScheme =
+    scope === "school" ||
+    (scope === "class" && Boolean(selectedClassId)) ||
+    (scope === "level" && Boolean(selectedLevel));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-cyan-700">
-            Academic settings
-          </p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">
-            Results Scheme
-          </h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Configure the assessment components teachers use when entering results.
-          </p>
-        </div>
+    <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
+      {/* Header */}
+      <header
+        className="relative overflow-hidden rounded-2xl p-6 text-white shadow-sm sm:p-8"
+        style={{ backgroundColor: brandColor }}
+      >
+        <div className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full border-[30px] border-white/10" />
 
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-        >
-          <RefreshCw size={16} />
-          Refresh
-        </button>
-      </div>
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            {tenant?.logoUrl ? (
+              <img
+                src={tenant.logoUrl}
+                alt={`${tenant.schoolName || "School"} logo`}
+                className="h-14 w-14 rounded-xl border border-white/30 bg-white object-contain p-1"
+              />
+            ) : (
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/15">
+                <BookOpen size={30} />
+              </div>
+            )}
+
+            <div>
+              <p className="text-sm font-medium text-white/80">
+                {tenant?.schoolName || "EduTrack"}
+              </p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+                Results Assessment Scheme
+              </h1>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-white/85">
+                Configure the assessment components used for student
+                results and CBT marks integration.
+              </p>
+            </div>
+          </div>
+
+          <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/15 px-3 py-2 text-sm font-medium">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                configured ? "bg-green-300" : "bg-amber-300"
+              }`}
+            />
+            {configured ? "Scheme saved" : "Draft configuration"}
+          </span>
+        </div>
+      </header>
 
       {error && (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+        >
+          <AlertCircle size={18} className="mt-0.5 shrink-0" />
+          <p className="break-words">{error}</p>
         </div>
       )}
 
-      {message && (
-        <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-          {message}
+      {success && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"
+        >
+          <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+          <p>{success}</p>
         </div>
       )}
 
-      <SectionCard title="Scheme scope">
-        <div className="grid gap-4 md:grid-cols-3">
+      {/* Scope */}
+      <section className="space-y-5 rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+        <div>
+          <h2 className="text-lg font-semibold text-white">
+            Scheme scope
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Choose where this assessment configuration should apply.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
           {([
-            ["school", "School default", "Applies when no more specific scheme exists."],
-            ["level", "Academic level", "Overrides the school default for a level."],
-            ["class", "Specific class", "Overrides both the level and school defaults."],
-          ] as const).map(([value, title, description]) => (
+            {
+              value: "school",
+              title: "School default",
+              description: "Default for the whole school.",
+            },
+            {
+              value: "level",
+              title: "Academic level",
+              description: "For Nursery, Primary, JSS, or SS.",
+            },
+            {
+              value: "class",
+              title: "Individual class",
+              description: "For one specific class only.",
+            },
+          ] as const).map((item) => (
             <button
-              key={value}
+              key={item.value}
               type="button"
-              onClick={() => chooseScope(value)}
+              onClick={() => changeScope(item.value)}
               className={`rounded-xl border p-4 text-left transition ${
-                scheme.scope === value
-                  ? "border-cyan-600 bg-cyan-50 ring-1 ring-cyan-600"
-                  : "border-slate-200 hover:border-slate-400"
+                scope === item.value
+                  ? "border-cyan-400/50 bg-cyan-500/10"
+                  : "border-white/10 bg-slate-900/50 hover:bg-white/[0.05]"
               }`}
             >
-              <span className="font-semibold text-slate-900">{title}</span>
-              <p className="mt-2 text-sm text-slate-600">{description}</p>
+              <p className="font-semibold text-white">
+                {item.title}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                {item.description}
+              </p>
             </button>
           ))}
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Scheme name</span>
-            <input
-              value={scheme.name}
-              onChange={(e) => updateScheme("name", e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-cyan-600"
-              placeholder="e.g. Standard Assessment"
-            />
-          </label>
-
-          {scheme.scope === "level" && (
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">Academic level</span>
-              <input
-                value={scheme.level || ""}
-                onChange={(e) => updateScheme("level", e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-cyan-600"
-                placeholder="e.g. Primary, JSS, Senior Secondary"
-              />
+        {scope === "level" && (
+          <div className="max-w-xl space-y-2">
+            <label
+              htmlFor="scheme-level"
+              className="block text-sm font-medium text-slate-300"
+            >
+              Academic level
             </label>
-          )}
 
-          {scheme.scope === "class" && (
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">Class</span>
-              <select
-                value={normalizeClassId(scheme.classId)}
-                onChange={(e) => updateScheme("classId", e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-cyan-600"
-              >
-                <option value="">Select a class</option>
-                {classes.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name}{item.level ? ` — ${item.level}` : ""}
-                  </option>
-                ))}
-              </select>
+            <select
+              id="scheme-level"
+              value={selectedLevel}
+              onChange={(event) =>
+                setSelectedLevel(event.target.value)
+              }
+              disabled={loadingClasses || saving}
+              className="min-h-12 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-cyan-400 disabled:opacity-50"
+            >
+              <option value="">Select academic level</option>
+              {levels.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
+
+            {!loadingClasses && levels.length === 0 && (
+              <p className="text-xs text-amber-300">
+                No academic levels were found in your school classes.
+                Add a level to your classes first.
+              </p>
+            )}
+          </div>
+        )}
+
+        {scope === "class" && (
+          <div className="max-w-xl space-y-2">
+            <label
+              htmlFor="scheme-class"
+              className="block text-sm font-medium text-slate-300"
+            >
+              Class
             </label>
-          )}
-        </div>
 
-        <button
-          type="button"
-          onClick={loadExistingScheme}
-          className="mt-4 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
-        >
-          Load saved scheme for this scope
-        </button>
-      </SectionCard>
+            <select
+              id="scheme-class"
+              value={selectedClassId}
+              onChange={(event) =>
+                setSelectedClassId(event.target.value)
+              }
+              disabled={loadingClasses || saving}
+              className="min-h-12 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-cyan-400 disabled:opacity-50"
+            >
+              <option value="">Select class</option>
+              {classes.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {item.name}
+                  {item.level ? ` (${item.level})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
-      <SectionCard title="Assessment components">
-        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <p className="text-sm text-slate-600">
-            Enable the components teachers should enter. Their maximum marks must total 100.
+        <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
+          <p className="text-sm leading-6 text-slate-300">
+            {scopeDescription}
           </p>
+        </div>
+      </section>
+
+      {/* Scheme editor */}
+      <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+        <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div>
+            <h2 className="text-lg font-semibold text-white">
+              Assessment components
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Enabled components must add up to 100 marks.
+            </p>
+          </div>
+
           <button
             type="button"
             onClick={addComponent}
-            disabled={scheme.components.length >= 12}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 px-4 py-2.5 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 disabled:opacity-50"
+            disabled={
+              saving ||
+              loadingScheme ||
+              components.length >= 12
+            }
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-400/40 px-4 py-2 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-500/10 disabled:opacity-50"
           >
-            <Plus size={16} />
+            <Plus size={17} />
             Add component
           </button>
         </div>
 
-        <div className="mb-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl bg-slate-50 p-4">
-            <p className="text-sm text-slate-500">Enabled maximum</p>
-            <p className="mt-1 text-2xl font-bold">{enabledTotal}</p>
+        {loadingScheme ? (
+          <div className="flex items-center justify-center gap-3 p-12 text-sm text-slate-400">
+            <LoaderCircle size={20} className="animate-spin" />
+            Loading assessment scheme...
           </div>
-          <div className="rounded-xl bg-slate-50 p-4">
-            <p className="text-sm text-slate-500">Required total</p>
-            <p className="mt-1 text-2xl font-bold">100</p>
+        ) : !canLoadScheme ? (
+          <div className="p-8 text-center text-sm text-slate-400">
+            Select the scheme scope and its target to configure components.
           </div>
-          <div className={`rounded-xl p-4 ${Math.abs(enabledTotal - 100) < 0.001 ? "bg-emerald-50" : "bg-amber-50"}`}>
-            <p className="text-sm text-slate-600">Validation</p>
-            <p className="mt-1 font-bold">
-              {Math.abs(enabledTotal - 100) < 0.001 ? "Total is valid" : "Adjust component marks"}
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {scheme.components.map((component, index) => (
-            <div
-              key={`${component.key}-${index}`}
-              className="grid items-end gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-[auto_1fr_1fr_130px_auto]"
-            >
-              <label className="flex items-center gap-2 pb-2 text-sm font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={component.enabled}
-                  onChange={(e) => updateComponent(index, "enabled", e.target.checked)}
-                  className="h-4 w-4 accent-cyan-700"
-                />
-                Enabled
+        ) : (
+          <div className="space-y-5 p-4 sm:p-6">
+            <div className="space-y-2">
+              <label
+                htmlFor="scheme-name"
+                className="block text-sm font-medium text-slate-300"
+              >
+                Scheme name
               </label>
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-slate-500">Display label</span>
-                <input
-                  value={component.label}
-                  onChange={(e) => updateComponent(index, "label", e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
-                  placeholder="e.g. Practical"
-                />
-              </label>
+              <input
+                id="scheme-name"
+                value={schemeName}
+                onChange={(event) =>
+                  setSchemeName(event.target.value)
+                }
+                maxLength={100}
+                disabled={saving}
+                className="min-h-12 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-cyan-400 disabled:opacity-50"
+                placeholder="e.g. Standard Results Scheme"
+              />
+            </div>
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-slate-500">Unique key</span>
-                <input
-                  value={component.key}
-                  onChange={(e) => updateComponent(index, "key", e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
-                  placeholder="e.g. practical"
-                />
-              </label>
+            {inherited && (
+              <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-sm text-amber-200">
+                This class or level is currently inheriting another
+                scheme. Saving here will create a more specific scheme
+                that takes priority.
+              </div>
+            )}
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-medium text-slate-500">Maximum mark</span>
-                <input
-                  type="number"
-                  min="0.01"
-                  max="100"
-                  step="0.5"
-                  value={component.maxScore}
-                  onChange={(e) => updateComponent(index, "maxScore", Number(e.target.value))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5"
+            {components.map((item, index) => (
+              <article
+                key={`${item.key}-${index}`}
+                className="space-y-4 rounded-xl border border-white/10 bg-slate-900/50 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-sm font-bold text-cyan-300">
+                      {index + 1}
+                    </span>
+
+                    <div className="min-w-0">
+                      <p className="font-semibold text-white">
+                        {item.label || "New component"}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Key: {item.key}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => removeComponent(index)}
+                    disabled={saving || components.length <= 1}
+                    aria-label={`Remove ${item.label}`}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-red-300 transition hover:bg-red-500/10 disabled:opacity-30"
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor={`component-label-${index}`}
+                      className="block text-xs font-medium text-slate-400"
+                    >
+                      Component label
+                    </label>
+
+                    <input
+                      id={`component-label-${index}`}
+                      value={item.label}
+                      onChange={(event) =>
+                        updateComponent(
+                          index,
+                          "label",
+                          event.target.value
+                        )
+                      }
+                      maxLength={60}
+                      disabled={saving}
+                      className="min-h-11 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400 disabled:opacity-50"
+                      placeholder="e.g. Practical"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label
+                      htmlFor={`component-key-${index}`}
+                      className="block text-xs font-medium text-slate-400"
+                    >
+                      Component key
+                    </label>
+
+                    <input
+                      id={`component-key-${index}`}
+                      value={item.key}
+                      onChange={(event) =>
+                        updateComponent(
+                          index,
+                          "key",
+                          event.target.value
+                            .toLowerCase()
+                            .replace(/\s+/g, "_")
+                        )
+                      }
+                      disabled={saving}
+                      className="min-h-11 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400 disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label
+                      htmlFor={`component-score-${index}`}
+                      className="block text-xs font-medium text-slate-400"
+                    >
+                      Maximum score
+                    </label>
+
+                    <input
+                      id={`component-score-${index}`}
+                      type="number"
+                      min="0.01"
+                      max="100"
+                      step="0.01"
+                      value={item.maxScore}
+                      onChange={(event) =>
+                        updateComponent(
+                          index,
+                          "maxScore",
+                          event.target.value === ""
+                            ? 0
+                            : Number(event.target.value)
+                        )
+                      }
+                      disabled={saving}
+                      className="min-h-11 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400 disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label
+                      htmlFor={`component-aggregation-${index}`}
+                      className="block text-xs font-medium text-slate-400"
+                    >
+                      Multiple CBT exams
+                    </label>
+
+                    <select
+                      id={`component-aggregation-${index}`}
+                      value={item.aggregationMethod}
+                      onChange={(event) =>
+                        updateComponent(
+                          index,
+                          "aggregationMethod",
+                          event.target.value as AggregationMethod
+                        )
+                      }
+                      disabled={saving}
+                      className="min-h-11 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400 disabled:opacity-50"
+                    >
+                      <option value="average">
+                        Average scores
+                      </option>
+                      <option value="highest">
+                        Highest score
+                      </option>
+                      <option value="selected">
+                        Teacher selects score
+                      </option>
+                    </select>
+                  </div>
+                </div>
+
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={item.enabled}
+                    onChange={(event) =>
+                      updateComponent(
+                        index,
+                        "enabled",
+                        event.target.checked
+                      )
+                    }
+                    disabled={saving}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+
+                  <span className="text-sm text-slate-300">
+                    Include this component in the final result
+                  </span>
+
+                  <span
+                    className={`ml-auto text-xs font-semibold ${
+                      item.enabled
+                        ? "text-emerald-300"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {item.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </label>
+              </article>
+            ))}
+
+            {/* Total */}
+            <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    Enabled assessment total
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Disabled components are excluded.
+                  </p>
+                </div>
+
+                <p
+                  className={`text-2xl font-bold tabular-nums ${
+                    totalIsValid
+                      ? "text-emerald-300"
+                      : "text-amber-300"
+                  }`}
+                >
+                  {enabledTotal.toFixed(2)} / 100
+                </p>
+              </div>
+
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(enabledTotal, 100)}%`,
+                    backgroundColor: totalIsValid
+                      ? "#34d399"
+                      : brandColor,
+                  }}
                 />
-              </label>
+              </div>
+
+              <p className="mt-2 text-xs text-slate-400">
+                {totalIsValid
+                  ? "Your assessment components total 100 marks."
+                  : `Adjust the enabled component scores by ${Math.abs(100 - enabledTotal).toFixed(2)} marks to reach 100.`}
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={resetToDefaults}
+                disabled={saving}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 disabled:opacity-50"
+              >
+                <RefreshCw size={16} />
+                Load default components
+              </button>
 
               <button
                 type="button"
-                onClick={() => removeComponent(index)}
-                disabled={scheme.components.length <= 1}
-                aria-label={`Remove ${component.label || "assessment component"}`}
-                className="flex h-10 items-center justify-center rounded-lg border border-red-200 px-3 text-red-600 hover:bg-red-50 disabled:opacity-40"
+                onClick={() => void saveScheme()}
+                disabled={
+                  saving ||
+                  loadingScheme ||
+                  !totalIsValid ||
+                  !canLoadScheme
+                }
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ backgroundColor: brandColor }}
               >
-                <Trash2 size={16} />
+                {saving ? (
+                  <LoaderCircle
+                    size={17}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Save size={17} />
+                )}
+                {saving ? "Saving scheme..." : "Save assessment scheme"}
               </button>
             </div>
-          ))}
-        </div>
-
-        <div className="mt-6 flex flex-col justify-between gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center">
-          <p className="text-sm text-slate-500">
-            Scheme version: {scheme.version ?? "New scheme"}
-          </p>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving || Math.abs(enabledTotal - 100) > 0.001}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-5 py-3 font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Save size={17} />
-            {saving ? "Saving…" : "Save results scheme"}
-          </button>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Saved schemes">
-        {schemes.length === 0 ? (
-          <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-5 text-sm text-slate-600">
-            <ClipboardList size={20} />
-            No schemes have been saved yet.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {schemes.map((item) => (
-              <div key={item._id || `${item.scope}-${item.scopeKey}`} className="flex flex-col justify-between gap-2 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center">
-                <div>
-                  <p className="font-semibold text-slate-900">{item.name}</p>
-                  <p className="text-sm text-slate-500">
-                    {item.scope === "school"
-                      ? "School default"
-                      : item.scope === "level"
-                        ? `Level: ${item.level || item.scopeKey}`
-                        : `Class: ${classes.find((c) => c._id === normalizeClassId(item.classId))?.name || normalizeClassId(item.classId)}`}
-                    {" · "}Version {item.version ?? 1}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setScheme({
-                      ...item,
-                      classId: normalizeClassId(item.classId),
-                      components: item.components.map((component, order) => ({
-                        ...component,
-                        enabled: component.enabled !== false,
-                        order: component.order ?? order,
-                      })),
-                    });
-                    setError("");
-                    setMessage("Scheme loaded for editing.");
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-                >
-                  Edit scheme
-                </button>
-              </div>
-            ))}
           </div>
         )}
-      </SectionCard>
-    </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <h2 className="font-semibold text-white">
+          How this works with CBT
+        </h2>
+
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
+          <li>
+            • When creating a CBT exam, choose one enabled assessment
+            component.
+          </li>
+          <li>
+            • CBT marks are converted to that component's maximum score.
+          </li>
+          <li>
+            • Multiple CBT exams use the aggregation method configured
+            for that component.
+          </li>
+          <li>
+            • Teacher-entered scores in other components are preserved
+            during synchronization.
+          </li>
+        </ul>
+      </section>
+    </main>
   );
 }
