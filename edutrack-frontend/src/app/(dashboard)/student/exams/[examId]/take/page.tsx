@@ -578,7 +578,9 @@ export default function StudentTakeExamPage() {
     return () => window.clearInterval(timer);
   }, [attempt, submitted]);
 
-  const deadlinePassed = remainingSeconds <= 0;
+const deadlinePassed =
+  deadlineRef.current !== null &&
+  Date.now() >= deadlineRef.current;
 
   // Debounced autosave.
   useEffect(() => {
