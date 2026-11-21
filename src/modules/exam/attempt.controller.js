@@ -1110,6 +1110,7 @@ export async function listExamResultsHandler(req, res, next) {
    GET /:examId/attempts/:attemptId/review
 ========================================================= */
 
+
 export async function reviewExamAttemptHandler(req, res, next) {
   try {
     const { examId, attemptId } = req.params;
@@ -1133,7 +1134,9 @@ export async function reviewExamAttemptHandler(req, res, next) {
       _id: examId,
       schoolId,
     })
-      .select("_id title questions classId subjectId")
+      .select(
+        "_id title questions classId subjectId shuffleQuestions shuffleOptions"
+      )
       .populate("classId", "name level")
       .populate("subjectId", "name code")
       .lean();
@@ -1181,23 +1184,31 @@ export async function reviewExamAttemptHandler(req, res, next) {
         ? Object.fromEntries(attempt.answers)
         : attempt.answers || {};
 
+    // Reconstruct the exact question order shown to this student.
+    const questionOrder = getQuestionOrder(
+      exam,
+      String(attempt._id)
+    );
+
     let correctCount = 0;
     let wrongCount = 0;
     let unansweredCount = 0;
 
-    const questions = exam.questions.map(
-      (question, index) => {
+    const questions = questionOrder.map(
+      (originalQuestionIndex, displayQuestionIndex) => {
+        const question = exam.questions[originalQuestionIndex];
+
         const questionId = String(question._id);
-        const selectedIndex = answers[questionId];
+        const selectedOriginalIndex = answers[questionId];
 
         const hasAnswer =
-          Number.isInteger(selectedIndex) &&
-          selectedIndex >= 0 &&
-          selectedIndex < question.options.length;
+          Number.isInteger(selectedOriginalIndex) &&
+          selectedOriginalIndex >= 0 &&
+          selectedOriginalIndex < question.options.length;
 
         const isCorrect =
           hasAnswer &&
-          selectedIndex === question.correctOptionIndex;
+          selectedOriginalIndex === question.correctOptionIndex;
 
         const marksAwarded = isCorrect
           ? Number(question.marks || 0)
@@ -1211,37 +1222,60 @@ export async function reviewExamAttemptHandler(req, res, next) {
           wrongCount++;
         }
 
+        // Reconstruct the exact option order shown to this student.
+        const optionOrder = getOptionOrder(
+          exam,
+          String(attempt._id),
+          question
+        );
+
+        const displayedSelectedIndex = hasAnswer
+          ? optionOrder.indexOf(selectedOriginalIndex)
+          : -1;
+
+        const displayedCorrectIndex = optionOrder.indexOf(
+          question.correctOptionIndex
+        );
+
+        const options = optionOrder.map(
+          (originalOptionIndex, displayedOptionIndex) => ({
+            index: displayedOptionIndex,
+            text: question.options[originalOptionIndex],
+
+            isCorrect:
+              originalOptionIndex === question.correctOptionIndex,
+
+            isSelected:
+              hasAnswer &&
+              originalOptionIndex === selectedOriginalIndex,
+          })
+        );
+
         return {
           questionId,
-          questionNumber: index + 1,
+          questionNumber: displayQuestionIndex + 1,
           questionText: question.text,
 
-          options: question.options.map(
-            (option, optionIndex) => ({
-              index: optionIndex,
-              text: option,
-              isCorrect:
-                optionIndex === question.correctOptionIndex,
-              isSelected:
-                hasAnswer && optionIndex === selectedIndex,
-            })
-          ),
+          options,
 
           selectedAnswer: hasAnswer
-            ? question.options[selectedIndex]
+            ? question.options[selectedOriginalIndex]
             : null,
 
           correctAnswer:
             question.options[question.correctOptionIndex],
 
-          selectedOptionIndex: hasAnswer
-            ? selectedIndex
-            : null,
+          selectedOptionIndex:
+            displayedSelectedIndex >= 0
+              ? displayedSelectedIndex
+              : null,
 
           correctOptionIndex:
-            question.correctOptionIndex,
+            displayedCorrectIndex >= 0
+              ? displayedCorrectIndex
+              : null,
 
-          isCorrect: hasAnswer ? isCorrect : false,
+          isCorrect: Boolean(isCorrect),
           marks: Number(question.marks || 0),
           marksAwarded,
         };
@@ -1274,6 +1308,7 @@ export async function reviewExamAttemptHandler(req, res, next) {
                 .filter(Boolean)
                 .join(" ")
             : "Student record unavailable",
+
           admissionNumber:
             student?.admissionNumber ?? "",
         },
@@ -1285,6 +1320,7 @@ export async function reviewExamAttemptHandler(req, res, next) {
           submittedAt: attempt.submittedAt,
           score,
           totalMarks,
+
           percentage:
             totalMarks > 0
               ? Math.round(
