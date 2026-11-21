@@ -353,6 +353,7 @@ export async function getResultScheme(
   };
 }
 
+
 export async function saveResultScheme(user, input) {
   const schoolId = getSchoolId(user);
   const scope = input?.scope;
@@ -427,13 +428,19 @@ export async function saveResultScheme(user, input) {
       ...validated,
       updatedBy: user._id || user.id || null,
     },
-    $setOnInsert: {
-      version: 1,
-    },
   };
 
+  // Existing scheme: increment its version.
+  // New scheme: initialize version to 1.
+  // Never target version with two MongoDB update operators.
   if (existing) {
-    update.$inc = { version: 1 };
+    update.$inc = {
+      version: 1,
+    };
+  } else {
+    update.$setOnInsert = {
+      version: 1,
+    };
   }
 
   const scheme = await ResultScheme.findOneAndUpdate(
