@@ -424,3 +424,131 @@ export async function listTeacherAttendance(query, user) {
     },
   };
 }
+
+
+export async function getTeacherAttendanceDashboard(query, user) {
+  if (user.role !== "school_admin") {
+    throw new ApiError(
+      403,
+      "Only school administrators can view the attendance dashboard"
+    );
+  }
+
+  if (!user.schoolId) {
+    throw new ApiError(403, "School context is required");
+  }
+
+  const settings = await TeacherAttendanceSettings.findOne({
+    schoolId: user.schoolId,
+  });
+
+  const timezone = settings?.timezone || "Africa/Lagos";
+
+  // Use the school's local date, not the server's date.
+  const now = new Date();
+  const localTime = getZonedDateParts(now, timezone);
+  const date = query.date || localTime.date;
+
+  const weekday = getWeekday(date);
+  const workingDays = settings?.workingDays || [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+  ];
+
+  const isWorkingDay = workingDays.includes(weekday);
+
+  const [teachers, attendanceRecords] = await Promise.all([
+    Teacher.find({
+      schoolId: user.schoolId,
+      isActive: true,
+      status: "active",
+    })
+      .select(
+        "employeeId designation userId"
+      )
+      .populate("userId", "firstName lastName email")
+      .sort({ createdAt: 1 })
+      .lean(),
+
+    TeacherAttendance.find({
+      schoolId: user.schoolId,
+      date,
+    }).lean(),
+  ]);
+
+  const attendanceByTeacher = new Map(
+    attendanceRecords.map((record) => [
+      String(record.teacherId),
+      record,
+    ])
+  );
+
+  const records = teachers.map((teacher) => {
+    const attendance = attendanceByTeacher.get(
+      String(teacher._id)
+    );
+
+    const userAccount = teacher.userId || {};
+
+    let status = "not_clocked_in";
+
+    if (attendance) {
+      status = attendance.status;
+    }
+
+    return {
+      teacherId: teacher._id,
+      employeeId: teacher.employeeId || "",
+      teacherName: [
+        userAccount.firstName || "",
+        userAccount.lastName || "",
+      ]
+        .join(" ")
+        .trim(),
+      email: userAccount.email || "",
+      designation: teacher.designation || "",
+      status,
+      clockInAt: attendance?.clockInAt || null,
+      clockOutAt: attendance?.clockOutAt || null,
+      lateMinutes: attendance?.lateMinutes || 0,
+      totalMinutes: attendance?.totalMinutes || 0,
+    };
+  });
+
+  const summary = {
+    totalTeachers: records.length,
+    present: records.filter(
+      (item) => item.status === "present"
+    ).length,
+    late: records.filter(
+      (item) => item.status === "late"
+    ).length,
+    absent: records.filter(
+      (item) => item.status === "absent"
+    ).length,
+    halfDay: records.filter(
+      (item) => item.status === "half_day"
+    ).length,
+    onLeave: records.filter(
+      (item) => item.status === "on_leave"
+    ).length,
+    excused: records.filter(
+      (item) => item.status === "excused"
+    ).length,
+    notClockedIn: records.filter(
+      (item) => item.status === "not_clocked_in"
+    ).length,
+  };
+
+  return {
+    date,
+    timezone,
+    isWorkingDay,
+    summary,
+    records,
+  };
+}
+
