@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,7 +7,10 @@ import api from "../../lib/axios";
 import { getTerms, type AcademicTerm } from "../../lib/terms";
 import FormInput from "../../components/ui/FormInput";
 import SelectField from "../../components/ui/SelectField";
-import type { SchoolProfileFormValues } from "../../types/settings";
+import type {
+  SchoolProfileFormValues,
+  SchoolBrandColors,
+} from "../../types/settings";
 
 type SchoolProfileFormProps = {
   values: SchoolProfileFormValues;
@@ -26,17 +30,145 @@ type SessionOption = {
   endDate?: string | null;
 };
 
-const presetColors = [
-  "#06b6d4",
-  "#3b82f6",
-  "#8b5cf6",
-  "#14b8a6",
-  "#22c55e",
-  "#f59e0b",
-  "#ef4444",
-  "#ec4899",
-  "#0f172a",
+type BrandColorKey = keyof SchoolBrandColors;
+
+const DEFAULT_BRAND: SchoolBrandColors = {
+  primary: "#06b6d4",
+  secondary: "#0f172a",
+  accent: "#f59e0b",
+  background: "#f8fafc",
+  surface: "#ffffff",
+  text: "#172033",
+};
+
+const BRAND_PRESETS: {
+  name: string;
+  description: string;
+  colors: SchoolBrandColors;
+}[] = [
+  {
+    name: "Al-Azhar Gold",
+    description: "Gold, black and warm cream",
+    colors: {
+      primary: "#B88A24",
+      secondary: "#171717",
+      accent: "#D9B85B",
+      background: "#F8F4E9",
+      surface: "#FFFFFF",
+      text: "#242018",
+    },
+  },
+  {
+    name: "Ocean Blue",
+    description: "Professional blue",
+    colors: {
+      primary: "#2563EB",
+      secondary: "#172554",
+      accent: "#38BDF8",
+      background: "#F1F5F9",
+      surface: "#FFFFFF",
+      text: "#172033",
+    },
+  },
+  {
+    name: "Forest Green",
+    description: "Natural green",
+    colors: {
+      primary: "#15803D",
+      secondary: "#14532D",
+      accent: "#84CC16",
+      background: "#F0FDF4",
+      surface: "#FFFFFF",
+      text: "#14251A",
+    },
+  },
+  {
+    name: "Royal Purple",
+    description: "Elegant purple",
+    colors: {
+      primary: "#7C3AED",
+      secondary: "#312E81",
+      accent: "#C4B5FD",
+      background: "#F5F3FF",
+      surface: "#FFFFFF",
+      text: "#241B3B",
+    },
+  },
+  {
+    name: "Sunset Orange",
+    description: "Warm orange",
+    colors: {
+      primary: "#EA580C",
+      secondary: "#7C2D12",
+      accent: "#FBBF24",
+      background: "#FFF7ED",
+      surface: "#FFFFFF",
+      text: "#292018",
+    },
+  },
+  {
+    name: "Modern Slate",
+    description: "Minimal charcoal",
+    colors: {
+      primary: "#334155",
+      secondary: "#0F172A",
+      accent: "#06B6D4",
+      background: "#F1F5F9",
+      surface: "#FFFFFF",
+      text: "#111827",
+    },
+  },
 ];
+
+const COLOR_FIELDS: {
+  key: BrandColorKey;
+  label: string;
+  description: string;
+}[] = [
+  {
+    key: "primary",
+    label: "Primary color",
+    description: "Main buttons, links and active navigation",
+  },
+  {
+    key: "secondary",
+    label: "Secondary color",
+    description: "Sidebar, headers and supporting sections",
+  },
+  {
+    key: "accent",
+    label: "Accent color",
+    description: "Badges, highlights and indicators",
+  },
+  {
+    key: "background",
+    label: "Page background",
+    description: "Main application background",
+  },
+  {
+    key: "surface",
+    label: "Card and panel color",
+    description: "Cards, forms and content panels",
+  },
+  {
+    key: "text",
+    label: "Text color",
+    description: "Main text on light surfaces",
+  },
+];
+
+function getInitialBrand(
+  values: SchoolProfileFormValues
+): SchoolBrandColors {
+  return {
+    ...DEFAULT_BRAND,
+    ...(values.brandColors || {}),
+    primary:
+      values.brandColors?.primary ||
+      values.themeColor ||
+      DEFAULT_BRAND.primary,
+  };
+}
 
 export default function SchoolProfileForm({
   values,
@@ -45,8 +177,9 @@ export default function SchoolProfileForm({
   submitting = false,
 }: SchoolProfileFormProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
- const signatureInputRef = useRef<HTMLInputElement | null>(null);
-const stampInputRef = useRef<HTMLInputElement | null>(null);
+  const signatureInputRef = useRef<HTMLInputElement | null>(null);
+  const stampInputRef = useRef<HTMLInputElement | null>(null);
+
   const [sessions, setSessions] = useState<SessionOption[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState("");
@@ -57,8 +190,34 @@ const stampInputRef = useRef<HTMLInputElement | null>(null);
 
   const [previewUrl, setPreviewUrl] = useState("");
   const [signaturePreview, setSignaturePreview] = useState("");
-const [stampPreview, setStampPreview] = useState("");
-  // Load academic sessions.
+  const [stampPreview, setStampPreview] = useState("");
+
+  const brandColors = useMemo(
+    () => getInitialBrand(values),
+    [values.brandColors, values.themeColor]
+  );
+
+  function updateBrandColor(
+    key: BrandColorKey,
+    color: string
+  ) {
+    const nextColors = {
+      ...brandColors,
+      [key]: color,
+    };
+
+    onChange("brandColors", nextColors);
+
+    if (key === "primary") {
+      onChange("themeColor", color);
+    }
+  }
+
+  function applyPreset(preset: SchoolBrandColors) {
+    onChange("brandColors", { ...preset });
+    onChange("themeColor", preset.primary);
+  }
+
   async function loadSessions() {
     try {
       setSessionsLoading(true);
@@ -70,16 +229,12 @@ const [stampPreview, setStampPreview] = useState("");
       const sessionList: SessionOption[] = Array.isArray(data)
         ? data
         : Array.isArray(data?.sessions)
-        ? data.sessions
-        : [];
+          ? data.sessions
+          : [];
 
       setSessions(sessionList);
 
-      // Use the saved session if available. Otherwise use the current one.
-      if (
-        !values.currentSession &&
-        sessionList.length > 0
-      ) {
+      if (!values.currentSession && sessionList.length > 0) {
         const selectedSession =
           sessionList.find((session) => session.isCurrent) ??
           sessionList[0];
@@ -98,12 +253,9 @@ const [stampPreview, setStampPreview] = useState("");
 
   useEffect(() => {
     void loadSessions();
-
-    // Load sessions when the form mounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load terms for the selected session only.
   useEffect(() => {
     let cancelled = false;
 
@@ -134,14 +286,12 @@ const [stampPreview, setStampPreview] = useState("");
 
         setTerms(result);
 
-        // Keep the saved term if it exists in this session.
         const savedTermExists = result.some(
           (term) => term.name === values.currentTerm
         );
 
         if (!savedTermExists) {
           const currentTerm = result.find((term) => term.isCurrent);
-
           onChange("currentTerm", currentTerm?.name || "");
         }
       } catch (error: any) {
@@ -166,7 +316,6 @@ const [stampPreview, setStampPreview] = useState("");
     };
   }, [sessions, values.currentSession]);
 
-  // Create and clean up a local logo preview URL.
   useEffect(() => {
     if (!values.logoFile) {
       setPreviewUrl(values.logoUrl || "");
@@ -176,39 +325,41 @@ const [stampPreview, setStampPreview] = useState("");
     const objectUrl = URL.createObjectURL(values.logoFile);
     setPreviewUrl(objectUrl);
 
-    return () => {
-      URL.revokeObjectURL(objectUrl);
-    };
+    return () => URL.revokeObjectURL(objectUrl);
   }, [values.logoFile, values.logoUrl]);
 
   useEffect(() => {
-  if (!values.principalSignatureFile) {
-    setSignaturePreview(values.principalSignature || "");
-    return;
-  }
+    if (!values.principalSignatureFile) {
+      setSignaturePreview(values.principalSignature || "");
+      return;
+    }
 
-  const url = URL.createObjectURL(values.principalSignatureFile);
-  setSignaturePreview(url);
+    const url = URL.createObjectURL(
+      values.principalSignatureFile
+    );
 
-  return () => URL.revokeObjectURL(url);
-}, [values.principalSignatureFile, values.principalSignature]);
+    setSignaturePreview(url);
 
-useEffect(() => {
-  if (!values.schoolStampFile) {
-    setStampPreview(values.schoolStamp || "");
-    return;
-  }
+    return () => URL.revokeObjectURL(url);
+  }, [
+    values.principalSignatureFile,
+    values.principalSignature,
+  ]);
 
-  const url = URL.createObjectURL(values.schoolStampFile);
-  setStampPreview(url);
+  useEffect(() => {
+    if (!values.schoolStampFile) {
+      setStampPreview(values.schoolStamp || "");
+      return;
+    }
 
-  return () => URL.revokeObjectURL(url);
-}, [values.schoolStampFile, values.schoolStamp]);
+    const url = URL.createObjectURL(values.schoolStampFile);
+    setStampPreview(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [values.schoolStampFile, values.schoolStamp]);
 
   function handleLogoChange(file?: File) {
-    if (!file) return;
-
-    onChange("logoFile", file);
+    if (file) onChange("logoFile", file);
   }
 
   function removeLogo() {
@@ -218,8 +369,6 @@ useEffect(() => {
 
   function handleSessionChange(sessionName: string) {
     onChange("currentSession", sessionName);
-
-    // Clear the previous session's term while the new terms load.
     onChange("currentTerm", "");
   }
 
@@ -254,12 +403,11 @@ useEffect(() => {
   return (
     <div className="space-y-6">
       {/* SCHOOL INFORMATION */}
-      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-white">
             School Information
           </h3>
-
           <p className="mt-1 text-sm text-slate-400">
             Basic information about your school.
           </p>
@@ -311,31 +459,30 @@ useEffect(() => {
             onChange={(value) => onChange("address", value)}
           />
         </div>
+
         <div className="mt-4">
-  <FormInput
-    label="School Motto"
-    name="motto"
-    value={values.motto || ""}
-    placeholder="Enter your school's motto"
-    onChange={(value) => onChange("motto", value)}
-  />
-</div>
-      </div>
+          <FormInput
+            label="School Motto"
+            name="motto"
+            value={values.motto || ""}
+            placeholder="Enter your school's motto"
+            onChange={(value) => onChange("motto", value)}
+          />
+        </div>
+      </section>
 
       {/* ACADEMIC DEFAULTS */}
-      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-white">
             Academic Defaults
           </h3>
-
           <p className="mt-1 text-sm text-slate-400">
             Select the academic session and its current term.
           </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          {/* CURRENT SESSION */}
           <div>
             <SelectField
               label="Current Session"
@@ -345,12 +492,11 @@ useEffect(() => {
               options={sessionOptions}
             />
 
-            {sessionsError ? (
+            {sessionsError && (
               <div className="mt-2 space-y-2">
                 <p className="text-sm text-red-300">
                   {sessionsError}
                 </p>
-
                 <button
                   type="button"
                   onClick={() => void loadSessions()}
@@ -360,18 +506,17 @@ useEffect(() => {
                   {sessionsLoading ? "Loading..." : "Retry loading sessions"}
                 </button>
               </div>
-            ) : null}
+            )}
 
             {!sessionsLoading &&
-            !sessionsError &&
-            sessions.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-400">
-                No sessions found. Create an academic session first.
-              </p>
-            ) : null}
+              !sessionsError &&
+              sessions.length === 0 && (
+                <p className="mt-2 text-sm text-slate-400">
+                  No sessions found. Create an academic session first.
+                </p>
+              )}
           </div>
 
-          {/* CURRENT TERM */}
           <div>
             <SelectField
               label="Current Term"
@@ -381,70 +526,69 @@ useEffect(() => {
               options={termOptions}
             />
 
-            {termsError ? (
+            {termsError && (
               <p className="mt-2 text-sm text-red-300">
                 {termsError}
               </p>
-            ) : null}
+            )}
 
-            {!values.currentSession ? (
+            {!values.currentSession && (
               <p className="mt-2 text-sm text-slate-400">
                 Select a session to load its terms.
               </p>
-            ) : null}
+            )}
 
             {!termsLoading &&
-            !termsError &&
-            values.currentSession &&
-            terms.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-400">
-                No terms found for this session. Create terms for this
-                session first.
-              </p>
-            ) : null}
+              !termsError &&
+              values.currentSession &&
+              terms.length === 0 && (
+                <p className="mt-2 text-sm text-slate-400">
+                  No terms found for this session. Create terms for this
+                  session first.
+                </p>
+              )}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* BRANDING */}
-      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-        <div className="mb-5">
+      {/* SCHOOL BRANDING */}
+      <section className="space-y-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+        <div>
           <h3 className="text-lg font-semibold text-white">
-            Branding
+            School Branding
           </h3>
-
           <p className="mt-1 text-sm text-slate-400">
-            Customize your school's appearance.
+            Add your school's identity and customize the colors used
+            throughout its EduTrack portal.
           </p>
         </div>
 
-        {/* SCHOOL LOGO */}
-        <div className="mb-6">
-          <label className="mb-3 block text-sm text-slate-300">
-            School Logo
+        {/* LOGO */}
+        <div>
+          <label className="mb-3 block text-sm font-medium text-slate-300">
+            School logo
           </label>
 
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="group flex w-full cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-8 transition hover:border-cyan-400/40 hover:bg-cyan-500/5"
+            className="flex w-full flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-slate-950/40 p-6 transition hover:border-cyan-400/50 hover:bg-cyan-500/5"
           >
             {previewUrl ? (
               <img
                 src={previewUrl}
                 alt="School logo preview"
-                className="mb-4 h-28 w-28 rounded-2xl object-cover shadow-lg"
+                className="mb-3 h-28 w-28 rounded-2xl bg-white object-contain p-2 shadow-lg"
               />
             ) : (
-              <div className="mb-4 flex h-28 w-28 items-center justify-center rounded-2xl bg-white/5 text-4xl">
+              <div className="mb-3 flex h-28 w-28 items-center justify-center rounded-2xl bg-white/10 text-4xl">
                 🏫
               </div>
             )}
 
-            <span className="text-sm font-medium text-white">
-              Click to upload logo
+            <span className="text-sm font-semibold text-white">
+              {previewUrl ? "Change school logo" : "Upload school logo"}
             </span>
-
             <span className="mt-1 text-xs text-slate-400">
               PNG, JPG or WEBP
             </span>
@@ -457,171 +601,371 @@ useEffect(() => {
             hidden
             onChange={(event) => {
               const file = event.target.files?.[0];
-
-              if (file) {
-                handleLogoChange(file);
-              }
-
-              // Allow selecting the same file again.
+              if (file) handleLogoChange(file);
               event.currentTarget.value = "";
             }}
           />
 
-          {previewUrl ? (
+          {previewUrl && (
             <button
               type="button"
               onClick={removeLogo}
-              className="mt-3 text-sm text-red-300 transition hover:text-red-200"
+              className="mt-3 text-sm text-red-300 hover:text-red-200"
             >
-              Remove Logo
+              Remove logo
             </button>
-          ) : null}
+          )}
         </div>
 
-        
-{/* PRINCIPAL SIGNATURE */}
-<div className="mb-6">
-  <label className="mb-3 block text-sm text-slate-300">
-    Principal's Signature
-  </label>
-
-  <div className="flex flex-wrap items-center gap-4">
-    {signaturePreview ? (
-      <img
-        src={signaturePreview}
-        alt="Principal signature preview"
-        className="h-20 w-40 rounded-xl border border-white/10 bg-white p-2 object-contain"
-      />
-    ) : (
-      <div className="flex h-20 w-40 items-center justify-center rounded-xl border border-dashed border-white/20 text-sm text-slate-500">
-        No signature
-      </div>
-    )}
-
-    <button
-      type="button"
-      onClick={() => signatureInputRef.current?.click()}
-      className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
-    >
-      Upload Signature
-    </button>
-  </div>
-
-  <input
-    ref={signatureInputRef}
-    type="file"
-    accept="image/png,image/jpeg,image/webp"
-    hidden
-    onChange={(event) => {
-      const file = event.target.files?.[0];
-      if (file) onChange("principalSignatureFile", file);
-      event.currentTarget.value = "";
-    }}
-  />
-
-  <p className="mt-2 text-xs text-slate-400">
-    Upload a clear image of the principal's signature.
-  </p>
-</div>
-
-{/* SCHOOL STAMP */}
-<div className="mb-6">
-  <label className="mb-3 block text-sm text-slate-300">
-    Official School Stamp
-  </label>
-
-  <div className="flex flex-wrap items-center gap-4">
-    {stampPreview ? (
-      <img
-        src={stampPreview}
-        alt="School stamp preview"
-        className="h-24 w-24 rounded-xl border border-white/10 bg-white p-2 object-contain"
-      />
-    ) : (
-      <div className="flex h-24 w-24 items-center justify-center rounded-xl border border-dashed border-white/20 text-center text-xs text-slate-500">
-        No stamp
-      </div>
-    )}
-
-    <button
-      type="button"
-      onClick={() => stampInputRef.current?.click()}
-      className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
-    >
-      Upload Stamp
-    </button>
-  </div>
-
-  <input
-    ref={stampInputRef}
-    type="file"
-    accept="image/png,image/jpeg,image/webp"
-    hidden
-    onChange={(event) => {
-      const file = event.target.files?.[0];
-      if (file) onChange("schoolStampFile", file);
-      event.currentTarget.value = "";
-    }}
-  />
-
-  <p className="mt-2 text-xs text-slate-400">
-    Upload your school's official stamp image.
-  </p>
-</div>
-
-        {/* THEME COLORS */}
-        <div>
-          <label className="mb-3 block text-sm text-slate-300">
-            Theme Color
+        {/* SIGNATURE */}
+        <div className="border-t border-white/10 pt-5">
+          <label className="mb-3 block text-sm font-medium text-slate-300">
+            Principal's signature
           </label>
 
-          <div className="flex flex-wrap gap-3">
-            {presetColors.map((color) => (
-              <button
-                key={color}
-                type="button"
-                aria-label={`Use theme color ${color}`}
-                aria-pressed={values.themeColor === color}
-                onClick={() => onChange("themeColor", color)}
-                className={`h-10 w-10 rounded-2xl border-2 transition ${
-                  values.themeColor === color
-                    ? "scale-110 border-white"
-                    : "border-transparent"
-                }`}
-                style={{ backgroundColor: color }}
+          <div className="flex flex-wrap items-center gap-4">
+            {signaturePreview ? (
+              <img
+                src={signaturePreview}
+                alt="Principal signature"
+                className="h-20 w-40 rounded-xl border border-white/10 bg-white p-2 object-contain"
               />
-            ))}
+            ) : (
+              <div className="flex h-20 w-40 items-center justify-center rounded-xl border border-dashed border-white/20 text-sm text-slate-500">
+                No signature
+              </div>
+            )}
 
-            <label className="relative flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-              <input
-                type="color"
-                aria-label="Choose custom theme color"
-                value={values.themeColor || "#06b6d4"}
-                onChange={(event) =>
-                  onChange("themeColor", event.target.value)
-                }
-                className="absolute inset-0 cursor-pointer opacity-0"
+            <button
+              type="button"
+              onClick={() => signatureInputRef.current?.click()}
+              className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+            >
+              Upload signature
+            </button>
+          </div>
+
+          <input
+            ref={signatureInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) onChange("principalSignatureFile", file);
+              event.currentTarget.value = "";
+            }}
+          />
+        </div>
+
+        {/* STAMP */}
+        <div className="border-t border-white/10 pt-5">
+          <label className="mb-3 block text-sm font-medium text-slate-300">
+            Official school stamp
+          </label>
+
+          <div className="flex flex-wrap items-center gap-4">
+            {stampPreview ? (
+              <img
+                src={stampPreview}
+                alt="School stamp"
+                className="h-24 w-24 rounded-xl border border-white/10 bg-white p-2 object-contain"
               />
+            ) : (
+              <div className="flex h-24 w-24 items-center justify-center rounded-xl border border-dashed border-white/20 text-center text-xs text-slate-500">
+                No stamp
+              </div>
+            )}
 
-              <span className="text-xs text-white">+</span>
-            </label>
+            <button
+              type="button"
+              onClick={() => stampInputRef.current?.click()}
+              className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+            >
+              Upload stamp
+            </button>
+          </div>
+
+          <input
+            ref={stampInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) onChange("schoolStampFile", file);
+              event.currentTarget.value = "";
+            }}
+          />
+        </div>
+
+        {/* PALETTE PRESETS */}
+        <div className="border-t border-white/10 pt-5">
+          <div className="mb-4">
+            <h4 className="font-semibold text-white">
+              Choose a brand palette
+            </h4>
+            <p className="mt-1 text-sm text-slate-400">
+              Start with a palette that matches your school identity.
+              You can customize every color below.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {BRAND_PRESETS.map((preset) => {
+              const selected =
+                COLOR_FIELDS.every(
+                  ({ key }) =>
+                    brandColors[key].toLowerCase() ===
+                    preset.colors[key].toLowerCase()
+                );
+
+              return (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => applyPreset(preset.colors)}
+                  aria-pressed={selected}
+                  className={`rounded-2xl border p-3 text-left transition ${
+                    selected
+                      ? "border-cyan-400 bg-cyan-500/10"
+                      : "border-white/10 bg-slate-950/40 hover:border-white/25"
+                  }`}
+                >
+                  <div className="mb-3 flex h-9 overflow-hidden rounded-lg">
+                    {COLOR_FIELDS.map(({ key }) => (
+                      <span
+                        key={key}
+                        className="flex-1"
+                        style={{
+                          backgroundColor: preset.colors[key],
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-white">
+                      {preset.name}
+                    </span>
+                    {selected && (
+                      <span className="text-xs font-semibold text-cyan-300">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {preset.description}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
 
-      {/* SAVE BUTTON */}
+        {/* INDIVIDUAL COLOR CONTROLS */}
+        <div className="border-t border-white/10 pt-5">
+          <h4 className="font-semibold text-white">
+            Customize your colors
+          </h4>
+          <p className="mt-1 text-sm text-slate-400">
+            Choose each color individually or enter its HEX value.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {COLOR_FIELDS.map((field) => (
+              <div
+                key={field.key}
+                className="rounded-xl border border-white/10 bg-slate-950/40 p-4"
+              >
+                <label
+                  htmlFor={`brand-${field.key}`}
+                  className="block text-sm font-semibold text-white"
+                >
+                  {field.label}
+                </label>
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  {field.description}
+                </p>
+
+                <div className="mt-3 flex items-center gap-3">
+                  <input
+                    id={`brand-${field.key}`}
+                    type="color"
+                    value={brandColors[field.key]}
+                    onChange={(event) =>
+                      updateBrandColor(
+                        field.key,
+                        event.target.value
+                      )
+                    }
+                    disabled={submitting}
+                    className="h-11 w-14 cursor-pointer rounded-lg border border-white/20 bg-transparent p-1 disabled:opacity-50"
+                  />
+
+                  <input
+                    type="text"
+                    value={brandColors[field.key]}
+                    maxLength={7}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+                        updateBrandColor(field.key, value);
+                      }
+                    }}
+                    disabled={submitting}
+                    aria-label={`${field.label} HEX value`}
+                    className="min-h-11 min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400"
+                  />
+
+                  <span
+                    className="h-9 w-9 shrink-0 rounded-lg border border-white/20"
+                    style={{
+                      backgroundColor: brandColors[field.key],
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* LIVE PREVIEW */}
+        <div className="border-t border-white/10 pt-5">
+          <div className="mb-4">
+            <h4 className="font-semibold text-white">
+              Live branding preview
+            </h4>
+            <p className="mt-1 text-sm text-slate-400">
+              Preview how your palette will look in the school portal.
+            </p>
+          </div>
+
+          <div
+            className="overflow-hidden rounded-2xl border"
+            style={{
+              backgroundColor: brandColors.background,
+              color: brandColors.text,
+              borderColor: brandColors.secondary,
+            }}
+          >
+            <div
+              className="flex items-center gap-3 p-4"
+              style={{
+                backgroundColor: brandColors.secondary,
+                color: "#ffffff",
+              }}
+            >
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt=""
+                  className="h-10 w-10 rounded-lg bg-white object-contain p-1"
+                />
+              ) : (
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-lg text-lg"
+                  style={{ backgroundColor: brandColors.primary }}
+                >
+                  🏫
+                </div>
+              )}
+
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold">
+                  {values.schoolName || "Your School Name"}
+                </p>
+                <p className="text-xs opacity-70">
+                  School portal preview
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs opacity-70">
+                    Welcome back
+                  </p>
+                  <p className="text-lg font-bold">
+                    School Dashboard
+                  </p>
+                </div>
+
+                <span
+                  className="rounded-full px-3 py-1 text-xs font-semibold"
+                  style={{
+                    backgroundColor: brandColors.accent,
+                    color: brandColors.secondary,
+                  }}
+                >
+                  Academic portal
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {["Students", "Teachers"].map((label, index) => (
+                  <div
+                    key={label}
+                    className="rounded-xl border p-3"
+                    style={{
+                      backgroundColor: brandColors.surface,
+                      borderColor: `${brandColors.secondary}30`,
+                    }}
+                  >
+                    <p className="text-xs opacity-70">{label}</p>
+                    <p className="mt-1 text-xl font-bold">
+                      {index === 0 ? "250" : "18"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className="rounded-lg px-4 py-2 text-xs font-semibold"
+                  style={{
+                    backgroundColor: brandColors.primary,
+                    color: "#ffffff",
+                  }}
+                >
+                  Primary action
+                </span>
+
+                <span
+                  className="rounded-lg border px-4 py-2 text-xs font-semibold"
+                  style={{
+                    borderColor: brandColors.secondary,
+                    color: brandColors.text,
+                  }}
+                >
+                  Secondary action
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-3 text-xs text-slate-400">
+            This is a preview of your selected palette. Save your profile
+            to apply the branding settings.
+          </p>
+        </div>
+      </section>
+
+      {/* SAVE */}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={onSubmit}
           disabled={submitting}
-          className="rounded-2xl bg-cyan-500 px-6 py-3 font-medium text-white transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-70"
+          className="rounded-2xl px-6 py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+          style={{ backgroundColor: brandColors.primary }}
         >
-          {submitting ? "Saving Changes..." : "Save Profile"}
+          {submitting ? "Saving Changes..." : "Save School Settings"}
         </button>
 
         <p className="text-sm text-slate-400">
-          Save your school information and academic defaults.
+          Your logo and palette will be saved for this school.
         </p>
       </div>
     </div>
