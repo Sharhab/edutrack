@@ -205,19 +205,6 @@ export async function clockInTeacher(payload, user) {
     settings
   );
 
-  const existing = await TeacherAttendance.findOne({
-    schoolId: user.schoolId,
-    teacherId: teacher._id,
-    date: localTime.date,
-  });
-
-  if (existing?.clockInAt) {
-    throw new ApiError(
-      409,
-      "You have already clocked in today"
-    );
-  }
-
   const lateMinutes = calculateLateMinutes(
     localTime.minutes,
     settings
@@ -225,41 +212,56 @@ export async function clockInTeacher(payload, user) {
 
   const status = lateMinutes > 0 ? "late" : "present";
 
+  const filter = {
+    schoolId: user.schoolId,
+    teacherId: teacher._id,
+    date: localTime.date,
+    clockInAt: null,
+  };
+
+  const update = {
+    $set: {
+      status,
+      clockInAt: now,
+      clockInLocation: verifiedLocation,
+      lateMinutes,
+      source: "gps",
+    },
+    $setOnInsert: {
+      schoolId: user.schoolId,
+      teacherId: teacher._id,
+      date: localTime.date,
+    },
+  };
+
   try {
-    const attendance = await TeacherAttendance.findOneAndUpdate(
-      {
-        schoolId: user.schoolId,
-        teacherId: teacher._id,
-        date: localTime.date,
-        clockInAt: null,
-      },
-      {
-        $set: {
-          status,
-          clockInAt: now,
-          clockInLocation: verifiedLocation,
-          lateMinutes,
-          source: "gps",
-        },
-        $setOnInsert: {
-          schoolId: user.schoolId,
-          teacherId: teacher._id,
-          date: localTime.date,
-        },
-      },
+    // First try to update an existing record that has not
+    // already been clocked in.
+    const existing = await TeacherAttendance.findOneAndUpdate(
+      filter,
+      update,
       {
         new: true,
-        upsert: true,
         runValidators: true,
-        setDefaultsOnInsert: true,
       }
     );
 
-    if (!attendance.clockInAt) {
-      throw new ApiError(409, "Unable to record clock-in");
+    if (existing) {
+      return existing;
     }
 
-    return attendance;
+    // No record exists yet. Create one. The unique database
+    // index ensures simultaneous requests cannot create two.
+    return await TeacherAttendance.create({
+      schoolId: user.schoolId,
+      teacherId: teacher._id,
+      date: localTime.date,
+      status,
+      clockInAt: now,
+      clockInLocation: verifiedLocation,
+      lateMinutes,
+      source: "gps",
+    });
   } catch (error) {
     if (error.code === 11000) {
       throw new ApiError(
@@ -271,6 +273,7 @@ export async function clockInTeacher(payload, user) {
     throw error;
   }
 }
+
 
 // ---------------- CLOCK OUT ----------------
 
