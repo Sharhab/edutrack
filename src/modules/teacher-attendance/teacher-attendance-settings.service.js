@@ -112,11 +112,12 @@ export async function updateTeacherAttendanceSettings(
   }
 
   if (payload.location !== undefined) {
-    update.location = {
-      ...(payload.location),
-      label: payload.location.label || "",
-    };
-  }
+  update.location = {
+    latitude: payload.location.latitude,
+    longitude: payload.location.longitude,
+    label: payload.location.label || "",
+  };
+}
 
   if (Object.keys(update).length === 0) {
     throw new ApiError(
