@@ -1,4 +1,14 @@
 
+
+export interface SchoolBrandColors {
+  primary: string;
+  secondary: string;
+  accent: string;
+  background: string;
+  surface: string;
+  text: string;
+}
+
 export interface SchoolProfile {
   _id?: string;
 
@@ -16,7 +26,12 @@ export interface SchoolProfile {
   currentTerm: string;
 
   logoUrl?: string;
+
+  // Legacy primary color.
   themeColor?: string;
+
+  // Complete school-specific brand palette.
+  brandColors?: SchoolBrandColors;
 
   domain?: string;
   slug?: string;
@@ -52,5 +67,7 @@ export interface SchoolProfileFormValues {
   schoolStampFile?: File;
 
   themeColor: string;
+  brandColors: SchoolBrandColors;
+
   domain?: string;
 }
