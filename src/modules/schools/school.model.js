@@ -54,6 +54,34 @@ const schoolSchema = new mongoose.Schema(
       type: String,
       default: "#06b6d4",
     },
+    
+
+    brandColors: {
+      primary: {
+        type: String,
+        default: "",
+      },
+      secondary: {
+        type: String,
+        default: "",
+      },
+      accent: {
+        type: String,
+        default: "",
+      },
+      background: {
+        type: String,
+        default: "",
+      },
+      surface: {
+        type: String,
+        default: "",
+      },
+      text: {
+        type: String,
+        default: "",
+      },
+    },
 
     logo: {
       type: String,
