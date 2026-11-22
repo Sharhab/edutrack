@@ -28,14 +28,27 @@ const workingDaysSchema = z
     message: "Working days must not contain duplicates",
   });
 
+
+const validTimezone = (timezone) => {
+  try {
+    Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const updateTeacherAttendanceSettingsSchema = z
   .object({
     location: z
       .object({
-        latitude: z.number().min(-90).max(90),
-        longitude: z.number().min(-180).max(180),
+        latitude: z.number().finite().min(-90).max(90),
+        longitude: z.number().finite().min(-180).max(180),
         label: z.string().trim().max(250).optional(),
       })
+      .strict()
       .optional(),
 
     geofenceRadiusMetres: z.number().int().min(25).max(1000).optional(),
@@ -50,7 +63,15 @@ export const updateTeacherAttendanceSettingsSchema = z
 
     clockOutRequired: z.boolean().optional(),
 
-    timezone: z.string().trim().min(1).max(100).optional(),
+    timezone: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .refine(validTimezone, {
+        message: "Enter a valid timezone, such as Africa/Lagos",
+      })
+      .optional(),
 
     workingDays: workingDaysSchema.optional(),
   })
@@ -58,6 +79,7 @@ export const updateTeacherAttendanceSettingsSchema = z
   .refine((data) => Object.keys(data).length > 0, {
     message: "Provide at least one setting to update",
   });
+
 
 export const teacherClockInSchema = z
   .object({
