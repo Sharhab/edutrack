@@ -1,5 +1,6 @@
 
 
+
 "use client";
 
 import {
@@ -12,15 +13,21 @@ import {
 } from "react";
 
 import type { ResolvedTenant } from "../../types/tenant-resolver";
+import type { SchoolBrandColors } from "../../types/settings";
+
 import {
   getResolvedTenant,
   saveResolvedTenant,
 } from "../../lib/tenant-storage";
+
 import {
-  getSchoolProfile, 
+  getSchoolProfile,
   getSchoolBranding,
 } from "../../lib/settings";
+
+import { mapSchoolProfileToTenantPatch } from "../../lib/tenant-patch";
 import { useAuth } from "../providers/AuthProvider";
+
 type TenantContextType = {
   tenant: ResolvedTenant | null;
   setTenant: (tenant: ResolvedTenant | null) => void;
@@ -30,11 +37,41 @@ type TenantContextType = {
 
 const TenantContext = createContext<TenantContextType | null>(null);
 
+const DEFAULT_BRAND_COLORS: SchoolBrandColors = {
+  primary: "#06b6d4",
+  secondary: "#0f172a",
+  accent: "#f59e0b",
+  background: "#f8fafc",
+  surface: "#ffffff",
+  text: "#172033",
+};
+
+function normalizeBranding(
+  branding: Partial<ResolvedTenant>
+): Partial<ResolvedTenant> {
+  const brandColors: SchoolBrandColors = {
+    ...DEFAULT_BRAND_COLORS,
+    ...(branding.brandColors || {}),
+    primary:
+      branding.brandColors?.primary ||
+      branding.themeColor ||
+      DEFAULT_BRAND_COLORS.primary,
+  };
+
+  return {
+    ...branding,
+    brandColors,
+    themeColor: brandColors.primary,
+  };
+}
+
+type TenantProviderProps = {
+  children: React.ReactNode;
+};
+
 export function TenantProvider({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+}: TenantProviderProps) {
   const [tenant, setTenantState] = useState<ResolvedTenant | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -44,66 +81,40 @@ export function TenantProvider({
     hydrated: authHydrated,
   } = useAuth();
 
-  // Restore the previously resolved tenant from local storage.
+  // Restore previously resolved tenant.
   useEffect(() => {
     try {
-      setTenantState(getResolvedTenant());
+      const savedTenant = getResolvedTenant();
+
+      setTenantState(
+        savedTenant
+          ? ({
+              ...savedTenant,
+              ...normalizeBranding(savedTenant),
+            } as ResolvedTenant)
+          : null
+      );
     } catch (error) {
       console.error("Failed to restore tenant:", error);
     } finally {
       setHydrated(true);
     }
   }, []);
- 
-  useEffect(() => {
-  if (!authHydrated || !token || !user) return;
 
-  if (
-    user.role !== "teacher" &&
-    user.role !== "parent"
-  ) {
-    return;
-  }
-
-  if (!user.schoolId) return;
-
-  let cancelled = false;
-
-  async function loadBranding() {
-    try {
-      const branding = await getSchoolBranding();
-
-      if (cancelled) return;
-
-      setTenantState((previous) => {
-        const updated = {
-          ...(previous ?? {}),
-          ...branding,
-        } as ResolvedTenant;
-
-        saveResolvedTenant(updated);
-        return updated;
-      });
-    } catch (error) {
-      if (!cancelled) {
-        console.error("Failed to load teacher/parent branding:", error);
-      }
-    }
-  }
-
-  void loadBranding();
-
-  return () => {
-    cancelled = true;
-  };
-}, [authHydrated, token, user]);
-  // Keep the existing public context API.
+  // Keep the public tenant context API.
   const setTenant = useCallback(
     (nextTenant: ResolvedTenant | null) => {
-      setTenantState(nextTenant);
+      const normalizedTenant = nextTenant
+        ? ({
+            ...nextTenant,
+            ...normalizeBranding(nextTenant),
+          } as ResolvedTenant)
+        : null;
+
+      setTenantState(normalizedTenant);
 
       try {
-        saveResolvedTenant(nextTenant);
+        saveResolvedTenant(normalizedTenant);
       } catch (error) {
         console.error("Failed to save tenant:", error);
       }
@@ -111,13 +122,15 @@ export function TenantProvider({
     []
   );
 
-  // Allow patches to initialize tenant state when it is empty.
+  // Update only the current authenticated tenant context.
   const patchTenant = useCallback(
     (updates: Partial<ResolvedTenant>) => {
       setTenantState((previous) => {
+        const normalizedUpdates = normalizeBranding(updates);
+
         const updated = {
           ...(previous ?? {}),
-          ...updates,
+          ...normalizedUpdates,
         } as ResolvedTenant;
 
         try {
@@ -142,33 +155,81 @@ export function TenantProvider({
     }
   }, []);
 
-  // Load authoritative branding after school-admin authentication.
+  // Load authoritative branding for teachers and parents.
   useEffect(() => {
     if (!authHydrated || !token || !user) return;
-    if (user.role !== "school_admin" || !user.schoolId) return;
+
+    if (user.role !== "teacher" && user.role !== "parent") {
+      return;
+    }
+
+    if (!user.schoolId) return;
 
     let cancelled = false;
 
-    async function loadSchoolBranding() {
+    async function loadTeacherParentBranding() {
+      try {
+        const branding = await getSchoolBranding();
+
+        if (cancelled) return;
+
+        setTenantState((previous) => {
+          const normalizedBranding = normalizeBranding(
+            branding as Partial<ResolvedTenant>
+          );
+
+          const updated = {
+            ...(previous ?? {}),
+            ...normalizedBranding,
+          } as ResolvedTenant;
+
+          try {
+            saveResolvedTenant(updated);
+          } catch (error) {
+            console.error(
+              "Failed to save teacher/parent branding:",
+              error
+            );
+          }
+
+          return updated;
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "Failed to load teacher/parent branding:",
+            error
+          );
+        }
+      }
+    }
+
+    void loadTeacherParentBranding();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authHydrated, token, user]);
+
+  // Load authoritative branding for school administrators.
+  useEffect(() => {
+    if (!authHydrated || !token || !user) return;
+
+    if (user.role !== "school_admin" || !user.schoolId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSchoolAdminBranding() {
       try {
         const profile = await getSchoolProfile();
 
         if (cancelled) return;
 
-        const updates: Partial<ResolvedTenant> = {
-          schoolName: profile.schoolName,
-          slug: profile.slug,
-          domain: profile.domain,
-          fullDomain: profile.fullDomain,
-          logoUrl: profile.logoUrl,
-          themeColor: profile.themeColor,
-          principalName: profile.principalName,
-          currentSession: profile.currentSession,
-          currentTerm: profile.currentTerm,
-          address: profile.address,
-          phone: profile.phone,
-          email: profile.email,
-        };
+        const updates = normalizeBranding(
+          mapSchoolProfileToTenantPatch(profile)
+        );
 
         setTenantState((previous) => {
           const updated = {
@@ -179,7 +240,10 @@ export function TenantProvider({
           try {
             saveResolvedTenant(updated);
           } catch (error) {
-            console.error("Failed to save school branding:", error);
+            console.error(
+              "Failed to save school-admin branding:",
+              error
+            );
           }
 
           return updated;
@@ -194,7 +258,7 @@ export function TenantProvider({
       }
     }
 
-    void loadSchoolBranding();
+    void loadSchoolAdminBranding();
 
     return () => {
       cancelled = true;
