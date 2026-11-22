@@ -31,6 +31,8 @@ import teacherRoutes from "../modules/teachers/teacher.routes.js";
 import parentRoutes from "../modules/parents/parent.routes.js";
 import studentRoutes from "../modules/students/student.routes.js";
 import attendanceRoutes from "../modules/attendance/attendance.routes.js";
+import teacherAttendanceRoutes from
+  "../modules/teacher-attendance/teacher-attendance.routes.js";
 import resultRoutes from "../modules/results/result.routes.js";
 import announcementRoutes from "../modules/announcements/announcement.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
@@ -171,6 +173,10 @@ router.use("/teachers", teacherRoutes);
 router.use("/parents", parentRoutes);
 router.use("/students", studentRoutes);
 router.use("/attendance", attendanceRoutes);
+router.use(
+  "/teacher-attendance",
+  teacherAttendanceRoutes
+);
 router.use("/results", resultRoutes);
 router.use("/grading-scale", gradingScaleRoutes);
 router.use("/result-scheme", resultSchemeRoutes);
