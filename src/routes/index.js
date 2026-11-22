@@ -31,6 +31,8 @@ import teacherRoutes from "../modules/teachers/teacher.routes.js";
 import parentRoutes from "../modules/parents/parent.routes.js";
 import studentRoutes from "../modules/students/student.routes.js";
 import attendanceRoutes from "../modules/attendance/attendance.routes.js";
+import teacherAttendanceSettingsRoutes from
+  "../modules/teacher-attendance/teacher-attendance-settings.routes.js";
 import teacherAttendanceRoutes from
   "../modules/teacher-attendance/teacher-attendance.routes.js";
 import resultRoutes from "../modules/results/result.routes.js";
@@ -191,6 +193,10 @@ router.use("/dashboard", dashboardRoutes);
  * SETTINGS
  */
 router.use("/settings/school-profile", schoolProfileRoutes);
+router.use(
+  "/settings/teacher-attendance",
+  teacherAttendanceSettingsRoutes
+);
 router.use("/settings/school-payment", schoolPaymentRoutes);
 router.use("/options", optionsRoutes);
 
