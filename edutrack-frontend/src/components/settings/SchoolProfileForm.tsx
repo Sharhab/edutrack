@@ -1,5 +1,6 @@
 
 
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -128,7 +129,7 @@ const COLOR_FIELDS: {
   {
     key: "primary",
     label: "Primary color",
-    description: "Main buttons, links and active navigation",
+    description: "Buttons, links and active navigation",
   },
   {
     key: "secondary",
@@ -170,6 +171,10 @@ function getInitialBrand(
   };
 }
 
+function isValidHex(value: string) {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
 export default function SchoolProfileForm({
   values,
   onChange,
@@ -197,6 +202,14 @@ export default function SchoolProfileForm({
     [values.brandColors, values.themeColor]
   );
 
+  const [hexDrafts, setHexDrafts] = useState<
+    Record<BrandColorKey, string>
+  >(() => getInitialBrand(values));
+
+  useEffect(() => {
+    setHexDrafts(brandColors);
+  }, [brandColors]);
+
   function updateBrandColor(
     key: BrandColorKey,
     color: string
@@ -211,11 +224,17 @@ export default function SchoolProfileForm({
     if (key === "primary") {
       onChange("themeColor", color);
     }
+
+    setHexDrafts((previous) => ({
+      ...previous,
+      [key]: color,
+    }));
   }
 
   function applyPreset(preset: SchoolBrandColors) {
     onChange("brandColors", { ...preset });
     onChange("themeColor", preset.primary);
+    setHexDrafts({ ...preset });
   }
 
   async function loadSessions() {
@@ -401,9 +420,9 @@ export default function SchoolProfileForm({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full min-w-0 max-w-full space-y-6 overflow-x-clip">
       {/* SCHOOL INFORMATION */}
-      <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <section className="w-full min-w-0 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-white">
             School Information
@@ -413,12 +432,12 @@ export default function SchoolProfileForm({
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
           <FormInput
             label="School Name"
             name="schoolName"
             value={values.schoolName}
-            placeholder="Globstand International School"
+            placeholder="School name"
             onChange={(value) => onChange("schoolName", value)}
           />
 
@@ -431,7 +450,7 @@ export default function SchoolProfileForm({
           />
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="mt-4 grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
           <FormInput
             label="Email"
             name="email"
@@ -472,7 +491,7 @@ export default function SchoolProfileForm({
       </section>
 
       {/* ACADEMIC DEFAULTS */}
-      <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <section className="w-full min-w-0 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-white">
             Academic Defaults
@@ -482,8 +501,8 @@ export default function SchoolProfileForm({
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
+        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="min-w-0">
             <SelectField
               label="Current Session"
               name="currentSession"
@@ -494,9 +513,7 @@ export default function SchoolProfileForm({
 
             {sessionsError && (
               <div className="mt-2 space-y-2">
-                <p className="text-sm text-red-300">
-                  {sessionsError}
-                </p>
+                <p className="text-sm text-red-300">{sessionsError}</p>
                 <button
                   type="button"
                   onClick={() => void loadSessions()}
@@ -517,7 +534,7 @@ export default function SchoolProfileForm({
               )}
           </div>
 
-          <div>
+          <div className="min-w-0">
             <SelectField
               label="Current Term"
               name="currentTerm"
@@ -527,9 +544,7 @@ export default function SchoolProfileForm({
             />
 
             {termsError && (
-              <p className="mt-2 text-sm text-red-300">
-                {termsError}
-              </p>
+              <p className="mt-2 text-sm text-red-300">{termsError}</p>
             )}
 
             {!values.currentSession && (
@@ -552,7 +567,7 @@ export default function SchoolProfileForm({
       </section>
 
       {/* SCHOOL BRANDING */}
-      <section className="space-y-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <section className="w-full min-w-0 space-y-6 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
         <div>
           <h3 className="text-lg font-semibold text-white">
             School Branding
@@ -564,7 +579,7 @@ export default function SchoolProfileForm({
         </div>
 
         {/* LOGO */}
-        <div>
+        <div className="min-w-0">
           <label className="mb-3 block text-sm font-medium text-slate-300">
             School logo
           </label>
@@ -572,7 +587,7 @@ export default function SchoolProfileForm({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex w-full flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-slate-950/40 p-6 transition hover:border-cyan-400/50 hover:bg-cyan-500/5"
+            className="flex w-full min-w-0 flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-slate-950/40 p-5 transition hover:border-cyan-400/50 hover:bg-cyan-500/5"
           >
             {previewUrl ? (
               <img
@@ -618,12 +633,12 @@ export default function SchoolProfileForm({
         </div>
 
         {/* SIGNATURE */}
-        <div className="border-t border-white/10 pt-5">
+        <div className="min-w-0 border-t border-white/10 pt-5">
           <label className="mb-3 block text-sm font-medium text-slate-300">
             Principal's signature
           </label>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-4">
             {signaturePreview ? (
               <img
                 src={signaturePreview}
@@ -639,7 +654,7 @@ export default function SchoolProfileForm({
             <button
               type="button"
               onClick={() => signatureInputRef.current?.click()}
-              className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+              className="rounded-xl border border-white/15 px-4 py-3 text-sm text-white hover:bg-white/5"
             >
               Upload signature
             </button>
@@ -659,12 +674,12 @@ export default function SchoolProfileForm({
         </div>
 
         {/* STAMP */}
-        <div className="border-t border-white/10 pt-5">
+        <div className="min-w-0 border-t border-white/10 pt-5">
           <label className="mb-3 block text-sm font-medium text-slate-300">
             Official school stamp
           </label>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-4">
             {stampPreview ? (
               <img
                 src={stampPreview}
@@ -680,7 +695,7 @@ export default function SchoolProfileForm({
             <button
               type="button"
               onClick={() => stampInputRef.current?.click()}
-              className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+              className="rounded-xl border border-white/15 px-4 py-3 text-sm text-white hover:bg-white/5"
             >
               Upload stamp
             </button>
@@ -699,47 +714,45 @@ export default function SchoolProfileForm({
           />
         </div>
 
-        {/* PALETTE PRESETS */}
-        <div className="border-t border-white/10 pt-5">
+        {/* READY-MADE PALETTES */}
+        <div className="min-w-0 border-t border-white/10 pt-5">
           <div className="mb-4">
             <h4 className="font-semibold text-white">
-              Choose a brand palette
+              Choose your school colors
             </h4>
             <p className="mt-1 text-sm text-slate-400">
-              Start with a palette that matches your school identity.
-              You can customize every color below.
+              Tap a ready-made color theme. You can change individual
+              colors afterward.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             {BRAND_PRESETS.map((preset) => {
-              const selected =
-                COLOR_FIELDS.every(
-                  ({ key }) =>
-                    brandColors[key].toLowerCase() ===
-                    preset.colors[key].toLowerCase()
-                );
+              const selected = COLOR_FIELDS.every(
+                ({ key }) =>
+                  brandColors[key].toLowerCase() ===
+                  preset.colors[key].toLowerCase()
+              );
 
               return (
                 <button
                   key={preset.name}
                   type="button"
                   onClick={() => applyPreset(preset.colors)}
+                  disabled={submitting}
                   aria-pressed={selected}
-                  className={`rounded-2xl border p-3 text-left transition ${
+                  className={`min-w-0 rounded-2xl border p-3 text-left transition ${
                     selected
-                      ? "border-cyan-400 bg-cyan-500/10"
+                      ? "border-cyan-400 bg-cyan-500/10 ring-1 ring-cyan-400/30"
                       : "border-white/10 bg-slate-950/40 hover:border-white/25"
                   }`}
                 >
-                  <div className="mb-3 flex h-9 overflow-hidden rounded-lg">
+                  <div className="mb-3 flex h-12 overflow-hidden rounded-xl">
                     {COLOR_FIELDS.map(({ key }) => (
                       <span
                         key={key}
-                        className="flex-1"
-                        style={{
-                          backgroundColor: preset.colors[key],
-                        }}
+                        className="min-w-0 flex-1"
+                        style={{ backgroundColor: preset.colors[key] }}
                       />
                     ))}
                   </div>
@@ -749,11 +762,12 @@ export default function SchoolProfileForm({
                       {preset.name}
                     </span>
                     {selected && (
-                      <span className="text-xs font-semibold text-cyan-300">
-                        Selected
+                      <span className="shrink-0 text-xs font-semibold text-cyan-300">
+                        ✓ Selected
                       </span>
                     )}
                   </div>
+
                   <p className="mt-1 text-xs text-slate-400">
                     {preset.description}
                   </p>
@@ -763,86 +777,126 @@ export default function SchoolProfileForm({
           </div>
         </div>
 
-        {/* INDIVIDUAL COLOR CONTROLS */}
-        <div className="border-t border-white/10 pt-5">
+        {/* INDIVIDUAL COLOR PICKERS */}
+        <div className="min-w-0 border-t border-white/10 pt-5">
           <h4 className="font-semibold text-white">
-            Customize your colors
+            Customize individual colors
           </h4>
           <p className="mt-1 text-sm text-slate-400">
-            Choose each color individually or enter its HEX value.
+            Tap a color box to open your phone's color picker, or enter
+            a HEX color code.
           </p>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             {COLOR_FIELDS.map((field) => (
               <div
                 key={field.key}
-                className="rounded-xl border border-white/10 bg-slate-950/40 p-4"
+                className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/40 p-4"
               >
-                <label
-                  htmlFor={`brand-${field.key}`}
-                  className="block text-sm font-semibold text-white"
-                >
-                  {field.label}
-                </label>
-                <p className="mt-1 text-xs leading-5 text-slate-400">
-                  {field.description}
-                </p>
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <label
+                      htmlFor={`brand-${field.key}`}
+                      className="block text-sm font-semibold text-white"
+                    >
+                      {field.label}
+                    </label>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      {field.description}
+                    </p>
+                  </div>
 
-                <div className="mt-3 flex items-center gap-3">
-                  <input
-                    id={`brand-${field.key}`}
-                    type="color"
-                    value={brandColors[field.key]}
-                    onChange={(event) =>
-                      updateBrandColor(
-                        field.key,
-                        event.target.value
-                      )
-                    }
-                    disabled={submitting}
-                    className="h-11 w-14 cursor-pointer rounded-lg border border-white/20 bg-transparent p-1 disabled:opacity-50"
-                  />
-
-                  <input
-                    type="text"
-                    value={brandColors[field.key]}
-                    maxLength={7}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (/^#[0-9a-fA-F]{6}$/.test(value)) {
-                        updateBrandColor(field.key, value);
-                      }
-                    }}
-                    disabled={submitting}
-                    aria-label={`${field.label} HEX value`}
-                    className="min-h-11 min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400"
-                  />
-
-                  <span
-                    className="h-9 w-9 shrink-0 rounded-lg border border-white/20"
+                  <div
+                    className="h-10 w-10 shrink-0 rounded-xl border-2 border-white/20 shadow-inner"
                     style={{
                       backgroundColor: brandColors[field.key],
                     }}
                   />
+                </div>
+
+                <div className="mt-4 flex min-w-0 items-center gap-3">
+                  <label
+                    htmlFor={`brand-${field.key}`}
+                    className="relative flex h-14 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-white/20 bg-slate-900"
+                    title={`Choose ${field.label}`}
+                  >
+                    <span className="pointer-events-none text-xl">🎨</span>
+                    <input
+                      id={`brand-${field.key}`}
+                      type="color"
+                      value={brandColors[field.key]}
+                      onChange={(event) =>
+                        updateBrandColor(
+                          field.key,
+                          event.target.value
+                        )
+                      }
+                      disabled={submitting}
+                      aria-label={`Choose ${field.label}`}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                  </label>
+
+                  <div className="min-w-0 flex-1">
+                    <label
+                      htmlFor={`hex-${field.key}`}
+                      className="mb-1 block text-xs text-slate-400"
+                    >
+                      HEX value
+                    </label>
+                    <input
+                      id={`hex-${field.key}`}
+                      type="text"
+                      inputMode="text"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      value={hexDrafts[field.key]}
+                      maxLength={7}
+                      onChange={(event) => {
+                        const value = event.target.value.toUpperCase();
+                        setHexDrafts((previous) => ({
+                          ...previous,
+                          [field.key]: value,
+                        }));
+
+                        if (isValidHex(value)) {
+                          updateBrandColor(field.key, value);
+                        }
+                      }}
+                      onBlur={() => {
+                        const draft = hexDrafts[field.key];
+                        if (isValidHex(draft)) {
+                          updateBrandColor(field.key, draft);
+                        } else {
+                          setHexDrafts((previous) => ({
+                            ...previous,
+                            [field.key]: brandColors[field.key],
+                          }));
+                        }
+                      }}
+                      disabled={submitting}
+                      className="min-h-12 w-full min-w-0 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 font-mono text-sm text-white outline-none focus:border-cyan-400"
+                    />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* LIVE PREVIEW */}
-        <div className="border-t border-white/10 pt-5">
+        {/* LIVE BRANDING PREVIEW */}
+        <div className="min-w-0 border-t border-white/10 pt-5">
           <div className="mb-4">
             <h4 className="font-semibold text-white">
               Live branding preview
             </h4>
             <p className="mt-1 text-sm text-slate-400">
-              Preview how your palette will look in the school portal.
+              Your changes appear here immediately.
             </p>
           </div>
 
           <div
-            className="overflow-hidden rounded-2xl border"
+            className="w-full min-w-0 overflow-hidden rounded-2xl border"
             style={{
               backgroundColor: brandColors.background,
               color: brandColors.text,
@@ -850,7 +904,7 @@ export default function SchoolProfileForm({
             }}
           >
             <div
-              className="flex items-center gap-3 p-4"
+              className="flex min-w-0 items-center gap-3 p-4"
               style={{
                 backgroundColor: brandColors.secondary,
                 color: "#ffffff",
@@ -859,12 +913,12 @@ export default function SchoolProfileForm({
               {previewUrl ? (
                 <img
                   src={previewUrl}
-                  alt=""
-                  className="h-10 w-10 rounded-lg bg-white object-contain p-1"
+                  alt="School logo"
+                  className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1"
                 />
               ) : (
                 <div
-                  className="flex h-10 w-10 items-center justify-center rounded-lg text-lg"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg"
                   style={{ backgroundColor: brandColors.primary }}
                 >
                   🏫
@@ -884,9 +938,7 @@ export default function SchoolProfileForm({
             <div className="space-y-4 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs opacity-70">
-                    Welcome back
-                  </p>
+                  <p className="text-xs opacity-70">Welcome back</p>
                   <p className="text-lg font-bold">
                     School Dashboard
                   </p>
@@ -907,7 +959,7 @@ export default function SchoolProfileForm({
                 {["Students", "Teachers"].map((label, index) => (
                   <div
                     key={label}
-                    className="rounded-xl border p-3"
+                    className="min-w-0 rounded-xl border p-3"
                     style={{
                       backgroundColor: brandColors.surface,
                       borderColor: `${brandColors.secondary}30`,
@@ -946,19 +998,19 @@ export default function SchoolProfileForm({
           </div>
 
           <p className="mt-3 text-xs text-slate-400">
-            This is a preview of your selected palette. Save your profile
-            to apply the branding settings.
+            Save your school settings to apply the selected branding
+            throughout your school portal.
           </p>
         </div>
       </section>
 
       {/* SAVE */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
         <button
           type="button"
           onClick={onSubmit}
           disabled={submitting}
-          className="rounded-2xl px-6 py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+          className="w-full rounded-2xl px-6 py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
           style={{ backgroundColor: brandColors.primary }}
         >
           {submitting ? "Saving Changes..." : "Save School Settings"}
