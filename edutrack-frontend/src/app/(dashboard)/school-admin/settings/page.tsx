@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -18,7 +19,11 @@ import {
   uploadSchoolStamp,
 } from "../../../../lib/settings";
 
-import type { SchoolProfileFormValues } from "../../../../types/settings";
+import type {
+  SchoolProfile,
+  SchoolProfileFormValues,
+  SchoolBrandColors,
+} from "../../../../types/settings";
 
 import { useTenant } from "../../../../components/tenant/TenantProvider";
 import { mapSchoolProfileToTenantPatch } from "../../../../lib/tenant-patch";
@@ -29,6 +34,28 @@ type PaystackBank = {
   code: string;
   slug?: string;
 };
+
+const DEFAULT_BRAND_COLORS: SchoolBrandColors = {
+  primary: "#06b6d4",
+  secondary: "#0f172a",
+  accent: "#f59e0b",
+  background: "#f8fafc",
+  surface: "#ffffff",
+  text: "#172033",
+};
+
+function getBrandColors(
+  profile: Pick<SchoolProfile, "brandColors" | "themeColor">
+): SchoolBrandColors {
+  return {
+    ...DEFAULT_BRAND_COLORS,
+    ...(profile.brandColors || {}),
+    primary:
+      profile.brandColors?.primary ||
+      profile.themeColor ||
+      DEFAULT_BRAND_COLORS.primary,
+  };
+}
 
 const initialForm: SchoolProfileFormValues = {
   schoolName: "",
@@ -45,7 +72,8 @@ const initialForm: SchoolProfileFormValues = {
   logoUrl: "",
   principalSignatureFile: undefined,
   schoolStampFile: undefined,
-  themeColor: "#06b6d4",
+  themeColor: DEFAULT_BRAND_COLORS.primary,
+  brandColors: DEFAULT_BRAND_COLORS,
 };
 
 export default function SchoolAdminSettingsPage() {
@@ -76,13 +104,14 @@ export default function SchoolAdminSettingsPage() {
   const [refreshingPaystackStatus, setRefreshingPaystackStatus] =
     useState(false);
 
-  // Load school profile
+  // Load school profile and branding
   async function loadProfile() {
     try {
       setLoading(true);
       setPageError("");
 
       const profile = await getSchoolProfile();
+      const brandColors = getBrandColors(profile);
 
       setForm({
         schoolName: profile.schoolName || "",
@@ -94,12 +123,13 @@ export default function SchoolAdminSettingsPage() {
         currentTerm: profile.currentTerm || "",
         logoUrl: profile.logoUrl || "",
         logoFile: undefined,
-        themeColor: profile.themeColor || "#06b6d4",
+        themeColor: brandColors.primary,
+        brandColors,
         motto: profile.motto || "",
-       principalSignature: profile.principalSignature || "",
-       schoolStamp: profile.schoolStamp || "",
-       principalSignatureFile: undefined,
-       schoolStampFile: undefined,
+        principalSignature: profile.principalSignature || "",
+        schoolStamp: profile.schoolStamp || "",
+        principalSignatureFile: undefined,
+        schoolStampFile: undefined,
       });
 
       patchTenant(mapSchoolProfileToTenantPatch(profile));
@@ -146,7 +176,7 @@ export default function SchoolAdminSettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Refresh the school's Paystack connection and verification status
+  // Refresh Paystack connection and verification status
   async function handleRefreshPaystackStatus() {
     try {
       setRefreshingPaystackStatus(true);
@@ -189,7 +219,7 @@ export default function SchoolAdminSettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Verify the bank account with Paystack before connecting it
+  // Verify bank account with Paystack
   async function handleVerifyPaystackAccount() {
     if (!bankCode) {
       setPaystackMessage("Please select your bank.");
@@ -241,7 +271,7 @@ export default function SchoolAdminSettingsPage() {
     }
   }
 
-  // Connect the verified account
+  // Connect verified account
   async function handleConnectPaystack() {
     if (!bankCode) {
       setPaystackMessage("Please select your bank.");
@@ -334,7 +364,7 @@ export default function SchoolAdminSettingsPage() {
     return "";
   }
 
-  // Save school profile and upload a new logo separately
+  // Save school profile, palette and uploaded assets
   async function handleSaveProfile() {
     const validationError = validateForm();
 
@@ -348,41 +378,35 @@ export default function SchoolAdminSettingsPage() {
       setActionMessage("");
 
       const profilePayload: SchoolProfileFormValues = {
-        schoolName: form.schoolName,
-        email: form.email,
-        phone: form.phone,
-        address: form.address,
-        principalName: form.principalName,
-        currentSession: form.currentSession,
-        currentTerm: form.currentTerm,
-        logoUrl: form.logoUrl,
+        ...form,
+        themeColor: form.brandColors.primary,
+        brandColors: form.brandColors,
         logoFile: undefined,
-        themeColor: form.themeColor,
-        motto: form.motto,
+        principalSignatureFile: undefined,
+        schoolStampFile: undefined,
       };
 
-      let updated = await updateSchoolProfile(profilePayload);
+      // Save profile information and branding first.
+      await updateSchoolProfile(profilePayload);
 
+      // Upload each selected file independently.
       if (form.logoFile instanceof File) {
-        const logoResult = await uploadSchoolLogo(form.logoFile);
-      if (form.principalSignatureFile instanceof File) {
-  await uploadPrincipalSignature(form.principalSignatureFile);
-}
-
-if (form.schoolStampFile instanceof File) {
-  await uploadSchoolStamp(form.schoolStampFile);
-}
-
-// Fetch the final saved profile after all uploads.
-        updated = await getSchoolProfile();
-
-        if (!updated.logoUrl && logoResult?.logoUrl) {
-          updated = {
-            ...updated,
-            logoUrl: logoResult.logoUrl,
-          };
-        }
+        await uploadSchoolLogo(form.logoFile);
       }
+
+      if (form.principalSignatureFile instanceof File) {
+        await uploadPrincipalSignature(
+          form.principalSignatureFile
+        );
+      }
+
+      if (form.schoolStampFile instanceof File) {
+        await uploadSchoolStamp(form.schoolStampFile);
+      }
+
+      // Retrieve the final profile after all uploads.
+      const updated = await getSchoolProfile();
+      const nextBrandColors = getBrandColors(updated);
 
       const nextForm: SchoolProfileFormValues = {
         schoolName: updated.schoolName || "",
@@ -394,18 +418,23 @@ if (form.schoolStampFile instanceof File) {
         currentTerm: updated.currentTerm || "",
         logoUrl: updated.logoUrl || "",
         logoFile: undefined,
-        themeColor: updated.themeColor || "#06b6d4",
+        themeColor: nextBrandColors.primary,
+        brandColors: nextBrandColors,
         motto: updated.motto || "",
-principalSignature: updated.principalSignature || "",
-schoolStamp: updated.schoolStamp || "",
-principalSignatureFile: undefined,
-schoolStampFile: undefined,
+        principalSignature: updated.principalSignature || "",
+        schoolStamp: updated.schoolStamp || "",
+        principalSignatureFile: undefined,
+        schoolStampFile: undefined,
       };
 
       setForm(nextForm);
+
+      // Update the current tenant's branding context.
       patchTenant(mapSchoolProfileToTenantPatch(updated));
 
-      setActionMessage("School profile updated successfully.");
+      setActionMessage(
+        "School profile and branding updated successfully."
+      );
     } catch (err: unknown) {
       setActionMessage(
         axios.isAxiosError(err)
@@ -431,8 +460,11 @@ schoolStampFile: undefined,
     );
   }
 
+  const brandColors = form.brandColors || DEFAULT_BRAND_COLORS;
+
   return (
     <div className="space-y-6">
+      {/* School profile and branding */}
       <SectionCard
         title="School Profile Settings"
         subtitle="Manage school identity, contact details, branding and academic defaults"
@@ -454,7 +486,7 @@ schoolStampFile: undefined,
             submitting={submitting}
           />
 
-          {/* Read-only profile preview */}
+          {/* School profile preview */}
           <aside className="h-fit rounded-3xl border border-white/10 bg-white/[0.03] p-6">
             <div className="mb-5">
               <h3 className="text-lg font-semibold text-white">
@@ -466,10 +498,13 @@ schoolStampFile: undefined,
             </div>
 
             <div
-              className="rounded-2xl border border-white/10 bg-slate-950/60 p-6"
+              className="rounded-2xl border p-6"
               style={{
+                borderColor: brandColors.secondary,
                 borderTopWidth: 4,
-                borderTopColor: form.themeColor || "#06b6d4",
+                borderTopColor: brandColors.primary,
+                backgroundColor: brandColors.background,
+                color: brandColors.text,
               }}
             >
               <div className="flex items-center gap-4">
@@ -487,7 +522,8 @@ schoolStampFile: undefined,
                   <div
                     className="flex h-16 w-16 items-center justify-center rounded-xl text-2xl"
                     style={{
-                      backgroundColor: form.themeColor || "#06b6d4",
+                      backgroundColor: brandColors.primary,
+                      color: brandColors.surface,
                     }}
                   >
                     🏫
@@ -495,78 +531,162 @@ schoolStampFile: undefined,
                 )}
 
                 <div className="min-w-0">
-                  <h4 className="break-words text-lg font-bold text-white">
+                  <h4
+                    className="break-words text-lg font-bold"
+                    style={{ color: brandColors.text }}
+                  >
                     {form.schoolName || "Your School Name"}
                   </h4>
-                  <p className="mt-1 text-sm text-slate-400">
+
+                  <p
+                    className="mt-1 text-sm"
+                    style={{ color: brandColors.secondary }}
+                  >
                     {form.principalName || "Principal name"}
                   </p>
+
+                  {form.motto ? (
+                    <p
+                      className="mt-1 text-xs"
+                      style={{ color: brandColors.secondary }}
+                    >
+                      {form.motto}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
               <div className="mt-6 space-y-3 text-sm">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                  <p
+                    className="text-xs uppercase tracking-wide"
+                    style={{ color: brandColors.secondary }}
+                  >
                     Email
                   </p>
-                  <p className="break-words text-slate-200">
+                  <p
+                    className="break-words"
+                    style={{ color: brandColors.text }}
+                  >
                     {form.email || "Not provided"}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                  <p
+                    className="text-xs uppercase tracking-wide"
+                    style={{ color: brandColors.secondary }}
+                  >
                     Phone
                   </p>
-                  <p className="text-slate-200">
+                  <p style={{ color: brandColors.text }}>
                     {form.phone || "Not provided"}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                  <p
+                    className="text-xs uppercase tracking-wide"
+                    style={{ color: brandColors.secondary }}
+                  >
                     Address
                   </p>
-                  <p className="break-words text-slate-200">
+                  <p
+                    className="break-words"
+                    style={{ color: brandColors.text }}
+                  >
                     {form.address || "Not provided"}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
+                <div
+                  className="grid grid-cols-2 gap-3 border-t pt-4"
+                  style={{ borderColor: brandColors.secondary }}
+                >
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                    <p
+                      className="text-xs uppercase tracking-wide"
+                      style={{ color: brandColors.secondary }}
+                    >
                       Session
                     </p>
-                    <p className="mt-1 text-slate-200">
+                    <p
+                      className="mt-1"
+                      style={{ color: brandColors.text }}
+                    >
                       {form.currentSession || "Not selected"}
                     </p>
                   </div>
+
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                    <p
+                      className="text-xs uppercase tracking-wide"
+                      style={{ color: brandColors.secondary }}
+                    >
                       Term
                     </p>
-                    <p className="mt-1 text-slate-200">
+                    <p
+                      className="mt-1"
+                      style={{ color: brandColors.text }}
+                    >
                       {form.currentTerm || "Not selected"}
                     </p>
                   </div>
                 </div>
               </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {Object.entries(brandColors).map(([name, color]) => (
+                  <div
+                    key={name}
+                    title={`${name}: ${color}`}
+                    className="h-8 w-8 rounded-lg border border-black/10"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+
+              <div
+                className="mt-5 rounded-xl px-4 py-3 text-sm font-semibold"
+                style={{
+                  backgroundColor: brandColors.primary,
+                  color: brandColors.surface,
+                }}
+              >
+                Example school-branded button
+              </div>
+
+              <div
+                className="mt-3 rounded-xl border p-4 text-sm"
+                style={{
+                  backgroundColor: brandColors.surface,
+                  borderColor: brandColors.accent,
+                  color: brandColors.text,
+                }}
+              >
+                Example school information card
+              </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-3">
-              <span
-                className="h-8 w-8 rounded-lg border border-white/20"
-                style={{
-                  backgroundColor: form.themeColor || "#06b6d4",
-                }}
-              />
-              <div>
-                <p className="text-sm font-medium text-white">
-                  School theme color
-                </p>
-                <p className="text-xs text-slate-400">
-                  {form.themeColor || "#06b6d4"}
-                </p>
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-medium text-white">
+                Active primary color
+              </p>
+
+              <div className="flex items-center gap-3">
+                <span
+                  className="h-9 w-9 rounded-lg border border-white/20"
+                  style={{ backgroundColor: brandColors.primary }}
+                />
+
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {brandColors.primary}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Used as the main school brand color.
+                  </p>
+                </div>
               </div>
             </div>
           </aside>
@@ -594,6 +714,7 @@ schoolStampFile: undefined,
                 <p className="font-semibold text-emerald-300">
                   Paystack account connected
                 </p>
+
                 <p className="mt-1 text-sm text-slate-300">
                   Online school-fee payments are linked to this school's
                   Paystack subaccount.
@@ -671,6 +792,7 @@ schoolStampFile: undefined,
                   <option value="">
                     {banksLoading ? "Loading banks..." : "Select your bank"}
                   </option>
+
                   {banks.map((bank) => (
                     <option key={bank.code} value={bank.code}>
                       {bank.name}
@@ -717,9 +839,11 @@ schoolStampFile: undefined,
                   <p className="text-xs font-medium uppercase tracking-wide text-emerald-300">
                     Verified account name
                   </p>
+
                   <p className="mt-1 text-base font-semibold text-white">
                     {verifiedAccountName}
                   </p>
+
                   <p className="mt-2 text-xs text-slate-300">
                     Confirm that this is the correct settlement account
                     before connecting.
@@ -785,4 +909,3 @@ schoolStampFile: undefined,
     </div>
   );
 }
-
