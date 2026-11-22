@@ -463,7 +463,7 @@ export default function SchoolAdminSettingsPage() {
   const brandColors = form.brandColors || DEFAULT_BRAND_COLORS;
 
   return (
-    <div className="space-y-6">
+  <div className="mx-auto w-full min-w-0 max-w-[1440px] space-y-6">
       {/* School profile and branding */}
       <SectionCard
         title="School Profile Settings"
