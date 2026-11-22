@@ -1,3 +1,6 @@
+
+import type { SchoolBrandColors } from "./settings";
+
 export type TenantStatus = "active" | "inactive";
 
 export type TenantSubscriptionStatus =
@@ -5,7 +8,7 @@ export type TenantSubscriptionStatus =
   | "expired"
   | "pending"
   | "cancelled"
-  | "trial"; // ✅ ADD THIS
+  | "trial";
 
 export interface ResolvedTenant {
   _id: string;
@@ -14,23 +17,29 @@ export interface ResolvedTenant {
   currentSession: string;
   currentTerm: string;
   fullDomain?: string;
-  // branding
+
+  // School branding
   logoUrl?: string;
   themeColor?: string;
-    principalName?: string;
+  brandColors?: SchoolBrandColors;
+  principalName?: string;
   motto?: string;
-    faviconUrl?: string | null;
-      customDomain?: string | null;
-  // domain
+  faviconUrl?: string | null;
+
+  // Domain
   domain?: string;
-  // contact
+  customDomain?: string | null;
+
+  // Contact
   address?: string;
   phone?: string;
   email?: string;
-  // system state
+
+  // System state
   status?: TenantStatus;
   subscriptionStatus?: TenantSubscriptionStatus;
   expiryDate?: string;
+
   billing?: {
     status:
       | "trial"
@@ -38,15 +47,15 @@ export interface ResolvedTenant {
       | "expired"
       | "blocked"
       | "unknown";
-
     isTrial?: boolean;
     daysLeft?: number | null;
   };
 
-  // optional extras
+  // Optional extras
   createdAt?: string;
   updatedAt?: string;
 }
+
 export interface ResolveTenantResponse {
   tenant: ResolvedTenant | null;
 }
