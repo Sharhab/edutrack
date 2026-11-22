@@ -463,7 +463,7 @@ export default function SchoolAdminSettingsPage() {
   const brandColors = form.brandColors || DEFAULT_BRAND_COLORS;
 
   return (
-  <div className="mx-auto w-full min-w-0 max-w-[1440px] space-y-6">
+  <div className="mx-auto box-border flex w-full min-w-0 max-w-full flex-col gap-6 overflow-x-clip">
       {/* School profile and branding */}
       <SectionCard
         title="School Profile Settings"
@@ -478,7 +478,7 @@ export default function SchoolAdminSettingsPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-2">
+       <div className="grid w-full min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
           <SchoolProfileForm
             values={form}
             onChange={updateForm}
@@ -487,7 +487,7 @@ export default function SchoolAdminSettingsPage() {
           />
 
           {/* School profile preview */}
-          <aside className="h-fit rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+           <aside className="h-fit w-full min-w-0 max-w-full overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-6">
             <div className="mb-5">
               <h3 className="text-lg font-semibold text-white">
                 School Profile Preview
