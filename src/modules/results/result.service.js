@@ -946,43 +946,86 @@ export async function publishClassResults({
    LOCK / UNLOCK
 ========================================= */
 
-export async function lockClassResults(
-  params
-) {
-  const res =
-    await Result.updateMany(
-      params,
-      {
-        $set: {
-          status: "locked",
-        },
-      }
+
+/* =========================================
+   LOCK / UNLOCK CLASS RESULTS
+========================================= */
+
+export async function lockClassResults({
+  schoolId,
+  classId,
+  sessionId,
+  termId,
+}) {
+  const filter = {
+    schoolId,
+    classId,
+    sessionId,
+    termId,
+    status: "published",
+  };
+
+  const res = await Result.updateMany(
+    filter,
+    {
+      $set: {
+        status: "locked",
+      },
+    }
+  );
+
+  if (res.matchedCount === 0) {
+    throw new ApiError(
+      400,
+      "No published results found to lock. Publish the results first."
     );
+  }
 
   return {
     success: true,
     updated: res.modifiedCount,
+    status: "locked",
   };
 }
 
-export async function unlockClassResults(
-  params
-) {
-  const res =
-    await Result.updateMany(
-      params,
-      {
-        $set: {
-          status: "published",
-        },
-      }
+export async function unlockClassResults({
+  schoolId,
+  classId,
+  sessionId,
+  termId,
+}) {
+  const filter = {
+    schoolId,
+    classId,
+    sessionId,
+    termId,
+    status: "locked",
+  };
+
+  const res = await Result.updateMany(
+    filter,
+    {
+      $set: {
+        status: "generated",
+      },
+    }
+  );
+
+  if (res.matchedCount === 0) {
+    throw new ApiError(
+      400,
+      "No locked results found for this class and academic period."
     );
+  }
 
   return {
     success: true,
     updated: res.modifiedCount,
+    status: "generated",
+    message: "Results reopened for authorized corrections.",
   };
 }
+
 
 /* =========================================
    ADMIN SUMMARY (PROGRESS ENGINE FIXED)
