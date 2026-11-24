@@ -20,7 +20,9 @@ import {
   updateStudent,
   generateStudentLoginAccounts,
   resetStudentPassword,
+  regenerateStudentLoginCredentials,
   type StudentLoginCredential,
+  type RegeneratedStudentCredential,
 } from "../../../../lib/students";
 
 import {
@@ -42,7 +44,7 @@ import {
   AlertCircle,
   CheckCircle2,
   X,
-  Download,
+  ShieldAlert,
 } from "lucide-react";
 
 const initialForm: StudentFormValues = {
@@ -91,6 +93,16 @@ function getStudentName(student: Student) {
     .join(" ");
 }
 
+function getClassName(student: Student) {
+  const value = student.classId as any;
+
+  if (value && typeof value === "object") {
+    return value.name || student.className || "";
+  }
+
+  return student.className || "";
+}
+
 function isStudentActive(student: Student) {
   return student.status !== "inactive" && student.status !== "suspended";
 }
@@ -115,14 +127,16 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function getClassName(student: Student) {
-  const classValue = student.classId as any;
+function mergeCredentials(
+  current: PrintableCredential[],
+  incoming: PrintableCredential[]
+) {
+  const map = new Map<string, PrintableCredential>();
 
-  if (typeof classValue === "object" && classValue !== null) {
-    return classValue.name || student.className || "";
-  }
+  current.forEach((item) => map.set(item.studentId, item));
+  incoming.forEach((item) => map.set(item.studentId, item));
 
-  return student.className || "";
+  return Array.from(map.values());
 }
 
 export default function SchoolAdminStudentsPage() {
@@ -144,7 +158,7 @@ export default function SchoolAdminStudentsPage() {
   const [form, setForm] = useState<StudentFormValues>(initialForm);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
-  // Login generation
+  // Missing login account generation
   const [generatingLogins, setGeneratingLogins] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loginMessage, setLoginMessage] = useState("");
@@ -153,7 +167,7 @@ export default function SchoolAdminStudentsPage() {
   >([]);
   const [hasMoreLogins, setHasMoreLogins] = useState(false);
 
-  // Password reset
+  // Existing account password reset
   const [resetTarget, setResetTarget] = useState<Student | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [resetSubmitting, setResetSubmitting] = useState(false);
@@ -161,7 +175,16 @@ export default function SchoolAdminStudentsPage() {
   const [resetError, setResetError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
 
-  // Print queue: credentials are kept only in this browser session.
+  // Bulk regeneration
+  const [regenerateClassId, setRegenerateClassId] = useState("");
+  const [regenerateOffset, setRegenerateOffset] = useState(0);
+  const [regenerateHasMore, setRegenerateHasMore] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState("");
+  const [regenerateMessage, setRegenerateMessage] = useState("");
+  const [regenerationStarted, setRegenerationStarted] = useState(false);
+
+  // Credentials stay in browser memory only.
   const [printCredentials, setPrintCredentials] = useState<
     PrintableCredential[]
   >([]);
@@ -174,9 +197,7 @@ export default function SchoolAdminStudentsPage() {
       const result = await getStudents();
       setStudents(result || []);
     } catch (error) {
-      setPageError(
-        getErrorMessage(error, "Failed to load students.")
-      );
+      setPageError(getErrorMessage(error, "Failed to load students."));
     } finally {
       setLoading(false);
     }
@@ -224,19 +245,34 @@ export default function SchoolAdminStudentsPage() {
 
   const accountSummary = useMemo(() => {
     const total = students.length;
+
     const active = students.filter(
-      (student) => student.loginAccount?.exists && student.loginAccount.active
+      (student) =>
+        student.loginAccount?.exists &&
+        student.loginAccount.active
     ).length;
+
     const missing = students.filter(
       (student) => !student.loginAccount?.exists
     ).length;
+
     const disabled = students.filter(
       (student) =>
-        student.loginAccount?.exists && !student.loginAccount.active
+        student.loginAccount?.exists &&
+        !student.loginAccount.active
     ).length;
 
     return { total, active, missing, disabled };
   }, [students]);
+
+  const selectedClassName = useMemo(() => {
+    if (!regenerateClassId) return "the whole school";
+
+    return (
+      classes.find((item) => item._id === regenerateClassId)?.name ||
+      "selected class"
+    );
+  }, [classes, regenerateClassId]);
 
   function updateForm(field: keyof StudentFormValues, value: string) {
     setForm((previous) => ({
@@ -321,9 +357,7 @@ export default function SchoolAdminStudentsPage() {
       resetForm();
       await loadStudents();
     } catch (error) {
-      setActionError(
-        getErrorMessage(error, "Failed to create student.")
-      );
+      setActionError(getErrorMessage(error, "Failed to create student."));
     } finally {
       setSubmitting(false);
     }
@@ -349,9 +383,7 @@ export default function SchoolAdminStudentsPage() {
       resetForm();
       await loadStudents();
     } catch (error) {
-      setActionError(
-        getErrorMessage(error, "Failed to update student.")
-      );
+      setActionError(getErrorMessage(error, "Failed to update student."));
     } finally {
       setSubmitting(false);
     }
@@ -373,22 +405,16 @@ export default function SchoolAdminStudentsPage() {
       setDeleteOpen(false);
       resetForm();
     } catch (error) {
-      setActionError(
-        getErrorMessage(error, "Failed to delete student.")
-      );
+      setActionError(getErrorMessage(error, "Failed to delete student."));
     } finally {
       setSubmitting(false);
     }
   }
 
-  function addPrintableCredential(credential: PrintableCredential) {
-    setPrintCredentials((previous) => {
-      const withoutDuplicate = previous.filter(
-        (item) => item.studentId !== credential.studentId
-      );
-
-      return [...withoutDuplicate, credential];
-    });
+  function addToPrintQueue(credential: PrintableCredential) {
+    setPrintCredentials((previous) =>
+      mergeCredentials(previous, [credential])
+    );
   }
 
   async function handleGenerateStudentLogins() {
@@ -399,12 +425,19 @@ export default function SchoolAdminStudentsPage() {
 
       const result = await generateStudentLoginAccounts();
 
-      const createdCredentials = result.results.filter(
+      const created = result.results.filter(
         (item) => item.accountCreated && item.credentials
       );
 
+      const printable = created.map((item) => ({
+        studentId: item.studentId,
+        student: item.student,
+        admissionNumber: item.credentials!.admissionNumber,
+        temporaryPassword: item.credentials!.temporaryPassword,
+      }));
+
       setLoginCredentials((previous) => {
-        const combined = [...previous, ...createdCredentials];
+        const combined = [...previous, ...created];
 
         return combined.filter(
           (item, index, array) =>
@@ -414,28 +447,11 @@ export default function SchoolAdminStudentsPage() {
         );
       });
 
-      const newPrintItems: PrintableCredential[] = createdCredentials.map(
-        (item) => ({
-          studentId: item.studentId,
-          student: item.student,
-          admissionNumber: item.credentials!.admissionNumber,
-          temporaryPassword: item.credentials!.temporaryPassword,
-        })
+      setPrintCredentials((previous) =>
+        mergeCredentials(previous, printable)
       );
 
-      setPrintCredentials((previous) => {
-        const combined = [...previous, ...newPrintItems];
-
-        return combined.filter(
-          (item, index, array) =>
-            array.findIndex(
-              (candidate) => candidate.studentId === item.studentId
-            ) === index
-        );
-      });
-
       setHasMoreLogins(result.hasMore);
-
       await loadStudents();
 
       setLoginMessage(
@@ -518,7 +534,7 @@ export default function SchoolAdminStudentsPage() {
         temporaryPassword
       );
 
-      addPrintableCredential({
+      addToPrintQueue({
         studentId: resetTarget._id,
         student: getStudentName(resetTarget),
         admissionNumber: resetTarget.admissionNumber,
@@ -537,10 +553,105 @@ export default function SchoolAdminStudentsPage() {
     }
   }
 
+  function resetRegenerationSelection(classId: string) {
+    if (regenerating) return;
+
+    setRegenerateClassId(classId);
+    setRegenerateOffset(0);
+    setRegenerateHasMore(false);
+    setRegenerationStarted(false);
+    setRegenerateError("");
+    setRegenerateMessage("");
+  }
+
+  async function handleRegenerateLogins(isNextBatch = false) {
+    if (regenerating) return;
+
+    const offset = isNextBatch ? regenerateOffset : 0;
+
+    if (!isNextBatch) {
+      const confirmed = window.confirm(
+        `You are about to regenerate passwords for ${selectedClassName}.\n\n` +
+          "This changes existing student passwords. Their old passwords will stop working as each account is updated.\n\n" +
+          "Print or save the new login slips before leaving this page.\n\n" +
+          "Do you want to continue?"
+      );
+
+      if (!confirmed) return;
+
+      setPrintCredentials([]);
+      setRegenerateOffset(0);
+      setRegenerateHasMore(false);
+      setRegenerationStarted(true);
+    }
+
+    try {
+      setRegenerating(true);
+      setRegenerateError("");
+      setRegenerateMessage("");
+
+      const result = await regenerateStudentLoginCredentials({
+        classId: regenerateClassId || undefined,
+        offset,
+      });
+
+      const successful = result.results.filter(
+        (item: RegeneratedStudentCredential) =>
+          item.success && item.credentials
+      );
+
+      const printable: PrintableCredential[] = successful.map(
+        (item: RegeneratedStudentCredential) => ({
+          studentId: item.studentId,
+          student: item.student,
+          admissionNumber: item.credentials!.admissionNumber,
+          temporaryPassword: item.credentials!.temporaryPassword,
+          className: item.className,
+        })
+      );
+
+      setPrintCredentials((previous) =>
+        mergeCredentials(previous, printable)
+      );
+
+      setRegenerateOffset(result.nextOffset);
+      setRegenerateHasMore(result.hasMore);
+
+      setRegenerateMessage(
+        `${result.regenerated} password(s) regenerated successfully. ` +
+          `${result.failed} failed. ` +
+          `${result.remaining} student(s) remain in this selection.`
+      );
+
+      await loadStudents();
+    } catch (error) {
+      setRegenerateError(
+        getErrorMessage(
+          error,
+          "Could not regenerate student credentials."
+        )
+      );
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   function printLoginSlips() {
     if (!printCredentials.length) return;
 
     window.print();
+  }
+
+  async function copyCredential(credential: PrintableCredential) {
+    try {
+      await navigator.clipboard.writeText(
+        `Student: ${credential.student}\n` +
+          `Admission number: ${credential.admissionNumber}\n` +
+          `Temporary password: ${credential.temporaryPassword}`
+      );
+    } catch {
+      window.alert("Copy was blocked. Please select and copy manually.");
+    }
   }
 
   function removePrintCredential(studentId: string) {
@@ -549,9 +660,7 @@ export default function SchoolAdminStudentsPage() {
     );
   }
 
-  if (loading) {
-    return <PageLoader />;
-  }
+  if (loading) return <PageLoader />;
 
   if (pageError) {
     return (
@@ -567,17 +676,16 @@ export default function SchoolAdminStudentsPage() {
       <style jsx global>{`
         @page {
           size: A4 portrait;
-          margin: 12mm;
+          margin: 10mm;
         }
 
         @media print {
           html,
           body {
             width: 210mm !important;
-            min-width: 210mm !important;
             margin: 0 !important;
             padding: 0 !important;
-            background: #ffffff !important;
+            background: white !important;
             color: #111827 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -597,30 +705,30 @@ export default function SchoolAdminStudentsPage() {
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
-            width: 100% !important;
+            width: 190mm !important;
             margin: 0 !important;
             padding: 0 !important;
-            background: #ffffff !important;
+            background: white !important;
           }
 
           .student-print-slip {
             box-sizing: border-box !important;
-            width: 100% !important;
-            height: 270mm !important;
-            min-height: 270mm !important;
-            max-height: 270mm !important;
-            margin: 0 !important;
+            width: 190mm !important;
+            height: 277mm !important;
+            min-height: 277mm !important;
+            max-height: 277mm !important;
             padding: 15mm !important;
+            margin: 0 !important;
             overflow: hidden !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
+            background: white !important;
+            border: 1.5px solid #0f766e !important;
             break-inside: avoid !important;
             page-break-inside: avoid !important;
             break-after: page !important;
             page-break-after: always !important;
-            border: 2px solid #0f766e !important;
-            border-radius: 8px !important;
           }
 
           .student-print-slip:last-child {
@@ -638,12 +746,12 @@ export default function SchoolAdminStudentsPage() {
       <div className="no-print space-y-6">
         <SectionCard
           title="Students"
-          subtitle="Manage admissions, student records and login accounts"
+          subtitle="Manage student records, admissions and login accounts"
           rightAction={
             <div className="flex flex-wrap gap-2">
               <Link
                 href="/school-admin/students/bulk"
-                className="btn-secondary inline-flex items-center justify-center"
+                className="btn-secondary inline-flex items-center"
               >
                 <Plus size={16} className="mr-2" />
                 Bulk Entry
@@ -651,7 +759,7 @@ export default function SchoolAdminStudentsPage() {
 
               <Link
                 href="/school-admin/students/import"
-                className="inline-flex items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300 hover:bg-blue-500/20"
+                className="inline-flex items-center rounded-2xl border border-blue-400/20 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300"
               >
                 <Upload size={16} className="mr-2" />
                 Import
@@ -668,37 +776,41 @@ export default function SchoolAdminStudentsPage() {
             </div>
           }
         >
-          <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          {/* ACCOUNT SUMMARY */}
+          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
               <p className="text-sm text-slate-400">Total students</p>
-              <p className="mt-2 text-2xl font-bold text-white">
+              <p className="mt-2 text-3xl font-bold text-white">
                 {accountSummary.total}
               </p>
             </div>
 
-            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/5 p-4">
-              <p className="text-sm text-emerald-300">Active login accounts</p>
-              <p className="mt-2 text-2xl font-bold text-white">
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/5 p-5">
+              <p className="text-sm text-emerald-300">
+                Active login accounts
+              </p>
+              <p className="mt-2 text-3xl font-bold text-white">
                 {accountSummary.active}
               </p>
             </div>
 
-            <div className="rounded-2xl border border-amber-400/20 bg-amber-500/5 p-4">
+            <div className="rounded-2xl border border-amber-400/20 bg-amber-500/5 p-5">
               <p className="text-sm text-amber-300">Missing accounts</p>
-              <p className="mt-2 text-2xl font-bold text-white">
+              <p className="mt-2 text-3xl font-bold text-white">
                 {accountSummary.missing}
               </p>
             </div>
 
-            <div className="rounded-2xl border border-red-400/20 bg-red-500/5 p-4">
+            <div className="rounded-2xl border border-red-400/20 bg-red-500/5 p-5">
               <p className="text-sm text-red-300">Disabled accounts</p>
-              <p className="mt-2 text-2xl font-bold text-white">
+              <p className="mt-2 text-3xl font-bold text-white">
                 {accountSummary.disabled}
               </p>
             </div>
           </div>
 
-          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          {/* SEARCH AND ACTIONS */}
+          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="relative w-full max-w-md">
               <Search
                 size={18}
@@ -729,7 +841,7 @@ export default function SchoolAdminStudentsPage() {
                 type="button"
                 onClick={() => void handleGenerateStudentLogins()}
                 disabled={generatingLogins || accountSummary.missing === 0}
-                className="btn-primary inline-flex items-center justify-center disabled:opacity-50"
+                className="btn-primary inline-flex items-center disabled:opacity-50"
               >
                 <KeyRound size={16} className="mr-2" />
                 {generatingLogins
@@ -745,8 +857,111 @@ export default function SchoolAdminStudentsPage() {
             onDelete={openDeleteModal}
             onResetPassword={openResetModal}
           />
+
+          {/* BULK PASSWORD REGENERATION */}
+          <div className="mt-7 rounded-2xl border border-amber-400/20 bg-amber-500/5 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-amber-500/10 p-3 text-amber-300">
+                <KeyRound size={22} />
+              </div>
+
+              <div className="min-w-0">
+                <h3 className="font-semibold text-white">
+                  Regenerate Student Login Passwords
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-slate-400">
+                  Issue new passwords when previously generated login slips
+                  have been lost. You can select one class or the whole school.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
+              <select
+                value={regenerateClassId}
+                onChange={(event) =>
+                  resetRegenerationSelection(event.target.value)
+                }
+                disabled={regenerating || regenerationStarted}
+                className="input min-w-0 w-full"
+              >
+                <option value="">
+                  All active students — whole school
+                </option>
+
+                {classes.map((item) => (
+                  <option key={item._id} value={item._id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => void handleRegenerateLogins(false)}
+                disabled={regenerating || loadingOptions}
+                className="inline-flex items-center justify-center rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:opacity-50"
+              >
+                {regenerating ? (
+                  <>
+                    <RefreshCw size={16} className="mr-2 animate-spin" />
+                    Regenerating...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound size={16} className="mr-2" />
+                    Regenerate Passwords
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-400/20 bg-black/10 p-3">
+              <ShieldAlert
+                size={18}
+                className="mt-0.5 shrink-0 text-amber-300"
+              />
+              <p className="text-xs leading-5 text-slate-300">
+                This operation replaces existing passwords. Old passwords
+                stop working for accounts successfully updated. Print or
+                save the new slips before refreshing or leaving this page.
+              </p>
+            </div>
+
+            {regenerateError && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200"
+              >
+                {regenerateError}
+              </div>
+            )}
+
+            {regenerateMessage && (
+              <div
+                role="status"
+                className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-sm text-emerald-200"
+              >
+                {regenerateMessage}
+              </div>
+            )}
+
+            {regenerateHasMore && (
+              <button
+                type="button"
+                onClick={() => void handleRegenerateLogins(true)}
+                disabled={regenerating}
+                className="btn-secondary mt-4 w-full sm:w-auto"
+              >
+                {regenerating
+                  ? "Processing next batch..."
+                  : "Continue Next Batch"}
+              </button>
+            )}
+          </div>
         </SectionCard>
 
+        {/* GENERATION FEEDBACK */}
         {loginError && (
           <div
             role="alert"
@@ -765,10 +980,11 @@ export default function SchoolAdminStudentsPage() {
           </div>
         )}
 
+        {/* NEWLY CREATED LOGINS */}
         {loginCredentials.length > 0 && (
           <SectionCard
             title="Recently Generated Logins"
-            subtitle="Passwords are displayed only during this browser session. Save or print these slips before leaving this page."
+            subtitle="These are credentials returned when accounts were first created."
             rightAction={
               <button
                 type="button"
@@ -777,7 +993,7 @@ export default function SchoolAdminStudentsPage() {
                 className="btn-primary inline-flex items-center disabled:opacity-50"
               >
                 <Printer size={16} className="mr-2" />
-                Print All Slips ({printCredentials.length})
+                Print All ({printCredentials.length})
               </button>
             }
           >
@@ -789,64 +1005,40 @@ export default function SchoolAdminStudentsPage() {
                     key={item.studentId}
                     className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-semibold text-white">
                         {item.student}
                       </p>
                       <p className="text-sm text-slate-400">
                         Admission number: {item.credentials?.admissionNumber}
                       </p>
-                      <p className="mt-1 font-mono text-sm text-cyan-300">
+                      <p className="mt-1 break-all font-mono text-sm text-cyan-300">
                         {item.credentials?.temporaryPassword}
                       </p>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await navigator.clipboard.writeText(
-                            item.credentials!.temporaryPassword
-                          );
-                        }}
-                        className="btn-secondary"
-                      >
-                        <Copy size={15} className="mr-2" />
-                        Copy
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={printLoginSlips}
-                        className="btn-secondary"
-                      >
-                        <Printer size={15} className="mr-2" />
-                        Print
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void navigator.clipboard.writeText(
+                          item.credentials!.temporaryPassword
+                        )
+                      }
+                      className="btn-secondary"
+                    >
+                      <Copy size={15} className="mr-2" />
+                      Copy password
+                    </button>
                   </div>
                 ))}
-            </div>
-
-            {hasMoreLogins && (
-              <button
-                type="button"
-                onClick={() => void handleGenerateStudentLogins()}
-                disabled={generatingLogins}
-                className="btn-secondary mt-5"
-              >
-                {generatingLogins
-                  ? "Generating..."
-                  : "Generate Next Batch"}
-              </button>
-            )}
           </SectionCard>
         )}
 
+        {/* PRINT QUEUE */}
         {printCredentials.length > 0 && (
           <SectionCard
-            title="Print Queue"
-            subtitle={`${printCredentials.length} student login slip(s) ready to print. Each student will receive a separate A4 page.`}
+            title="Student Login Print Queue"
+            subtitle={`${printCredentials.length} credential slip(s) ready. Each student prints on a separate A4 page.`}
             rightAction={
               <button
                 type="button"
@@ -854,7 +1046,7 @@ export default function SchoolAdminStudentsPage() {
                 className="btn-primary inline-flex items-center"
               >
                 <Printer size={16} className="mr-2" />
-                Print All
+                Print All Slips
               </button>
             }
           >
@@ -862,43 +1054,64 @@ export default function SchoolAdminStudentsPage() {
               {printCredentials.map((credential) => (
                 <div
                   key={credential.studentId}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-white/10 p-3"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-white/10 p-3"
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-white">
+                    <p className="truncate font-semibold text-white">
                       {credential.student}
                     </p>
                     <p className="text-xs text-slate-400">
                       {credential.admissionNumber}
+                      {credential.className
+                        ? ` • ${credential.className}`
+                        : ""}
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removePrintCredential(credential.studentId)
-                    }
-                    className="rounded-lg p-2 text-slate-400 hover:bg-red-500/10 hover:text-red-300"
-                    title="Remove from print queue"
-                  >
-                    <X size={17} />
-                  </button>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void copyCredential(credential)}
+                      title="Copy credentials"
+                      className="rounded-lg p-2 text-cyan-300 hover:bg-white/5"
+                    >
+                      <Copy size={17} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => removePrintCredential(credential.studentId)}
+                      title="Remove from print queue"
+                      className="rounded-lg p-2 text-slate-400 hover:bg-red-500/10 hover:text-red-300"
+                    >
+                      <X size={17} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={printLoginSlips}
+              className="btn-primary mt-5 w-full sm:w-auto"
+            >
+              <Printer size={16} className="mr-2 inline" />
+              Print {printCredentials.length} Student Slips
+            </button>
           </SectionCard>
         )}
       </div>
 
-      {/* PRINT AREA: one complete student slip per A4 page */}
+      {/* PRINT AREA: EXACTLY ONE STUDENT PER A4 PAGE */}
       <div id="student-login-print-area" className="hidden">
         {printCredentials.map((credential) => (
           <article
             key={credential.studentId}
             className="student-print-slip"
           >
-            <div className="text-center">
-              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border-2 border-teal-700 text-3xl font-black text-teal-800">
+            <header className="text-center">
+              <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl border-2 border-teal-700 text-3xl font-black text-teal-800">
                 E
               </div>
 
@@ -913,15 +1126,15 @@ export default function SchoolAdminStudentsPage() {
               <p className="mt-2 text-base text-slate-600">
                 Keep this slip safe and confidential
               </p>
-            </div>
+            </header>
 
-            <div className="my-12 rounded-2xl border-2 border-slate-300 p-8">
+            <div className="my-10 rounded-2xl border-2 border-slate-300 p-8">
               <div className="space-y-7">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-wider text-slate-500">
                     Student name
                   </p>
-                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                  <p className="mt-2 break-words text-2xl font-bold text-slate-900">
                     {credential.student}
                   </p>
                 </div>
@@ -957,7 +1170,7 @@ export default function SchoolAdminStudentsPage() {
               </div>
             </div>
 
-            <div className="space-y-4 text-center">
+            <section className="space-y-4 text-center">
               <h2 className="text-xl font-bold text-slate-900">
                 How to log in
               </h2>
@@ -972,16 +1185,16 @@ export default function SchoolAdminStudentsPage() {
                 After logging in, change your password and keep your new
                 password private.
               </p>
-            </div>
+            </section>
 
-            <div className="mt-auto border-t border-slate-300 pt-6 text-center">
+            <footer className="mt-auto border-t border-slate-300 pt-6 text-center">
               <p className="text-sm text-slate-500">
                 This login slip is confidential. Do not share it publicly.
               </p>
               <p className="mt-2 text-sm font-semibold text-teal-800">
                 Powered by EduTrack
               </p>
-            </div>
+            </footer>
           </article>
         ))}
       </div>
@@ -1065,7 +1278,9 @@ export default function SchoolAdminStudentsPage() {
           <p className="text-sm text-slate-300">
             Are you sure you want to delete{" "}
             <strong className="text-white">
-              {selectedStudent ? getStudentName(selectedStudent) : "this student"}
+              {selectedStudent
+                ? getStudentName(selectedStudent)
+                : "this student"}
             </strong>
             ?
           </p>
@@ -1092,7 +1307,7 @@ export default function SchoolAdminStudentsPage() {
         </div>
       </Modal>
 
-      {/* RESET PASSWORD */}
+      {/* RESET INDIVIDUAL STUDENT PASSWORD */}
       <Modal
         open={Boolean(resetTarget)}
         title="Regenerate Student Login"
@@ -1147,14 +1362,17 @@ export default function SchoolAdminStudentsPage() {
                 </div>
 
                 <p className="text-xs text-slate-400">
-                  Use 12–128 characters. This password will be shown once
-                  after a successful reset.
+                  Use 12–128 characters. The password appears after a
+                  successful reset.
                 </p>
               </div>
             )}
 
             {resetError && (
-              <div role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">
+              <div
+                role="alert"
+                className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300"
+              >
                 <AlertCircle size={16} className="mr-2 inline" />
                 {resetError}
               </div>
@@ -1175,8 +1393,7 @@ export default function SchoolAdminStudentsPage() {
                       Password reset successfully
                     </p>
                     <p className="mt-1 text-sm text-slate-300">
-                      A new login slip has been added to the print queue.
-                      Print it now or copy the password securely.
+                      The new credential has been added to the print queue.
                     </p>
                   </div>
                 </div>
@@ -1238,7 +1455,10 @@ export default function SchoolAdminStudentsPage() {
                 >
                   {resetSubmitting ? (
                     <>
-                      <RefreshCw size={16} className="mr-2 inline animate-spin" />
+                      <RefreshCw
+                        size={16}
+                        className="mr-2 inline animate-spin"
+                      />
                       Saving...
                     </>
                   ) : (
