@@ -187,11 +187,13 @@ export default function LoginPageClient() {
           throw new Error("Enter your admission number.");
         }
 
-        response = await api.post("/auth/student-login", {
-          tenantSlug: tenant.slug,
-          admissionNumber: form.admissionNumber.trim(),
-          password: form.password,
-        });
+        response = await api.post("/auth/login", {
+  identifier,
+  password: form.password,
+  ...(tenant?.slug
+    ? { tenantSlug: tenant.slug }
+    : {}),
+});
       } else {
         const identifier = form.identifier.trim();
 
