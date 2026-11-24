@@ -1092,11 +1092,13 @@ export async function resetStudentPassword(
 
   await user.save();
 
-  return {
-    studentId: student._id,
-    admissionNumber: student.admissionNumber,
-    reset: true,
-  };
+  
+return {
+  studentId: String(student._id),
+  admissionNumber: student.admissionNumber,
+  reset: true,
+  passwordChangedAt: user.passwordChangedAt,
+};
 }
 
 
