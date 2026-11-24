@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import { Teacher } from "./teacher.model.js";
 import { User } from "../users/user.model.js";
 import { SubjectModel } from "../subjects/subject.model.js";
@@ -79,9 +79,13 @@ export async function createTeacher(payload, schoolId) {
   const lastName = String(payload.lastName || "").trim();
 
   if (firstName.length < 2 || lastName.length < 2) {
-    throw new ApiError(400, "First name and last name are required");
+    throw new ApiError(
+      400,
+      "First name and last name are required"
+    );
   }
 
+  // Prevent duplicate email accounts across the platform.
   if (email) {
     const existingUser = await User.findOne({ email });
 
@@ -93,53 +97,55 @@ export async function createTeacher(payload, schoolId) {
     }
   }
 
-  if (payload.employeeId) {
-    const existingTeacher = await Teacher.findOne({
-      schoolId,
-      employeeId: payload.employeeId,
-    });
+  // Generate Employee ID if the administrator did not provide one.
+  const employeeId =
+    String(payload.employeeId || "").trim() ||
+    await createUniqueEmployeeId(schoolId);
 
-    if (existingTeacher) {
-      throw new ApiError(
-        400,
-        "A teacher with this employee ID already exists"
-      );
-    }
+  const existingTeacher = await Teacher.findOne({
+    schoolId,
+    employeeId,
+  });
+
+  if (existingTeacher) {
+    throw new ApiError(
+      400,
+      "A teacher with this employee ID already exists"
+    );
   }
 
-  // Class assignment is now the source of subject access.
   const classIds = await validateClassIds(
     payload.classIds,
     schoolId
   );
 
-  const passwordHash = await hashPassword(payload.password);
+  // Generate a strong temporary password.
+  const temporaryPassword = randomBytes(18).toString("base64url");
+  const passwordHash = await hashPassword(temporaryPassword);
+
+  const isActive =
+    payload.isActive ??
+    payload.status !== "inactive";
 
   let user;
 
   try {
-    const userData = {
+    user = await User.create({
       schoolId,
       role: "teacher",
       firstName,
       lastName,
+      ...(email ? { email } : {}),
       passwordHash,
-      isActive:
-        payload.isActive ??
-        payload.status !== "inactive",
-    };
-
-    if (email) userData.email = email;
-
-    if (payload.phone) userData.phone = payload.phone;
-
-    user = await User.create(userData);
+      mustChangePassword: true,
+      isActive,
+    });
 
     const teacher = await Teacher.create({
       schoolId,
       userId: user._id,
 
-      employeeId: payload.employeeId || "",
+      employeeId,
       qualification: payload.qualification || "",
       designation: payload.designation || "",
       middleName: payload.middleName || "",
@@ -165,19 +171,15 @@ export async function createTeacher(payload, schoolId) {
       nin: payload.nin || "",
       photo: payload.photo || "",
 
-      // Do not assign subjects individually.
       subjectIds: [],
-
-      // All subject access will be derived from these classes.
       classIds,
 
       status: payload.status || "active",
-      isActive:
-        payload.isActive ??
-        payload.status !== "inactive",
+      isActive,
     });
 
-    // Email failure should not undo a successfully created teacher.
+    // Send a welcome notification, but never email the password
+    // through this existing welcome-email function.
     if (email) {
       try {
         const school = await School.findById(schoolId)
@@ -202,11 +204,23 @@ export async function createTeacher(payload, schoolId) {
       }
     }
 
-    return teacherPopulate(
+    const populatedTeacher = await teacherPopulate(
       Teacher.findById(teacher._id)
     );
+
+    return {
+      ...populatedTeacher.toObject(),
+
+      // Display once to the administrator for credential delivery.
+      loginCredentials: {
+        employeeId,
+        email: email || null,
+        temporaryPassword,
+        mustChangePassword: true,
+      },
+    };
   } catch (error) {
-    // Prevent orphaned accounts if profile creation fails.
+    // Avoid leaving an orphaned user account.
     if (user?._id) {
       await User.deleteOne({
         _id: user._id,
