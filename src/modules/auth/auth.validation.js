@@ -1,9 +1,17 @@
+
 import { z } from "zod";
 
 export const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
-});
+  // identifier supports email or teacher Employee ID.
+  // email remains supported for existing frontend clients.
+  identifier: z.string().trim().min(1).max(254).optional(),
+  email: z.string().trim().optional(),
+  tenantSlug: z.string().trim().min(1).max(100).optional(),
+  password: z.string().min(1).max(128),
+}).transform((data) => ({
+  ...data,
+  identifier: data.identifier || data.email || "",
+}));
 
 export const changePasswordSchema = z
   .object({
