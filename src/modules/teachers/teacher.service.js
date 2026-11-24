@@ -4,7 +4,10 @@ import { User } from "../users/user.model.js";
 import { SubjectModel } from "../subjects/subject.model.js";
 import { ClassModel } from "../classes/class.model.js";
 import { ApiError } from "../../utils/apiError.js";
-import { hashPassword } from "../../utils/hash.js";
+import {
+  hashPassword,
+  comparePassword,
+} from "../../utils/hash.js";
 import {
   sendTeacherWelcomeEmail,
 } from "../../services/email.service.js";
