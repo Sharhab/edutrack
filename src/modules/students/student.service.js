@@ -1070,6 +1070,156 @@ export async function generateMissingStudentLoginAccounts(schoolId) {
 
 
 /**
+ * REGENERATE STUDENT LOGIN CREDENTIALS
+ *
+ * - Supports the whole school or one class.
+ * - Processes up to 200 students per request.
+ * - Creates missing accounts where student login is enabled.
+ * - Resets existing active accounts.
+ * - Returns plaintext credentials once only.
+ * - Never stores plaintext passwords.
+ */
+export async function regenerateStudentLoginCredentials(
+  schoolId,
+  { classId, offset = 0 } = {}
+) {
+  const school = await getSchool(schoolId);
+
+  if (school.settings?.allowStudentLogin === false) {
+    throw new ApiError(
+      403,
+      "Student login is disabled for this school"
+    );
+  }
+
+  if (
+    !Number.isInteger(Number(offset)) ||
+    Number(offset) < 0
+  ) {
+    throw new ApiError(400, "Invalid batch offset");
+  }
+
+  const filter = {
+    schoolId,
+    status: "active",
+  };
+
+  if (classId) {
+    filter.classId = await validateClassId(classId, schoolId);
+  }
+
+  const students = await Student.find(filter)
+    .select("_id schoolId classId admissionNumber firstName lastName status")
+    .populate("classId", "name")
+    .sort({ createdAt: 1, _id: 1 })
+    .skip(Number(offset))
+    .limit(200);
+
+  const results = [];
+  let regenerated = 0;
+  let failed = 0;
+
+  for (const student of students) {
+    try {
+      let account = await User.findOne({
+        schoolId,
+        studentId: student._id,
+        role: STUDENT_ROLE,
+      });
+
+      let temporaryPassword;
+
+      if (account) {
+        if (!account.isActive) {
+          results.push({
+            studentId: String(student._id),
+            student: `${student.firstName} ${student.lastName}`.trim(),
+            admissionNumber: student.admissionNumber,
+            success: false,
+            message: "Login account is disabled. Activate it before regeneration.",
+          });
+          continue;
+        }
+
+        temporaryPassword = crypto
+          .randomBytes(18)
+          .toString("base64url");
+
+        account.passwordHash = await bcrypt.hash(
+          temporaryPassword,
+          PASSWORD_HASH_ROUNDS
+        );
+
+        account.passwordChangedAt = new Date();
+        await account.save();
+      } else {
+        const created = await createStudentLoginAccount(
+          student,
+          school
+        );
+
+        if (!created.created || !created.credentials) {
+          results.push({
+            studentId: String(student._id),
+            student: `${student.firstName} ${student.lastName}`.trim(),
+            admissionNumber: student.admissionNumber,
+            success: false,
+            message: "Could not create login account.",
+          });
+          continue;
+        }
+
+        temporaryPassword = created.credentials.temporaryPassword;
+      }
+
+      regenerated++;
+
+      results.push({
+        studentId: String(student._id),
+        student: `${student.firstName} ${student.lastName}`.trim(),
+        admissionNumber: student.admissionNumber,
+        className: student.classId?.name || "",
+        success: true,
+        credentials: {
+          admissionNumber: student.admissionNumber,
+          temporaryPassword,
+          loginMethod: "admissionNumber",
+        },
+      });
+    } catch (error) {
+      failed++;
+
+      results.push({
+        studentId: String(student._id),
+        student: `${student.firstName} ${student.lastName}`.trim(),
+        admissionNumber: student.admissionNumber,
+        success: false,
+        message: "Unable to regenerate this student's login.",
+      });
+    }
+  }
+
+  const nextOffset = Number(offset) + students.length;
+
+  const remaining = await Student.countDocuments({
+    ...filter,
+    _id: {
+      $nin: students.map((student) => student._id),
+    },
+  });
+
+  return {
+    processed: students.length,
+    regenerated,
+    failed,
+    offset: Number(offset),
+    nextOffset,
+    hasMore: remaining > 0,
+    remaining,
+    results,
+  };
+}
+/**
  * RESET STUDENT PASSWORD
  * School admins can reset passwords only for active
  * student accounts belonging to their own school.
