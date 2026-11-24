@@ -56,3 +56,11 @@ export interface StudentFormValues {
   nin?: string;
   birthCertificateNo?: string;
 }
+
+  loginAccount?: {
+    exists: boolean;
+    active: boolean;
+    passwordChangedAt: string | null;
+    lastLogin: string | null;
+    createdAt: string | null;
+  };
