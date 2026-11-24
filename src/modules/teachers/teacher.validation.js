@@ -21,8 +21,6 @@ export const createTeacherSchema = z.object({
     .or(z.literal("")),
 
   phone: optionalText,
-  password: z.string().min(6, "Password must be at least 6 characters"),
-
   employeeId: optionalText,
   qualification: optionalText,
   designation: optionalText,
