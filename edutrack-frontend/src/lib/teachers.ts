@@ -66,8 +66,14 @@ export async function getTeachers(p0: { search: string; }): Promise<Teacher[]> {
   return data?.data || [];
 }
 
-export async function createTeacher(payload: TeacherFormValues): Promise<Teacher> {
-  const { data } = await api.post("/teachers", buildTeacherPayload(payload));
+export async function createTeacher(
+  payload: TeacherFormValues
+): Promise<Teacher> {
+  const { data } = await api.post(
+    "/teachers",
+    buildTeacherPayload(payload)
+  );
+
   return data?.data || data;
 }
 
