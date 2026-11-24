@@ -78,10 +78,11 @@ export async function protect(req, res, next) {
 
     // A first-login account may only access:
     // /me, /logout and /change-password.
-    if (
-      user.mustChangePassword &&
-      !isPasswordChangeAllowed(req)
-    ) {
+   if (
+  user.mustChangePassword &&
+  user.role !== "teacher" &&
+  !isPasswordChangeAllowed(req)
+)  {
       return res.status(403).json({
         success: false,
         code: "PASSWORD_CHANGE_REQUIRED",
