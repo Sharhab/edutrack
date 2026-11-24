@@ -166,6 +166,8 @@ export async function deleteStudentHandler(req, res) {
     data,
   });
 }
+
+
 export async function resetStudentPasswordHandler(
   req,
   res,
@@ -185,6 +187,41 @@ export async function resetStudentPasswordHandler(
           "Temporary password must be between 12 and 128 characters",
       });
     }
+
+    const data = await resetStudentPassword(
+      req.params.id,
+      req.user.schoolId,
+      temporaryPassword
+    );
+
+    // Record the reset without storing the password.
+    await logSchoolAdminActivity({
+      user: req.user,
+      action: "student_password_reset",
+      module: "students",
+      description: "Reset a student's login password",
+      entityId: data.studentId,
+      entityType: "Student",
+      metadata: {
+        admissionNumber: data.admissionNumber,
+        passwordReset: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Student password reset successfully",
+      data: {
+        studentId: data.studentId,
+        admissionNumber: data.admissionNumber,
+        reset: true,
+        passwordChangedAt: data.passwordChangedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
     const data = await resetStudentPassword(
       req.params.id,
