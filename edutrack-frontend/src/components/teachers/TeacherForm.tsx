@@ -339,18 +339,22 @@ export default function TeacherForm({
         description="Login credentials and account access."
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormInput
-            label="Password"
-            name="password"
-            type="password"
-            value={values.password || ""}
-            placeholder={
-              values.employeeId
-                ? "Leave blank to keep current password"
-                : "Enter account password"
-            }
-            onChange={(value) => onChange("password", value)}
-          />
+          
+          
+<div className="space-y-4">
+  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+    <p className="font-semibold text-blue-900">
+      Automatic Login Credentials
+    </p>
+    <p className="mt-1 text-sm text-blue-800">
+      EduTrack will automatically generate a secure temporary password
+      when this teacher account is created. You can copy or print the
+      credentials after saving.
+    </p>
+  </div>
+
+  {/* Keep your existing account status field here */}
+</div>
 
           <SelectField
             label="Account Status"
