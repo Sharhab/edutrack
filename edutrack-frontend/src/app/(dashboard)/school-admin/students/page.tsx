@@ -980,11 +980,11 @@ export default function SchoolAdminStudentsPage() {
           </div>
         )}
 
-        {/* NEWLY CREATED LOGINS */}
+        {/* RECENTLY GENERATED LOGINS */}
         {loginCredentials.length > 0 && (
           <SectionCard
             title="Recently Generated Logins"
-            subtitle="These are credentials returned when accounts were first created."
+            subtitle="Credentials are available only during this browser session. Print or save them before leaving."
             rightAction={
               <button
                 type="button"
@@ -999,7 +999,10 @@ export default function SchoolAdminStudentsPage() {
           >
             <div className="space-y-3">
               {loginCredentials
-                .filter((item) => item.accountCreated && item.credentials)
+                .filter(
+                  (item) =>
+                    item.accountCreated && item.credentials
+                )
                 .map((item) => (
                   <div
                     key={item.studentId}
@@ -1009,28 +1012,48 @@ export default function SchoolAdminStudentsPage() {
                       <p className="font-semibold text-white">
                         {item.student}
                       </p>
+
                       <p className="text-sm text-slate-400">
-                        Admission number: {item.credentials?.admissionNumber}
+                        Admission number:{" "}
+                        {item.credentials?.admissionNumber}
                       </p>
+
                       <p className="mt-1 break-all font-mono text-sm text-cyan-300">
                         {item.credentials?.temporaryPassword}
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void navigator.clipboard.writeText(
-                          item.credentials!.temporaryPassword
-                        )
-                      }
-                      className="btn-secondary"
-                    >
-                      <Copy size={15} className="mr-2" />
-                      Copy password
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyCredential({
+                            studentId: item.studentId,
+                            student: item.student,
+                            admissionNumber:
+                              item.credentials!.admissionNumber,
+                            temporaryPassword:
+                              item.credentials!.temporaryPassword,
+                          })
+                        }
+                        className="btn-secondary"
+                      >
+                        <Copy size={15} className="mr-2" />
+                        Copy
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={printLoginSlips}
+                        className="btn-secondary"
+                      >
+                        <Printer size={15} className="mr-2" />
+                        Print
+                      </button>
+                    </div>
                   </div>
                 ))}
+            </div>
           </SectionCard>
         )}
 
