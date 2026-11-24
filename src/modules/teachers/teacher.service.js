@@ -962,11 +962,23 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
  * RESET TEACHER PASSWORD
  * School admins can reset only their own school's teachers.
  */
+
 export async function resetTeacherPassword(
   teacherId,
   schoolId,
   temporaryPassword
 ) {
+  if (
+    typeof temporaryPassword !== "string" ||
+    temporaryPassword.length < 12 ||
+    temporaryPassword.length > 128
+  ) {
+    throw new ApiError(
+      400,
+      "Password must contain between 12 and 128 characters"
+    );
+  }
+
   const teacher = await Teacher.findOne({
     _id: teacherId,
     schoolId,
@@ -993,15 +1005,30 @@ export async function resetTeacherPassword(
     );
   }
 
-  user.passwordHash = await hashPassword(temporaryPassword);
+  const newHash = await hashPassword(temporaryPassword);
+
+  // Verify the hash before saving it.
+  const verified = await comparePassword(
+    temporaryPassword,
+    newHash
+  );
+
+  if (!verified) {
+    throw new ApiError(
+      500,
+      "Password verification failed"
+    );
+  }
+
+  user.passwordHash = newHash;
   user.passwordChangedAt = new Date();
 
   await user.save();
 
   return {
-    teacherId: teacher._id,
+    teacherId: String(teacher._id),
     email: user.email,
     reset: true,
+    passwordChangedAt: user.passwordChangedAt,
   };
 }
-
