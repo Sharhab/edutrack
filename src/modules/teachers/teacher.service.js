@@ -137,7 +137,7 @@ export async function createTeacher(payload, schoolId) {
       lastName,
       ...(email ? { email } : {}),
       passwordHash,
-      mustChangePassword: true,
+      mustChangePassword: false,
       isActive,
     });
 
@@ -746,6 +746,7 @@ async function createUniqueEmployeeId(schoolId) {
 }
 
 
+
 export async function bulkUpsertTeachers(rows = [], schoolId) {
   if (!Array.isArray(rows) || !rows.length) {
     throw new ApiError(400, "No teachers supplied");
@@ -754,11 +755,13 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
   let created = 0;
   let updated = 0;
   let failed = 0;
+
   const results = [];
 
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index] || {};
     let createdUserId = null;
+    let createdTeacherId = null;
 
     try {
       const firstName = String(row.firstName || "").trim();
@@ -766,7 +769,6 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
       const lastName = String(row.lastName || "").trim();
       const email = String(row.email || "").trim().toLowerCase();
       const phone = String(row.phone || "").trim();
-      const password = String(row.password || "");
 
       if (firstName.length < 2) {
         throw new Error("First name must contain at least 2 characters");
@@ -780,11 +782,6 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         throw new Error("Enter a valid email address or leave it blank");
       }
 
-      if (password.length < 6) {
-        throw new Error("Password must contain at least 6 characters");
-      }
-
-      // Classes are now the only assignment required here.
       const classIds = await validateClassIds(
         row.classIds,
         schoolId
@@ -794,16 +791,6 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         row.status === "inactive" || row.isActive === false
           ? "inactive"
           : "active";
-
-      let existingUser = null;
-
-      if (email) {
-        existingUser = await User.findOne({
-          email,
-          schoolId,
-          role: "teacher",
-        });
-      }
 
       const teacherFields = {
         middleName,
@@ -829,7 +816,19 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         isActive: status === "active",
       };
 
-      // Update an existing teacher account in this school.
+      // Match existing teacher only by email within this school.
+      let existingUser = null;
+
+      if (email) {
+        existingUser = await User.findOne({
+          email,
+          schoolId,
+          role: "teacher",
+        });
+      }
+
+      // UPDATE EXISTING TEACHER.
+      // Never modify the existing password during bulk import.
       if (existingUser) {
         const teacher = await Teacher.findOne({
           userId: existingUser._id,
@@ -845,10 +844,10 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         existingUser.firstName = firstName;
         existingUser.lastName = lastName;
         existingUser.isActive = status === "active";
-        existingUser.passwordHash = await hashPassword(password);
-        existingUser.passwordChangedAt = new Date();
 
-        if (phone) existingUser.phone = phone;
+        if (phone) {
+          existingUser.phone = phone;
+        }
 
         Object.assign(teacher, teacherFields);
 
@@ -863,15 +862,17 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
 
         results.push({
           row: index + 1,
-          email,
+          email: email || null,
           employeeId: teacher.employeeId,
           action: "updated",
+          passwordChanged: false,
         });
 
         continue;
       }
 
-      // Do not allow an email already used by another account.
+      // Prevent an email belonging to another account or role
+      // from being reused.
       if (email) {
         const existingAccount = await User.findOne({ email });
 
@@ -882,44 +883,47 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         }
       }
 
+      // CREATE NEW TEACHER WITH BACKEND-GENERATED PASSWORD.
       const employeeId = await createUniqueEmployeeId(schoolId);
-      const passwordHash = await hashPassword(password);
 
-      const userData = {
+      const temporaryPassword = randomBytes(18).toString("base64url");
+      const passwordHash = await hashPassword(temporaryPassword);
+
+      const newUser = await User.create({
         schoolId,
         role: "teacher",
         firstName,
         lastName,
+        ...(email ? { email } : {}),
+        ...(phone ? { phone } : {}),
         passwordHash,
+        mustChangePassword: false,
         isActive: status === "active",
-      };
+      });
 
-      if (email) userData.email = email;
-      if (phone) userData.phone = phone;
-
-      const newUser = await User.create(userData);
       createdUserId = newUser._id;
 
       const newTeacher = await Teacher.create({
         schoolId,
         userId: newUser._id,
         employeeId,
-
         ...teacherFields,
-
-        // Do not manually assign subjects.
-        // Subject access is derived from classIds.
         subjectIds: [],
       });
 
+      createdTeacherId = newTeacher._id;
       createdUserId = null;
+
       created++;
 
+      // Credentials are returned only in this creation response.
       results.push({
         row: index + 1,
-        email,
-        employeeId: newTeacher.employeeId,
+        email: email || null,
+        employeeId,
         action: "created",
+        temporaryPassword,
+        mustChangePassword: false,
       });
 
       if (email) {
@@ -946,6 +950,14 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
         }
       }
     } catch (error) {
+      // Clean up partial account creation if teacher profile creation failed.
+      if (createdTeacherId) {
+        await Teacher.deleteOne({
+          _id: createdTeacherId,
+          schoolId,
+        }).catch(() => {});
+      }
+
       if (createdUserId) {
         await User.deleteOne({
           _id: createdUserId,
@@ -958,7 +970,7 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
 
       results.push({
         row: index + 1,
-        email: String(row.email || "").trim(),
+        email: String(row.email || "").trim() || null,
         action: "failed",
         error: error.message || "Unable to process this teacher",
       });
@@ -974,6 +986,7 @@ export async function bulkUpsertTeachers(rows = [], schoolId) {
   };
 }
 
+          
 
 /**
  * RESET TEACHER PASSWORD
