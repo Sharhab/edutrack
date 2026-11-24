@@ -216,7 +216,7 @@ export async function createTeacher(payload, schoolId) {
         employeeId,
         email: email || null,
         temporaryPassword,
-        mustChangePassword: true,
+        mustChangePassword: false,
       },
     };
   } catch (error) {
