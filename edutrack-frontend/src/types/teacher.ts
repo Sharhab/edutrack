@@ -1,3 +1,4 @@
+
 export interface TeacherUserRef {
   _id: string;
   role?: string;
@@ -18,6 +19,13 @@ export interface TeacherClassRef {
 export interface TeacherSubjectRef {
   _id: string;
   name?: string;
+}
+
+export interface TeacherLoginCredentials {
+  employeeId: string;
+  email: string | null;
+  temporaryPassword: string;
+  mustChangePassword: boolean;
 }
 
 export interface Teacher {
@@ -77,6 +85,8 @@ export interface Teacher {
   address?: string;
 
   createdAt?: string;
+
+  loginCredentials?: TeacherLoginCredentials;
 }
 
 export interface TeacherFormValues {
