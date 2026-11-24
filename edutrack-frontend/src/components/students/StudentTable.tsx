@@ -22,7 +22,6 @@ function displayName(value: unknown): string {
 
   if (typeof value === "object" && value !== null) {
     const obj = value as {
-      _id?: string;
       name?: string;
       firstName?: string;
       lastName?: string;
@@ -73,7 +72,6 @@ export default function StudentsTable({
     <DataTable<Student>
       data={data}
       columns={[
-        // STUDENT
         {
           key: "student",
           title: "Student",
@@ -82,49 +80,37 @@ export default function StudentsTable({
               <p className="font-semibold text-white">
                 {getStudentFullName(row)}
               </p>
-
               <p className="text-xs text-slate-400">
                 {row.email || row.phone || "-"}
               </p>
-
               <p className="text-[10px] text-slate-500">
                 {row.admissionNumber || "-"}
               </p>
             </div>
           ),
         },
-
-        // CLASS
         {
           key: "className",
           title: "Class",
           render: (row) =>
             row.className || displayName(row.classId),
         },
-
-        // PARENT
         {
           key: "parent",
           title: "Parent",
           render: (row) =>
             row.parentName || displayName(row.parentId),
         },
-
-        // GENDER
         {
           key: "gender",
           title: "Gender",
           render: (row) => row.gender || "-",
         },
-
-        // ENTRY TYPE
         {
           key: "entryType",
           title: "Entry",
           render: (row) => (row as any).entryType || "-",
         },
-
-        // STATUS
         {
           key: "status",
           title: "Status",
@@ -142,19 +128,66 @@ export default function StudentsTable({
           ),
         },
 
-        // CREATED DATE
+        // STUDENT LOGIN ACCOUNT
+        {
+          key: "loginAccount",
+          title: "Login Account",
+          render: (row) => {
+            const account = row.loginAccount;
+
+            if (!account?.exists) {
+              return (
+                <div className="space-y-1">
+                  <Badge label="Not created" variant="warning" />
+                  <p className="text-xs text-slate-500">
+                    No login account
+                  </p>
+                </div>
+              );
+            }
+
+            if (!account.active) {
+              return (
+                <div className="space-y-1">
+                  <Badge label="Disabled" variant="danger" />
+                  <p className="text-xs text-slate-500">
+                    Account inactive
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-1">
+                <Badge label="Account active" variant="success" />
+                <p className="text-xs text-slate-400">
+                  {account.passwordChangedAt
+                    ? `Password updated: ${formatDate(
+                        account.passwordChangedAt
+                      )}`
+                    : "Password not changed"}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {account.lastLogin
+                    ? `Last login: ${formatDate(account.lastLogin)}`
+                    : "Never logged in"}
+                </p>
+              </div>
+            );
+          },
+        },
+
         {
           key: "createdAt",
           title: "Created",
           render: (row) => formatDate(row.createdAt),
         },
-
-        // ACTIONS
         {
           key: "actions",
           title: "Actions",
           render: (row) => {
             const active = isStudentActive(row);
+            const hasAccount = row.loginAccount?.exists;
             const studentName = getStudentFullName(row);
 
             return (
@@ -162,16 +195,19 @@ export default function StudentsTable({
                 <button
                   type="button"
                   title={
-                    active
-                      ? "Reset student password"
-                      : "Activate student before resetting password"
+                    !active
+                      ? "Activate student before resetting password"
+                      : hasAccount
+                      ? "Regenerate student password"
+                      : "Create student login account first"
                   }
                   aria-label={`Reset password for ${studentName}`}
+                  disabled={!active || !hasAccount}
                   onClick={() => onResetPassword(row)}
                   className={`rounded-lg p-2 transition ${
-                    active
+                    active && hasAccount
                       ? "text-amber-300 hover:bg-amber-500/10"
-                      : "text-slate-500 hover:bg-white/5"
+                      : "cursor-not-allowed text-slate-600"
                   }`}
                 >
                   <KeyRound size={17} />
