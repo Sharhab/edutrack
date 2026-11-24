@@ -13,6 +13,7 @@ import {
   bulkUpsertStudentsHandler,
   generateStudentLoginAccountsHandler,
   resetStudentPasswordHandler,
+  regenerateStudentLoginCredentialsHandler,
 } from "./student.controller.js";
 
 import {
@@ -74,7 +75,10 @@ router.post(
   "/login-accounts/generate",
   asyncHandler(generateStudentLoginAccountsHandler)
 );
-
+ router.post(
+  "/login-accounts/regenerate",
+  asyncHandler(regenerateStudentLoginCredentialsHandler)
+);
 router.post(
   "/:id/reset-password",
   asyncHandler(resetStudentPasswordHandler)
