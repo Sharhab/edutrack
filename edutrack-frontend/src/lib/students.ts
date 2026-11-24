@@ -133,3 +133,40 @@ export async function resetStudentPassword(
   return data?.data ?? data;
 }
 
+
+export type RegeneratedStudentCredential = {
+  studentId: string;
+  student: string;
+  admissionNumber: string;
+  className?: string;
+  success: boolean;
+  credentials?: {
+    admissionNumber: string;
+    temporaryPassword: string;
+    loginMethod: "admissionNumber";
+  };
+  message?: string;
+};
+
+export type RegenerateStudentLoginsResponse = {
+  processed: number;
+  regenerated: number;
+  failed: number;
+  offset: number;
+  nextOffset: number;
+  hasMore: boolean;
+  remaining: number;
+  results: RegeneratedStudentCredential[];
+};
+
+export async function regenerateStudentLoginCredentials(params: {
+  classId?: string;
+  offset?: number;
+}): Promise<RegenerateStudentLoginsResponse> {
+  const { data } = await api.post(
+    "/students/login-accounts/regenerate",
+    params
+  );
+
+  return data.data;
+}
