@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import axios from "axios";
 import {
   Lock,
-  Mail,
   GraduationCap,
   UserRound,
   Eye,
@@ -77,11 +76,7 @@ export default function LoginPageClient() {
   useEffect(() => {
     const requestedRole = searchParams.get("role");
 
-    if (requestedRole === "student") {
-      setMode("student");
-    } else {
-      setMode("staff");
-    }
+    setMode(requestedRole === "student" ? "student" : "staff");
   }, [searchParams]);
 
   // --------------------------------------------------
@@ -153,10 +148,15 @@ export default function LoginPageClient() {
   function switchMode(nextMode: LoginMode) {
     setMode(nextMode);
     setError("");
+
     setForm((previous) => ({
       ...previous,
+      identifier: "",
+      admissionNumber: "",
       password: "",
     }));
+
+    setShowPassword(false);
   }
 
   // --------------------------------------------------
@@ -176,6 +176,10 @@ export default function LoginPageClient() {
     try {
       let response;
 
+      // ================================================
+      // STUDENT LOGIN
+      // ================================================
+
       if (mode === "student") {
         if (!tenant?.slug) {
           throw new Error(
@@ -183,18 +187,26 @@ export default function LoginPageClient() {
           );
         }
 
-        if (!form.admissionNumber.trim()) {
+        const admissionNumber =
+          form.admissionNumber.trim();
+
+        if (!admissionNumber) {
           throw new Error("Enter your admission number.");
         }
 
-        response = await api.post("/auth/login", {
-  identifier,
-  password: form.password,
-  ...(tenant?.slug
-    ? { tenantSlug: tenant.slug }
-    : {}),
-});
-      } else {
+        // Student authentication must remain separate.
+        response = await api.post("/auth/student-login", {
+          tenantSlug: tenant.slug,
+          admissionNumber,
+          password: form.password,
+        });
+      }
+
+      // ================================================
+      // STAFF / ADMIN LOGIN
+      // ================================================
+
+      else {
         const identifier = form.identifier.trim();
 
         if (!identifier) {
@@ -203,8 +215,8 @@ export default function LoginPageClient() {
           );
         }
 
-        // Employee ID must be resolved within a school tenant.
-        // Email login continues to work from the main portal.
+        // Employee ID login requires school context.
+        // Email login remains available from the main portal.
         if (
           !identifier.includes("@") &&
           !tenant?.slug
@@ -214,12 +226,20 @@ export default function LoginPageClient() {
           );
         }
 
+        // Never send null for tenantSlug.
+        // Omit it completely when there is no school tenant.
         response = await api.post("/auth/login", {
           identifier,
           password: form.password,
-          tenantSlug: tenant?.slug || null,
+          ...(tenant?.slug
+            ? { tenantSlug: tenant.slug }
+            : {}),
         });
       }
+
+      // ================================================
+      // VERIFY SERVER RESPONSE
+      // ================================================
 
       const data = response.data?.data;
       const token = data?.token;
@@ -251,6 +271,10 @@ export default function LoginPageClient() {
         );
       }
 
+      // ================================================
+      // BUILD AUTHENTICATED USER
+      // ================================================
+
       const fullName = [
         rawUser.firstName,
         rawUser.lastName,
@@ -281,9 +305,12 @@ export default function LoginPageClient() {
         isActive: rawUser.isActive,
       };
 
+      // ================================================
+      // SAVE SESSION AND REDIRECT
+      // ================================================
+
       setSession(token, user);
 
-      // Redirect according to the authenticated role.
       window.location.href = getDashboardRoute(user.role);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
@@ -366,24 +393,26 @@ export default function LoginPageClient() {
       </div>
 
       <div className="relative mx-auto grid max-w-6xl items-center gap-6 lg:grid-cols-2">
-        {/* School branding */}
+
+        {/* SCHOOL BRANDING */}
         <div className="hidden lg:block">
           <TenantBrandCard tenant={tenant} />
         </div>
 
-        {/* Login card */}
+        {/* LOGIN CARD */}
         <div className="mx-auto w-full max-w-lg">
           <div className="card overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-900/90 p-5 shadow-2xl shadow-black/20 sm:p-8">
-            {/* Mobile school branding */}
+
+            {/* MOBILE SCHOOL BRANDING */}
             <div className="mb-6 lg:hidden">
               <div className="mb-3 flex items-center gap-3">
-              {tenant?.logoUrl ? (
-  <img
-    src={tenant.logoUrl}
-    alt={tenant.schoolName || "School logo"}
-    className="h-12 w-12 rounded-xl bg-white object-contain p-1"
-  />
-) : (
+                {tenant?.logoUrl ? (
+                  <img
+                    src={tenant.logoUrl}
+                    alt={tenant.schoolName || "School logo"}
+                    className="h-12 w-12 rounded-xl bg-white object-contain p-1"
+                  />
+                ) : (
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">
                     <School size={25} />
                   </div>
@@ -401,7 +430,7 @@ export default function LoginPageClient() {
               </div>
             </div>
 
-            {/* Heading */}
+            {/* HEADING */}
             <div>
               <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">
                 <Lock size={23} />
@@ -424,7 +453,7 @@ export default function LoginPageClient() {
               )}
             </div>
 
-            {/* Account type selector */}
+            {/* ACCOUNT TYPE SELECTOR */}
             <div className="mt-7 grid grid-cols-2 gap-2 rounded-xl bg-slate-800/80 p-1">
               <button
                 type="button"
@@ -455,18 +484,20 @@ export default function LoginPageClient() {
               </button>
             </div>
 
-            {/* Login description */}
+            {/* LOGIN DESCRIPTION */}
             <p className="mt-5 text-sm leading-6 text-slate-400">
               {mode === "student"
                 ? "Sign in using the admission number and password provided by your school."
                 : "Sign in using your registered email address or school-issued Employee ID."}
             </p>
 
-            {/* Login form */}
+            {/* LOGIN FORM */}
             <form
               onSubmit={handleSubmit}
               className="mt-6 space-y-5"
             >
+
+              {/* STUDENT / STAFF IDENTIFIER */}
               {mode === "student" ? (
                 <div>
                   <label
@@ -546,7 +577,7 @@ export default function LoginPageClient() {
                 </div>
               )}
 
-              {/* Password */}
+              {/* PASSWORD */}
               <div>
                 <label
                   htmlFor="password"
@@ -602,7 +633,7 @@ export default function LoginPageClient() {
                 </div>
               </div>
 
-              {/* Error message */}
+              {/* ERROR MESSAGE */}
               {error && (
                 <div
                   role="alert"
@@ -612,7 +643,7 @@ export default function LoginPageClient() {
                 </div>
               )}
 
-              {/* Submit */}
+              {/* SUBMIT */}
               <button
                 type="submit"
                 disabled={loading}
@@ -637,7 +668,7 @@ export default function LoginPageClient() {
               </button>
             </form>
 
-            {/* Help text */}
+            {/* HELP TEXT */}
             <div className="mt-6 border-t border-slate-700 pt-5">
               {mode === "student" ? (
                 <p className="text-center text-xs leading-5 text-slate-400">
