@@ -6,7 +6,12 @@ export const loginSchema = z.object({
   // email remains supported for existing frontend clients.
   identifier: z.string().trim().min(1).max(254).optional(),
   email: z.string().trim().optional(),
-  tenantSlug: z.string().trim().min(1).max(100).optional(),
+tenantSlug: z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .nullish(),
   password: z.string().min(1).max(128),
 }).transform((data) => ({
   ...data,
