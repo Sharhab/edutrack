@@ -1038,10 +1038,11 @@ export async function resetTeacherPassword(
   }
 
   user.passwordHash = newHash;
-  user.passwordChangedAt = new Date();
+user.passwordChangedAt = new Date();
+user.mustChangePassword = true;
 
-  await user.save();
-
+await user.save();
+  
   return {
     teacherId: String(teacher._id),
     email: user.email,
