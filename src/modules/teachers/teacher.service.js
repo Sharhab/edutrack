@@ -1052,7 +1052,7 @@ export async function resetTeacherPassword(
 
   user.passwordHash = newHash;
 user.passwordChangedAt = new Date();
-user.mustChangePassword: false,
+user.mustChangePassword = false;
 
 await user.save();
   
