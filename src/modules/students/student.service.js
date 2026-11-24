@@ -1079,6 +1079,7 @@ export async function generateMissingStudentLoginAccounts(schoolId) {
  * - Returns plaintext credentials once only.
  * - Never stores plaintext passwords.
  */
+
 export async function regenerateStudentLoginCredentials(
   schoolId,
   { classId, offset = 0 } = {}
@@ -1092,9 +1093,11 @@ export async function regenerateStudentLoginCredentials(
     );
   }
 
+  const batchOffset = Number(offset);
+
   if (
-    !Number.isInteger(Number(offset)) ||
-    Number(offset) < 0
+    !Number.isSafeInteger(batchOffset) ||
+    batchOffset < 0
   ) {
     throw new ApiError(400, "Invalid batch offset");
   }
@@ -1108,11 +1111,23 @@ export async function regenerateStudentLoginCredentials(
     filter.classId = await validateClassId(classId, schoolId);
   }
 
+  // Count the complete selection before processing this batch.
+  const totalEligible = await Student.countDocuments(filter);
+
+  if (batchOffset > totalEligible) {
+    throw new ApiError(
+      400,
+      "Invalid batch offset. Refresh the student list and start again."
+    );
+  }
+
   const students = await Student.find(filter)
-    .select("_id schoolId classId admissionNumber firstName lastName status")
+    .select(
+      "_id schoolId classId admissionNumber firstName lastName status"
+    )
     .populate("classId", "name")
     .sort({ createdAt: 1, _id: 1 })
-    .skip(Number(offset))
+    .skip(batchOffset)
     .limit(200);
 
   const results = [];
@@ -1130,14 +1145,20 @@ export async function regenerateStudentLoginCredentials(
       let temporaryPassword;
 
       if (account) {
+        // Do not silently reactivate disabled login accounts.
         if (!account.isActive) {
+          failed++;
+
           results.push({
             studentId: String(student._id),
             student: `${student.firstName} ${student.lastName}`.trim(),
             admissionNumber: student.admissionNumber,
+            className: student.classId?.name || "",
             success: false,
-            message: "Login account is disabled. Activate it before regeneration.",
+            message:
+              "Login account is disabled. Activate it before regeneration.",
           });
+
           continue;
         }
 
@@ -1151,6 +1172,7 @@ export async function regenerateStudentLoginCredentials(
         );
 
         account.passwordChangedAt = new Date();
+
         await account.save();
       } else {
         const created = await createStudentLoginAccount(
@@ -1159,17 +1181,22 @@ export async function regenerateStudentLoginCredentials(
         );
 
         if (!created.created || !created.credentials) {
+          failed++;
+
           results.push({
             studentId: String(student._id),
             student: `${student.firstName} ${student.lastName}`.trim(),
             admissionNumber: student.admissionNumber,
+            className: student.classId?.name || "",
             success: false,
             message: "Could not create login account.",
           });
+
           continue;
         }
 
-        temporaryPassword = created.credentials.temporaryPassword;
+        temporaryPassword =
+          created.credentials.temporaryPassword;
       }
 
       regenerated++;
@@ -1189,36 +1216,46 @@ export async function regenerateStudentLoginCredentials(
     } catch (error) {
       failed++;
 
+      // Do not expose internal errors or password data.
+      console.error(
+        "Student login regeneration failed:",
+        student._id,
+        error.message
+      );
+
       results.push({
         studentId: String(student._id),
         student: `${student.firstName} ${student.lastName}`.trim(),
         admissionNumber: student.admissionNumber,
+        className: student.classId?.name || "",
         success: false,
         message: "Unable to regenerate this student's login.",
       });
     }
   }
 
-  const nextOffset = Number(offset) + students.length;
+  const nextOffset = batchOffset + students.length;
 
-  const remaining = await Student.countDocuments({
-    ...filter,
-    _id: {
-      $nin: students.map((student) => student._id),
-    },
-  });
+  // Calculate remaining records from the full selection,
+  // not just the records outside the current batch.
+  const remaining = Math.max(
+    0,
+    totalEligible - nextOffset
+  );
 
   return {
+    totalEligible,
     processed: students.length,
     regenerated,
     failed,
-    offset: Number(offset),
+    offset: batchOffset,
     nextOffset,
     hasMore: remaining > 0,
     remaining,
     results,
   };
 }
+
 /**
  * RESET STUDENT PASSWORD
  * School admins can reset passwords only for active
