@@ -168,11 +168,7 @@ export async function deleteStudentHandler(req, res) {
 }
 
 
-export async function resetStudentPasswordHandler(
-  req,
-  res,
-  next
-) {
+export async function resetStudentPasswordHandler(req, res, next) {
   try {
     const { temporaryPassword } = req.body;
 
@@ -183,8 +179,7 @@ export async function resetStudentPasswordHandler(
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Temporary password must be between 12 and 128 characters",
+        message: "Temporary password must be between 12 and 128 characters",
       });
     }
 
@@ -194,7 +189,6 @@ export async function resetStudentPasswordHandler(
       temporaryPassword
     );
 
-    // Record the reset without storing the password.
     await logSchoolAdminActivity({
       user: req.user,
       action: "student_password_reset",
@@ -207,27 +201,6 @@ export async function resetStudentPasswordHandler(
         passwordReset: true,
       },
     });
-
-    return res.status(200).json({
-      success: true,
-      message: "Student password reset successfully",
-      data: {
-        studentId: data.studentId,
-        admissionNumber: data.admissionNumber,
-        reset: true,
-        passwordChangedAt: data.passwordChangedAt,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-    const data = await resetStudentPassword(
-      req.params.id,
-      req.user.schoolId,
-      temporaryPassword
-    );
 
     return res.status(200).json({
       success: true,
