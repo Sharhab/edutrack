@@ -715,75 +715,101 @@ export default function ResultEntryPage() {
      MANUAL SAVE ALL SCORES AS DRAFT
   ===================================================== */
 
-  async function saveDraft() {
-    if (savingLock.current) return;
 
-    if (!classId || !subjectId || !sessionId || !termId) {
-      setPageError(
-        "Select a class, subject, session, and term first."
-      );
-      return;
-    }
+async function saveDraft() {
+  if (savingLock.current) return;
 
-    if (hasPublishedResults) {
-      setPageError(
-        "Published or locked results cannot be edited. Contact your school administrator."
-      );
-      return;
-    }
-
-    const snapshot = studentsRef.current.map((student) => ({
-      ...student,
-    }));
-
-    if (!snapshot.length) {
-      setPageError("There are no student results to save.");
-      return;
-    }
-
-    if (getScoreSnapshot(snapshot) === savedSnapshotRef.current) {
-      setPageMessage("All scores are already saved.");
-      setPageError("");
-      return;
-    }
-
-    savingLock.current = true;
-    setSaving(true);
-    setPageError("");
-    setPageMessage("");
-
-    try {
-      await bulkUpsertResults({
-        classId,
-        subjectId,
-        sessionId,
-        termId,
-        results: snapshot.map((student) => ({
-          studentId: student.studentId,
-          scores: student.scores,
-
-          // Keep legacy fields for existing reports and integrations.
-          ca1: student.ca1,
-          ca2: student.ca2,
-          assignment: student.assignment,
-          exam: student.exam,
-        })),
-      });
-
-      savedSnapshotRef.current = getScoreSnapshot(snapshot);
-
-      setPageMessage(
-        `Successfully saved ${snapshot.length} student result(s) as draft.`
-      );
-    } catch (error) {
-      setPageError(
-        getApiError(error, "Failed to save results. Please try again.")
-      );
-    } finally {
-      savingLock.current = false;
-      setSaving(false);
-    }
+  if (!classId || !subjectId || !sessionId || !termId) {
+    setPageError("Select a class, subject, session, and term first.");
+    return;
   }
+
+  if (hasPublishedResults) {
+    setPageError(
+      "Published or locked results cannot be edited. Contact your school administrator."
+    );
+    return;
+  }
+
+  const snapshot = studentsRef.current.map((student) => ({
+    ...student,
+    scores: { ...student.scores },
+  }));
+
+  if (!snapshot.length) {
+    setPageError("There are no students to save.");
+    return;
+  }
+
+  // Find only students whose scores have changed.
+  const previousSnapshot = savedSnapshotRef.current
+    ? JSON.parse(savedSnapshotRef.current)
+    : [];
+
+  const previousByStudent = new Map(
+    previousSnapshot.map((item: any) => [
+      item.studentId,
+      JSON.stringify(item.scores),
+    ])
+  );
+
+  const changedStudents = snapshot.filter((student) => {
+    const previousScores = previousByStudent.get(student.studentId);
+    const currentScores = JSON.stringify(student.scores);
+
+    // Save new scores, edited scores, and scores cleared by the teacher.
+    if (previousScores === undefined) {
+      return Object.values(student.scores).some(
+        (score) => score !== null && score !== undefined
+      );
+    }
+
+    return currentScores !== previousScores;
+  });
+
+  if (changedStudents.length === 0) {
+    setPageMessage("There are no score changes to save.");
+    setPageError("");
+    return;
+  }
+
+  savingLock.current = true;
+  setSaving(true);
+  setPageError("");
+  setPageMessage("");
+
+  try {
+    await bulkUpsertResults({
+      classId,
+      subjectId,
+      sessionId,
+      termId,
+      results: changedStudents.map((student) => ({
+        studentId: student.studentId,
+        scores: student.scores,
+        ca1: student.ca1,
+        ca2: student.ca2,
+        assignment: student.assignment,
+        exam: student.exam,
+      })),
+    });
+
+    savedSnapshotRef.current = getScoreSnapshot(snapshot);
+
+    setPageMessage(
+      `Successfully saved ${changedStudents.length} student result(s) as draft.`
+    );
+    setPageError("");
+  } catch (error) {
+    setPageError(
+      getApiError(error, "Failed to save results. Please try again.")
+    );
+  } finally {
+    savingLock.current = false;
+    setSaving(false);
+  }
+}
+
 
   /* =====================================================
      TRAIT ASSESSMENTS
