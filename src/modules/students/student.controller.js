@@ -12,6 +12,7 @@ import {
    bulkUpsertStudents,
   generateMissingStudentLoginAccounts,
   resetStudentPassword,
+  regenerateStudentLoginCredentials,
 } from "./student.service.js";
 import { logSchoolAdminActivity } from "../school-monitoring/school-admin-activity.service.js";
 
@@ -45,6 +46,44 @@ console.log("==========================================");
       success: true,
       message: "Students bulk processed successfully",
       data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+export async function regenerateStudentLoginCredentialsHandler(
+  req,
+  res,
+  next
+) {
+  try {
+    const { classId, offset = 0 } = req.body || {};
+
+    const data = await regenerateStudentLoginCredentials(
+      req.user.schoolId,
+      { classId, offset }
+    );
+
+    await logSchoolAdminActivity({
+      user: req.user,
+      action: "student_login_credentials_regenerated",
+      module: "students",
+      description: "Regenerated student login credentials",
+      entityType: "Student",
+      metadata: {
+        classId: classId || null,
+        processed: data.processed,
+        regenerated: data.regenerated,
+        failed: data.failed,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Student login credential regeneration completed",
+      data,
     });
   } catch (error) {
     next(error);
@@ -84,6 +123,7 @@ export async function createStudentHandler(req, res) {
     data,
   });
 }
+
 export async function listStudentsHandler(req, res) {
   const data = await listStudents(req.user.schoolId, req.query);
 
