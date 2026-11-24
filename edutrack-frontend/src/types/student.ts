@@ -16,6 +16,15 @@ export interface Student {
   address?: string;
   isActive?: boolean;
   createdAt?: string;
+  
+  loginAccount?: {
+    exists: boolean;
+    active: boolean;
+    passwordChangedAt: string | null;
+    lastLogin: string | null;
+    createdAt: string | null;
+  };
+
 }
 
 export interface StudentListResponse {
@@ -57,10 +66,4 @@ export interface StudentFormValues {
   birthCertificateNo?: string;
 }
 
-  loginAccount?: {
-    exists: boolean;
-    active: boolean;
-    passwordChangedAt: string | null;
-    lastLogin: string | null;
-    createdAt: string | null;
-  };
+  
