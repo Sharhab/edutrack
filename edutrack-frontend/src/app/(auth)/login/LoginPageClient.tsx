@@ -375,15 +375,13 @@ export default function LoginPageClient() {
             {/* Mobile school branding */}
             <div className="mb-6 lg:hidden">
               <div className="mb-3 flex items-center gap-3">
-                {tenant?.logo ? (
-                  <img
-                    src={tenant.logo}
-                    alt={
-                      tenant.schoolName || "School logo"
-                    }
-                    className="h-12 w-12 rounded-xl bg-white object-contain p-1"
-                  />
-                ) : (
+              {tenant?.logoUrl ? (
+  <img
+    src={tenant.logoUrl}
+    alt={tenant.schoolName || "School logo"}
+    className="h-12 w-12 rounded-xl bg-white object-contain p-1"
+  />
+) : (
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">
                     <School size={25} />
                   </div>
