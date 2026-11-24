@@ -496,6 +496,7 @@ export async function createStudent(payload, schoolId) {
 /**
  * LIST STUDENTS
  */
+
 export async function listStudents(schoolId, query = {}) {
   const filter = { schoolId };
 
@@ -513,9 +514,7 @@ export async function listStudents(schoolId, query = {}) {
       .map((id) => id.trim())
       .filter(Boolean);
 
-    if (
-      classIds.some((id) => !mongoose.Types.ObjectId.isValid(id))
-    ) {
+    if (classIds.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
       throw new ApiError(400, "Invalid class IDs filter");
     }
 
@@ -544,7 +543,7 @@ export async function listStudents(schoolId, query = {}) {
     ];
   }
 
-  return Student.find(filter)
+  const students = await Student.find(filter)
     .populate("classId", "name level")
     .populate({
       path: "parentIds",
@@ -554,7 +553,40 @@ export async function listStudents(schoolId, query = {}) {
       },
     })
     .sort({ createdAt: -1 });
+
+  const studentIds = students.map((student) => student._id);
+
+  const accounts = await User.find({
+    schoolId,
+    role: STUDENT_ROLE,
+    studentId: { $in: studentIds },
+  }).select(
+    "studentId isActive passwordChangedAt lastLogin createdAt"
+  );
+
+  const accountMap = new Map(
+    accounts.map((account) => [
+      String(account.studentId),
+      account,
+    ])
+  );
+
+  return students.map((student) => {
+    const account = accountMap.get(String(student._id));
+
+    return {
+      ...student.toObject(),
+      loginAccount: {
+        exists: Boolean(account),
+        active: account ? account.isActive : false,
+        passwordChangedAt: account?.passwordChangedAt || null,
+        lastLogin: account?.lastLogin || null,
+        createdAt: account?.createdAt || null,
+      },
+    };
+  });
 }
+
 
 /**
  * GET ONE STUDENT
