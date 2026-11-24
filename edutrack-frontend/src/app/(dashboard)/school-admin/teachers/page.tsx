@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -25,6 +24,7 @@ import { getClassOptions } from "../../../../lib/options";
 import type {
   Teacher,
   TeacherFormValues,
+  TeacherLoginCredentials,
 } from "../../../../types/teacher";
 
 import type { ClassOption } from "../../../../types/options";
@@ -44,10 +44,12 @@ import {
   X,
   Mail,
   GraduationCap,
+  Printer,
+  UserPlus,
 } from "lucide-react";
 
 /* =====================================================
-   FORM DEFAULTS
+   DEFAULT FORM
 ===================================================== */
 
 const initialForm: TeacherFormValues = {
@@ -90,11 +92,15 @@ type PopulatedUser = {
   isActive?: boolean;
 };
 
+/* =====================================================
+   HELPERS
+===================================================== */
+
 function getUser(teacher: Teacher): PopulatedUser {
   return (teacher.userId || {}) as PopulatedUser;
 }
 
-function getTeacherName(teacher: Teacher) {
+function getTeacherName(teacher: Teacher): string {
   const user = getUser(teacher);
 
   return [
@@ -106,17 +112,17 @@ function getTeacherName(teacher: Teacher) {
     .join(" ");
 }
 
-function getTeacherEmail(teacher: Teacher) {
+function getTeacherEmail(teacher: Teacher): string {
   const user = getUser(teacher);
   return user.email || teacher.email || "";
 }
 
-function getTeacherPhone(teacher: Teacher) {
+function getTeacherPhone(teacher: Teacher): string {
   const user = getUser(teacher);
   return user.phone || teacher.phone || "";
 }
 
-function isTeacherActive(teacher: Teacher) {
+function isTeacherActive(teacher: Teacher): boolean {
   const user = getUser(teacher);
 
   if (teacher.status === "inactive") return false;
@@ -124,15 +130,39 @@ function isTeacherActive(teacher: Teacher) {
   return Boolean(user.isActive ?? teacher.isActive ?? true);
 }
 
-function getId(value: any): string {
+function getId(value: unknown): string {
   if (!value) return "";
-  return String(value._id || value);
+
+  if (typeof value === "object" && "_id" in value) {
+    return String((value as { _id: string })._id);
+  }
+
+  return String(value);
 }
 
-function getClassName(value: any): string {
+function getClassName(value: unknown): string {
   if (!value) return "Class";
+
   if (typeof value === "string") return value;
-  return value.name || value.level || "Class";
+
+  if (typeof value === "object") {
+    const item = value as {
+      name?: string;
+      level?: string;
+    };
+
+    return item.name || item.level || "Class";
+  }
+
+  return "Class";
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.message || fallback;
+  }
+
+  return fallback;
 }
 
 function generateSecurePassword(): string {
@@ -171,6 +201,20 @@ function generateSecurePassword(): string {
   return characters.join("");
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+
+    return entities[character];
+  });
+}
+
 /* =====================================================
    PAGE
 ===================================================== */
@@ -193,6 +237,17 @@ export default function TeachersPage() {
     ...initialForm,
   });
 
+  // One-time credentials returned after teacher creation.
+  const [createdCredentials, setCreatedCredentials] =
+    useState<TeacherLoginCredentials | null>(null);
+
+  const [credentialTeacherName, setCredentialTeacherName] =
+    useState("");
+
+  const [credentialCopyMessage, setCredentialCopyMessage] =
+    useState("");
+
+  // Password reset.
   const [resetTarget, setResetTarget] = useState<Teacher | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [resetSubmitting, setResetSubmitting] = useState(false);
@@ -217,12 +272,11 @@ export default function TeachersPage() {
       setItems(teachersData || []);
       setClasses(classData || []);
     } catch (error) {
-      const message = axios.isAxiosError(error)
-        ? error.response?.data?.message
-        : undefined;
-
       setPageError(
-        message || "Unable to load teachers. Please try again."
+        getErrorMessage(
+          error,
+          "Unable to load teachers. Please try again."
+        )
       );
     } finally {
       setLoading(false);
@@ -234,7 +288,7 @@ export default function TeachersPage() {
   }, [loadData]);
 
   /* =====================================================
-     FILTERING AND STATISTICS
+     FILTERS AND STATISTICS
   ===================================================== */
 
   const filtered = useMemo(() => {
@@ -243,14 +297,10 @@ export default function TeachersPage() {
     if (!query) return items;
 
     return items.filter((teacher) => {
-      const name = getTeacherName(teacher).toLowerCase();
-      const email = getTeacherEmail(teacher).toLowerCase();
-      const phone = getTeacherPhone(teacher).toLowerCase();
-
       return (
-        name.includes(query) ||
-        email.includes(query) ||
-        phone.includes(query) ||
+        getTeacherName(teacher).toLowerCase().includes(query) ||
+        getTeacherEmail(teacher).toLowerCase().includes(query) ||
+        getTeacherPhone(teacher).toLowerCase().includes(query) ||
         (teacher.employeeId || "").toLowerCase().includes(query)
       );
     });
@@ -289,141 +339,137 @@ export default function TeachersPage() {
     setOpen(true);
   }
 
-  
-function openEdit(teacher: Teacher) {
-  const user = getUser(teacher);
+  function openEdit(teacher: Teacher) {
+    const user = getUser(teacher);
 
-  setSelected(teacher);
-  setActionError("");
-  setNotice("");
+    setSelected(teacher);
+    setActionError("");
+    setNotice("");
 
-  setForm({
-    ...initialForm,
+    setForm({
+      ...initialForm,
 
-    // Personal information
-    firstName: user.firstName || teacher.firstName || "",
-    middleName: teacher.middleName || "",
-    lastName: user.lastName || teacher.lastName || "",
-    gender: teacher.gender || "male",
-    dateOfBirth: teacher.dateOfBirth
-      ? String(teacher.dateOfBirth).substring(0, 10)
-      : "",
-    maritalStatus: teacher.maritalStatus || "",
+      firstName: user.firstName || teacher.firstName || "",
+      middleName: teacher.middleName || "",
+      lastName: user.lastName || teacher.lastName || "",
+      gender: teacher.gender || "male",
 
-    // Contact
-    email: user.email || teacher.email || "",
-    phone: user.phone || teacher.phone || "",
-    address: teacher.address || "",
+      dateOfBirth: teacher.dateOfBirth
+        ? String(teacher.dateOfBirth).substring(0, 10)
+        : "",
 
-    // Location
-    stateOfOrigin: teacher.stateOfOrigin || "",
-    lga: teacher.lga || "",
-    nationality: teacher.nationality || "Nigerian",
+      maritalStatus: teacher.maritalStatus || "",
 
-    // Employment
-    employeeId: teacher.employeeId || "",
-    qualification: teacher.qualification || "",
-    designation: teacher.designation || "",
-    staffCategory: teacher.staffCategory || "",
-    employmentDate: teacher.employmentDate
-      ? String(teacher.employmentDate).substring(0, 10)
-      : "",
-    employmentType: teacher.employmentType || "full_time",
+      email: user.email || teacher.email || "",
+      phone: user.phone || teacher.phone || "",
+      address: teacher.address || "",
 
-    // Class access
-    classIds: (teacher.classIds || [])
-      .map(getId)
-      .filter(Boolean),
+      stateOfOrigin: teacher.stateOfOrigin || "",
+      lga: teacher.lga || "",
+      nationality: teacher.nationality || "Nigerian",
 
-    // Subject assignments remain managed separately.
-    subjectIds: [],
+      employeeId: teacher.employeeId || "",
+      qualification: teacher.qualification || "",
+      designation: teacher.designation || "",
+      staffCategory: teacher.staffCategory || "",
 
-    // Emergency contact
-    emergencyName: teacher.emergencyName || "",
-    emergencyPhone: teacher.emergencyPhone || "",
+      employmentDate: teacher.employmentDate
+        ? String(teacher.employmentDate).substring(0, 10)
+        : "",
 
-    // Optional medical information
-    bloodGroup: teacher.bloodGroup || "",
-    genotype: teacher.genotype || "",
+      employmentType: teacher.employmentType || "full_time",
 
-    // Identification
-    nin: teacher.nin || "",
-    photo: teacher.photo || "",
+      classIds: (teacher.classIds || [])
+        .map(getId)
+        .filter(Boolean),
 
-    // Account
-    isActive: isTeacherActive(teacher),
-    status: isTeacherActive(teacher) ? "active" : "inactive",
-
-    // Never prefill an existing password.
-    password: "",
-  });
-
-  setOpen(true);
-}
-
-  
-async function handleSave() {
-  setActionError("");
-
-  if (!form.firstName.trim() || !form.lastName.trim()) {
-    setActionError("First name and last name are required.");
-    return;
-  }
-
-  if (!form.classIds?.length) {
-    setActionError("Assign at least one class to this teacher.");
-    return;
-  }
-
-  // Backend requires a password when creating a new teacher.
-  if (!selected && form.password.trim().length < 6) {
-    setActionError(
-      "Enter a password containing at least 6 characters."
-    );
-    return;
-  }
-
-  if (selected && form.password.trim()) {
-    setActionError(
-      "Use Reset Password to change an existing teacher's password."
-    );
-    return;
-  }
-
-  try {
-    setSubmitting(true);
-
-    const payload: TeacherFormValues = {
-      ...form,
+      // Subject assignments remain managed separately.
       subjectIds: [],
-      status: form.isActive ? "active" : "inactive",
-    };
 
-    if (selected?._id) {
-      await updateTeacher(selected._id, payload);
-      setNotice("Teacher profile updated successfully.");
-    } else {
-      await createTeacher(payload);
-      setNotice("Teacher created successfully.");
+      emergencyName: teacher.emergencyName || "",
+      emergencyPhone: teacher.emergencyPhone || "",
+
+      bloodGroup: teacher.bloodGroup || "",
+      genotype: teacher.genotype || "",
+
+      nin: teacher.nin || "",
+      photo: teacher.photo || "",
+
+      isActive: isTeacherActive(teacher),
+      status: isTeacherActive(teacher) ? "active" : "inactive",
+
+      // Never prefill an existing password.
+      password: "",
+    });
+
+    setOpen(true);
+  }
+
+  async function handleSave() {
+    setActionError("");
+
+    if (!form.firstName.trim() || !form.lastName.trim()) {
+      setActionError("First name and last name are required.");
+      return;
     }
 
-    setOpen(false);
-    resetForm();
+    if (!form.classIds?.length) {
+      setActionError("Assign at least one class to this teacher.");
+      return;
+    }
 
-    await loadData();
-  } catch (error: unknown) {
-    const message = axios.isAxiosError(error)
-      ? error.response?.data?.message
-      : undefined;
+    if (selected && form.password.trim()) {
+      setActionError(
+        "Use Reset Password to change an existing teacher's password."
+      );
+      return;
+    }
 
-    setActionError(
-      message || "Unable to save teacher. Please try again."
-    );
-  } finally {
-    setSubmitting(false);
+    try {
+      setSubmitting(true);
+
+      const payload: TeacherFormValues = {
+        ...form,
+        subjectIds: [],
+        status: form.isActive ? "active" : "inactive",
+        password: "",
+      };
+
+      if (selected?._id) {
+        await updateTeacher(selected._id, payload);
+
+        setNotice("Teacher profile updated successfully.");
+      } else {
+        const created = await createTeacher(payload);
+
+        const credentials = created.loginCredentials || null;
+
+        setCredentialTeacherName(
+          `${payload.firstName} ${payload.lastName}`.trim()
+        );
+
+        setCreatedCredentials(credentials);
+        setCredentialCopyMessage("");
+
+        setNotice(
+          credentials
+            ? "Teacher created successfully. Save the login credentials now."
+            : "Teacher created successfully, but the login credentials were not returned. Check the backend create response before creating another account."
+        );
+      }
+
+      setOpen(false);
+      resetForm();
+
+      await loadData();
+    } catch (error) {
+      setActionError(
+        getErrorMessage(error, "Unable to save teacher. Please try again.")
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
-}
-
 
   /* =====================================================
      DELETE TEACHER
@@ -448,12 +494,166 @@ async function handleSave() {
 
       setNotice(`${name} was deleted successfully.`);
       await loadData();
-    } catch (error: any) {
+    } catch (error) {
       setNotice(
-        error?.response?.data?.message ||
-          "Unable to delete teacher."
+        getErrorMessage(error, "Unable to delete teacher.")
       );
     }
+  }
+
+  /* =====================================================
+     NEW TEACHER CREDENTIALS
+  ===================================================== */
+
+  async function copyCreatedCredentials() {
+    if (!createdCredentials) return;
+
+    const text = [
+      "EDUTRACK TEACHER LOGIN",
+      `Name: ${credentialTeacherName}`,
+      `Employee ID: ${createdCredentials.employeeId}`,
+      `Email: ${createdCredentials.email || "Not provided"}`,
+      `Temporary Password: ${createdCredentials.temporaryPassword}`,
+      "",
+      "Please change your password after your first login.",
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCredentialCopyMessage("Login details copied successfully.");
+    } catch {
+      setCredentialCopyMessage(
+        "Copy failed. Select and copy the credentials manually."
+      );
+    }
+  }
+
+  function printCreatedCredentials() {
+    if (!createdCredentials) return;
+
+    const printWindow = window.open("", "_blank", "width=700,height=750");
+
+    if (!printWindow) {
+      setCredentialCopyMessage(
+        "The print window was blocked. Allow pop-ups and try again."
+      );
+      return;
+    }
+
+    const name = escapeHtml(credentialTeacherName);
+    const employeeId = escapeHtml(createdCredentials.employeeId);
+    const email = escapeHtml(
+      createdCredentials.email || "Not provided"
+    );
+    const password = escapeHtml(
+      createdCredentials.temporaryPassword
+    );
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Teacher Login Credentials</title>
+          <meta charset="UTF-8" />
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              padding: 35px;
+              color: #172033;
+            }
+            .slip {
+              max-width: 520px;
+              margin: 20px auto;
+              border: 2px solid #0e7490;
+              border-radius: 14px;
+              padding: 28px;
+            }
+            h1 {
+              color: #0e7490;
+              font-size: 23px;
+              margin-bottom: 5px;
+            }
+            .subtitle {
+              color: #64748b;
+              margin-bottom: 25px;
+            }
+            .field {
+              padding: 12px;
+              margin: 10px 0;
+              background: #f1f5f9;
+              border-radius: 8px;
+            }
+            .label {
+              display: block;
+              font-size: 11px;
+              color: #64748b;
+              text-transform: uppercase;
+              margin-bottom: 5px;
+            }
+            .value {
+              font-size: 16px;
+              font-weight: bold;
+              overflow-wrap: anywhere;
+            }
+            .warning {
+              margin-top: 22px;
+              padding: 12px;
+              background: #ecfeff;
+              border-radius: 8px;
+              font-size: 13px;
+            }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="slip">
+            <h1>EduTrack</h1>
+            <p class="subtitle">Teacher Login Credentials</p>
+
+            <div class="field">
+              <span class="label">Teacher Name</span>
+              <span class="value">${name}</span>
+            </div>
+
+            <div class="field">
+              <span class="label">Employee ID</span>
+              <span class="value">${employeeId}</span>
+            </div>
+
+            <div class="field">
+              <span class="label">Email</span>
+              <span class="value">${email}</span>
+            </div>
+
+            <div class="field">
+              <span class="label">Temporary Password</span>
+              <span class="value">${password}</span>
+            </div>
+
+            <div class="warning">
+              Keep these credentials private. Change your password
+              immediately after your first successful login.
+            </div>
+          </div>
+
+          <script>
+            window.onload = function () {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+  }
+
+  function closeCredentialsModal() {
+    setCreatedCredentials(null);
+    setCredentialTeacherName("");
+    setCredentialCopyMessage("");
   }
 
   /* =====================================================
@@ -522,10 +722,9 @@ async function handleSave() {
       );
 
       setResetSuccess(true);
-    } catch (error: any) {
+    } catch (error) {
       setResetError(
-        error?.response?.data?.message ||
-          "Password reset failed. Please try again."
+        getErrorMessage(error, "Password reset failed. Please try again.")
       );
     } finally {
       setResetSubmitting(false);
@@ -535,6 +734,7 @@ async function handleSave() {
   async function copyTemporaryPassword() {
     try {
       await navigator.clipboard.writeText(temporaryPassword);
+
       setCopyMessage(
         "Password copied. Share it privately with the teacher."
       );
@@ -556,7 +756,7 @@ async function handleSave() {
   }
 
   /* =====================================================
-     LOADING AND ERROR STATES
+     LOADING
   ===================================================== */
 
   if (loading) return <PageLoader />;
@@ -592,7 +792,7 @@ async function handleSave() {
         title="Teachers"
         subtitle="Manage teacher profiles, class assignments and account access."
       >
-        {/* OVERVIEW */}
+        {/* STATISTICS */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <div className="flex items-center justify-between gap-3">
@@ -665,7 +865,9 @@ async function handleSave() {
             className="mb-4 flex items-start gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 text-sm text-cyan-200"
           >
             <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+
             <span className="flex-1">{notice}</span>
+
             <button
               type="button"
               onClick={() => setNotice("")}
@@ -676,7 +878,7 @@ async function handleSave() {
           </div>
         )}
 
-        {/* TEACHER LIST */}
+        {/* TEACHER TABLE */}
         {filtered.length === 0 ? (
           <EmptyState
             title={search ? "No matching teachers" : "No teachers yet"}
@@ -706,7 +908,6 @@ async function handleSave() {
 
               <tbody className="divide-y divide-white/10">
                 {filtered.map((teacher) => {
-                  const user = getUser(teacher);
                   const active = isTeacherActive(teacher);
                   const assignedClasses = teacher.classIds || [];
 
@@ -731,7 +932,7 @@ async function handleSave() {
                       </td>
 
                       <td className="px-4 py-3 text-slate-300">
-                        {user.phone || teacher.phone || "—"}
+                        {getTeacherPhone(teacher) || "—"}
                       </td>
 
                       <td className="px-4 py-3 capitalize text-slate-300">
@@ -754,7 +955,7 @@ async function handleSave() {
                             </span>
                           ) : (
                             assignedClasses.slice(0, 3).map(
-                              (classItem: any, index: number) => (
+                              (classItem, index) => (
                                 <span
                                   key={getId(classItem) || index}
                                   className="rounded-md bg-purple-500/10 px-2 py-1 text-xs text-purple-300"
@@ -852,7 +1053,10 @@ async function handleSave() {
         </p>
       </SectionCard>
 
-      {/* ADD / EDIT TEACHER */}
+      {/* =================================================
+          ADD / EDIT TEACHER
+      ================================================= */}
+
       <Modal
         open={open}
         title={selected ? "Edit Teacher" : "Add Teacher"}
@@ -889,11 +1093,119 @@ async function handleSave() {
         </div>
       </Modal>
 
-      {/* RESET PASSWORD */}
+      {/* =================================================
+          NEW TEACHER LOGIN CREDENTIALS
+      ================================================= */}
+
+      <Modal
+        open={Boolean(createdCredentials)}
+        title="Teacher Account Created"
+        description="Save these login details and share them privately with the teacher."
+        onClose={closeCredentialsModal}
+      >
+        {createdCredentials && (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <CheckCircle2 size={22} />
+                </div>
+
+                <div>
+                  <p className="font-semibold text-emerald-300">
+                    Account created successfully
+                  </p>
+
+                  <p className="mt-1 text-sm text-slate-300">
+                    {credentialTeacherName}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Employee ID
+                </p>
+                <p className="mt-1 break-all font-semibold text-white">
+                  {createdCredentials.employeeId}
+                </p>
+              </div>
+
+              <div className="border-t border-white/10 pt-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Email
+                </p>
+                <p className="mt-1 break-all text-white">
+                  {createdCredentials.email || "No email provided"}
+                </p>
+              </div>
+
+              <div className="border-t border-white/10 pt-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Temporary Password
+                </p>
+                <p className="mt-1 break-all font-mono text-lg font-semibold text-cyan-300">
+                  {createdCredentials.temporaryPassword}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-200">
+              <p className="font-medium">Important security notice</p>
+              <p className="mt-1">
+                This temporary password is shown only now. Share it
+                privately with the teacher. The teacher should change
+                it after the first login.
+              </p>
+            </div>
+
+            {credentialCopyMessage && (
+              <p role="status" className="text-sm text-slate-300">
+                {credentialCopyMessage}
+              </p>
+            )}
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => void copyCreatedCredentials()}
+                className="btn-secondary inline-flex flex-1 items-center justify-center gap-2"
+              >
+                <Copy size={16} />
+                Copy Credentials
+              </button>
+
+              <button
+                type="button"
+                onClick={printCreatedCredentials}
+                className="btn-primary inline-flex flex-1 items-center justify-center gap-2"
+              >
+                <Printer size={16} />
+                Print Login Slip
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={closeCredentialsModal}
+              className="btn-secondary w-full"
+            >
+              Done
+            </button>
+          </div>
+        )}
+      </Modal>
+
+      {/* =================================================
+          RESET TEACHER PASSWORD
+      ================================================= */}
+
       <Modal
         open={Boolean(resetTarget)}
         title="Reset Teacher Password"
-        description="Set a new password for the selected teacher account."
+        description="Set a new temporary password for the selected teacher account."
         onClose={closeResetModal}
       >
         {resetTarget && (
@@ -968,8 +1280,9 @@ async function handleSave() {
                 </div>
 
                 <p className="text-xs text-slate-400">
-                  A secure password is generated automatically. You can
-                  regenerate or edit it. Minimum length: 12 characters.
+                  A secure password is generated automatically.
+                  You can regenerate or edit it. Minimum length:
+                  12 characters.
                 </p>
 
                 {temporaryPassword.length > 0 &&
@@ -1006,8 +1319,7 @@ async function handleSave() {
                     </p>
 
                     <p className="mt-1 text-sm text-slate-300">
-                      The new password has been saved. Share it privately
-                      with the teacher.
+                      Share the new password privately with the teacher.
                     </p>
                   </div>
                 </div>
