@@ -1,10 +1,9 @@
 
-
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import { Save, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw, Save } from "lucide-react";
 
 import SectionCard from "../../../../../components/ui/SectionCard";
 import PageLoader from "../../../../../components/ui/PageLoader";
@@ -28,9 +27,9 @@ import {
   type ClassStudentTraitAssessment,
 } from "../../../../../lib/trait-assessments";
 
-/* =========================================
+/* =====================================================
    TYPES
-========================================= */
+===================================================== */
 
 type StudentTraitDraft = {
   psychomotor: TraitRating[];
@@ -91,6 +90,10 @@ const TRAIT_RATINGS = [
   { value: 1, label: "1 - Needs Improvement" },
 ];
 
+/* =====================================================
+   HELPERS
+===================================================== */
+
 function emptyTraitDraft(): StudentTraitDraft {
   return {
     psychomotor: [],
@@ -131,10 +134,6 @@ function getStudentFullName(student: any): string {
     .join(" ");
 }
 
-/* =========================================
-   SCORE CALCULATION
-========================================= */
-
 function calculateStudentResult(
   scores: Record<string, number | null>,
   components: AssessmentComponent[]
@@ -155,7 +154,7 @@ function calculateStudentResult(
     return { total: 0, grade: "", remark: "" };
   }
 
-  // Preview only. Backend grading scale remains authoritative.
+  // Preview only. The backend grading scale remains authoritative.
   let grade = "F";
   let remark = "Fail";
 
@@ -187,7 +186,7 @@ function normalizeScoresForScheme(
 
   for (const component of components) {
     next[component.key] = toNumberOrNull(
-      existingScores[component.key]
+      existingScores?.[component.key]
     );
   }
 
@@ -205,9 +204,30 @@ function getLegacyFields(
   };
 }
 
-/* =========================================
+function getScoreSnapshot(students: StudentRow[]) {
+  return JSON.stringify(
+    students.map((student) => ({
+      studentId: student.studentId,
+      scores: student.scores,
+    }))
+  );
+}
+
+function getApiError(error: unknown, fallback: string) {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.message || fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+/* =====================================================
    PAGE
-========================================= */
+===================================================== */
 
 export default function ResultEntryPage() {
   const [loading, setLoading] = useState(true);
@@ -228,6 +248,12 @@ export default function ResultEntryPage() {
   const [students, setStudents] = useState<StudentRow[]>([]);
   const studentsRef = useRef<StudentRow[]>([]);
 
+  // Snapshot of the last successfully loaded or saved scores.
+  const savedSnapshotRef = useRef("");
+
+  // Prevent overlapping batch requests.
+  const savingLock = useRef(false);
+
   const [search, setSearch] = useState("");
   const [pageError, setPageError] = useState("");
   const [pageMessage, setPageMessage] = useState("");
@@ -241,11 +267,6 @@ export default function ResultEntryPage() {
 
   const [traitError, setTraitError] = useState("");
   const [traitMessage, setTraitMessage] = useState("");
-
-  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const savingLock = useRef(false);
 
   const components = useMemo(
     () =>
@@ -284,22 +305,46 @@ export default function ResultEntryPage() {
     [students]
   );
 
+  const hasUnsavedChanges = useMemo(() => {
+    if (!students.length) return false;
+
+    return getScoreSnapshot(students) !== savedSnapshotRef.current;
+  }, [students]);
+
   useEffect(() => {
     studentsRef.current = students;
   }, [students]);
 
-  const cancelAutosave = useCallback(() => {
-    if (autosaveTimer.current) {
-      clearTimeout(autosaveTimer.current);
-      autosaveTimer.current = null;
+  /* =====================================================
+     UNSAVED CHANGES PROTECTION
+  ===================================================== */
+
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!hasUnsavedChanges) return;
+
+      event.preventDefault();
+      event.returnValue = "";
     }
-  }, []);
 
-  useEffect(() => cancelAutosave, [cancelAutosave]);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
-  /* =========================================
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  function confirmDiscardChanges() {
+    if (!hasUnsavedChanges) return true;
+
+    return window.confirm(
+      "You have unsaved score changes. If you continue, those changes will be lost. Do you want to continue?"
+    );
+  }
+
+  /* =====================================================
      LOAD TEACHER CONTEXT
-  ========================================= */
+  ===================================================== */
 
   useEffect(() => {
     let cancelled = false;
@@ -328,7 +373,6 @@ export default function ResultEntryPage() {
 
         setSubjectId(getId(initialSubjects[0]));
 
-        // Use the active academic period returned by the backend.
         setSessionId(
           getId(data?.session) || getId(data?.sessions?.[0])
         );
@@ -339,10 +383,7 @@ export default function ResultEntryPage() {
       } catch (error) {
         if (!cancelled) {
           setPageError(
-            axios.isAxiosError(error)
-              ? error.response?.data?.message ||
-                  "Failed to load teacher context."
-              : "Failed to load teacher context."
+            getApiError(error, "Failed to load teacher context.")
           );
         }
       } finally {
@@ -357,9 +398,9 @@ export default function ResultEntryPage() {
     };
   }, []);
 
-  /* =========================================
+  /* =====================================================
      KEEP SUBJECT VALID FOR SELECTED CLASS
-  ========================================= */
+  ===================================================== */
 
   useEffect(() => {
     if (!classId) {
@@ -376,9 +417,9 @@ export default function ResultEntryPage() {
     }
   }, [classId, availableSubjects, subjectId]);
 
-  /* =========================================
+  /* =====================================================
      LOAD ASSESSMENT SCHEME
-  ========================================= */
+  ===================================================== */
 
   useEffect(() => {
     if (!classId) {
@@ -418,14 +459,11 @@ export default function ResultEntryPage() {
           );
         }
       } catch (error) {
-        if (cancelled) return;
-
-        setPageError(
-          axios.isAxiosError(error)
-            ? error.response?.data?.message ||
-                "Failed to load the assessment scheme."
-            : "Failed to load the assessment scheme."
-        );
+        if (!cancelled) {
+          setPageError(
+            getApiError(error, "Failed to load the assessment scheme.")
+          );
+        }
       } finally {
         if (!cancelled) setSchemeLoading(false);
       }
@@ -438,13 +476,15 @@ export default function ResultEntryPage() {
     };
   }, [classId]);
 
-  /* =========================================
+  /* =====================================================
      LOAD STUDENTS AND EXISTING RESULTS
-  ========================================= */
+  ===================================================== */
 
   useEffect(() => {
     if (!classId || !subjectId || !sessionId || !termId) {
       setStudents([]);
+      studentsRef.current = [];
+      savedSnapshotRef.current = "";
       return;
     }
 
@@ -514,15 +554,12 @@ export default function ResultEntryPage() {
               lastName: student.lastName || "",
               fullName:
                 student.fullName || fullName || "Unnamed student",
-
               admissionNumber: student.admissionNumber || "",
               gender: student.gender || "",
               attendanceStatus:
                 student.attendanceStatus || "present",
-
               scores,
               ...getLegacyFields(scores),
-
               total: result?.total ?? computed.total,
               grade: result?.grade ?? computed.grade,
               remark: result?.remark ?? computed.remark,
@@ -531,14 +568,16 @@ export default function ResultEntryPage() {
           }
         );
 
+        studentsRef.current = mapped;
+        savedSnapshotRef.current = getScoreSnapshot(mapped);
         setStudents(mapped);
       } catch (error) {
         if (!cancelled) {
           setPageError(
-            axios.isAxiosError(error)
-              ? error.response?.data?.message ||
-                  "Failed to load students and saved results."
-              : "Failed to load students and saved results."
+            getApiError(
+              error,
+              "Failed to load students and saved results."
+            )
           );
         }
       } finally {
@@ -551,17 +590,11 @@ export default function ResultEntryPage() {
     return () => {
       cancelled = true;
     };
-  }, [
-    classId,
-    subjectId,
-    sessionId,
-    termId,
-    components,
-  ]);
+  }, [classId, subjectId, sessionId, termId, components]);
 
-  /* =========================================
+  /* =====================================================
      LOAD TRAIT ASSESSMENTS
-  ========================================= */
+  ===================================================== */
 
   useEffect(() => {
     if (!classId || !sessionId || !termId) {
@@ -605,10 +638,7 @@ export default function ResultEntryPage() {
       } catch (error) {
         if (!cancelled) {
           setTraitError(
-            axios.isAxiosError(error)
-              ? error.response?.data?.message ||
-                  "Unable to load trait assessments."
-              : "Unable to load trait assessments."
+            getApiError(error, "Unable to load trait assessments.")
           );
         }
       } finally {
@@ -623,9 +653,10 @@ export default function ResultEntryPage() {
     };
   }, [classId, sessionId, termId]);
 
-  /* =========================================
-     SCORE UPDATES
-  ========================================= */
+  /* =====================================================
+     SCORE ENTRY - LOCAL ONLY
+     NO API CALL HERE
+  ===================================================== */
 
   function updateScore(
     studentId: string,
@@ -678,19 +709,13 @@ export default function ResultEntryPage() {
         };
       })
     );
-
-    cancelAutosave();
-
-    autosaveTimer.current = setTimeout(() => {
-      void saveDraft(false);
-    }, 1200);
   }
 
-  /* =========================================
-     SAVE RESULTS AS DRAFT
-  ========================================= */
+  /* =====================================================
+     MANUAL SAVE ALL SCORES AS DRAFT
+  ===================================================== */
 
-  async function saveDraft(showMessage = true) {
+  async function saveDraft() {
     if (savingLock.current) return;
 
     if (!classId || !subjectId || !sessionId || !termId) {
@@ -716,9 +741,16 @@ export default function ResultEntryPage() {
       return;
     }
 
+    if (getScoreSnapshot(snapshot) === savedSnapshotRef.current) {
+      setPageMessage("All scores are already saved.");
+      setPageError("");
+      return;
+    }
+
     savingLock.current = true;
     setSaving(true);
     setPageError("");
+    setPageMessage("");
 
     try {
       await bulkUpsertResults({
@@ -730,7 +762,7 @@ export default function ResultEntryPage() {
           studentId: student.studentId,
           scores: student.scores,
 
-          // Keep legacy fields for older reports and integrations.
+          // Keep legacy fields for existing reports and integrations.
           ca1: student.ca1,
           ca2: student.ca2,
           assignment: student.assignment,
@@ -738,17 +770,14 @@ export default function ResultEntryPage() {
         })),
       });
 
-      if (showMessage) {
-        setPageMessage("Results saved successfully as draft.");
-      }
+      savedSnapshotRef.current = getScoreSnapshot(snapshot);
+
+      setPageMessage(
+        `Successfully saved ${snapshot.length} student result(s) as draft.`
+      );
     } catch (error) {
       setPageError(
-        axios.isAxiosError(error)
-          ? error.response?.data?.message ||
-              "Failed to save results."
-          : error instanceof Error
-            ? error.message
-            : "Failed to save results."
+        getApiError(error, "Failed to save results. Please try again.")
       );
     } finally {
       savingLock.current = false;
@@ -756,9 +785,9 @@ export default function ResultEntryPage() {
     }
   }
 
-  /* =========================================
+  /* =====================================================
      TRAIT ASSESSMENTS
-  ========================================= */
+  ===================================================== */
 
   function updateTrait(
     studentId: string,
@@ -839,19 +868,16 @@ export default function ResultEntryPage() {
       );
     } catch (error) {
       setTraitError(
-        axios.isAxiosError(error)
-          ? error.response?.data?.message ||
-              "Failed to save trait assessment."
-          : "Failed to save trait assessment."
+        getApiError(error, "Failed to save trait assessment.")
       );
     } finally {
       setSavingTraitStudent(null);
     }
   }
 
-  /* =========================================
+  /* =====================================================
      FILTER STUDENTS
-  ========================================= */
+  ===================================================== */
 
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -867,9 +893,9 @@ export default function ResultEntryPage() {
     );
   }, [students, search]);
 
-  /* =========================================
+  /* =====================================================
      LOADING / EMPTY STATES
-  ========================================= */
+  ===================================================== */
 
   if (loading) return <PageLoader />;
 
@@ -882,18 +908,21 @@ export default function ResultEntryPage() {
     );
   }
 
-  /* =========================================
-     UI
-  ========================================= */
+  /* =====================================================
+     PAGE UI
+  ===================================================== */
 
   return (
     <div className="space-y-6">
+      {/* RESULT ENTRY HEADER */}
+
       <SectionCard
         title="Result Entry Engine"
-        subtitle="Dynamic assessments, live totals and automatic draft saving"
+        subtitle="Enter scores for the whole class, then save them together as a draft."
       >
         <div className="grid gap-4 md:grid-cols-4">
           {/* CLASS */}
+
           <div>
             <label className="mb-2 block text-sm text-slate-400">
               Class
@@ -902,12 +931,15 @@ export default function ResultEntryPage() {
             <select
               value={classId}
               onChange={(event) => {
+                if (!confirmDiscardChanges()) return;
+
                 const nextClassId = event.target.value;
 
-                cancelAutosave();
                 setClassId(nextClassId);
                 setSubjectId("");
                 setStudents([]);
+                studentsRef.current = [];
+                savedSnapshotRef.current = "";
                 setPageError("");
                 setPageMessage("");
               }}
@@ -924,6 +956,7 @@ export default function ResultEntryPage() {
           </div>
 
           {/* SUBJECT */}
+
           <div>
             <label className="mb-2 block text-sm text-slate-400">
               Subject
@@ -932,9 +965,12 @@ export default function ResultEntryPage() {
             <select
               value={subjectId}
               onChange={(event) => {
-                cancelAutosave();
+                if (!confirmDiscardChanges()) return;
+
                 setSubjectId(event.target.value);
                 setStudents([]);
+                studentsRef.current = [];
+                savedSnapshotRef.current = "";
                 setPageError("");
                 setPageMessage("");
               }}
@@ -964,6 +1000,7 @@ export default function ResultEntryPage() {
           </div>
 
           {/* SESSION */}
+
           <div>
             <label className="mb-2 block text-sm text-slate-400">
               Session
@@ -972,7 +1009,8 @@ export default function ResultEntryPage() {
             <select
               value={sessionId}
               onChange={(event) => {
-                cancelAutosave();
+                if (!confirmDiscardChanges()) return;
+
                 setSessionId(event.target.value);
                 setPageError("");
                 setPageMessage("");
@@ -990,6 +1028,7 @@ export default function ResultEntryPage() {
           </div>
 
           {/* TERM */}
+
           <div>
             <label className="mb-2 block text-sm text-slate-400">
               Term
@@ -998,7 +1037,8 @@ export default function ResultEntryPage() {
             <select
               value={termId}
               onChange={(event) => {
-                cancelAutosave();
+                if (!confirmDiscardChanges()) return;
+
                 setTermId(event.target.value);
                 setPageError("");
                 setPageMessage("");
@@ -1016,7 +1056,9 @@ export default function ResultEntryPage() {
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-3">
+        {/* STATUS */}
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <span className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
             Students:{" "}
             <strong className="text-white">
@@ -1024,9 +1066,21 @@ export default function ResultEntryPage() {
             </strong>
           </span>
 
-          <span className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
-            {saving ? "Saving..." : "Ready"}
-          </span>
+          {saving ? (
+            <span className="rounded-full bg-blue-500/15 px-4 py-2 text-sm text-blue-300">
+              Saving scores...
+            </span>
+          ) : hasUnsavedChanges ? (
+            <span className="flex items-center gap-2 rounded-full bg-amber-500/15 px-4 py-2 text-sm text-amber-300">
+              <AlertCircle size={15} />
+              Unsaved Changes
+            </span>
+          ) : (
+            <span className="flex items-center gap-2 rounded-full bg-green-500/15 px-4 py-2 text-sm text-green-300">
+              <CheckCircle2 size={15} />
+              All scores saved
+            </span>
+          )}
 
           {hasPublishedResults && (
             <span className="rounded-full bg-amber-500/20 px-4 py-2 text-sm text-amber-300">
@@ -1041,6 +1095,8 @@ export default function ResultEntryPage() {
           )}
         </div>
       </SectionCard>
+
+      {/* ERRORS AND SUCCESS */}
 
       {pageError && (
         <div
@@ -1109,7 +1165,7 @@ export default function ResultEntryPage() {
 
       <SectionCard
         title="Student Results"
-        subtitle="Enter marks for each configured assessment component"
+        subtitle="Enter all marks first. Use Save Draft when you are ready."
       >
         <div className="mb-5 max-w-md">
           <FormInput
@@ -1195,7 +1251,9 @@ export default function ResultEntryPage() {
                               value={value ?? ""}
                               placeholder="—"
                               disabled={
-                                hasPublishedResults || saving
+                                hasPublishedResults ||
+                                saving ||
+                                studentsLoading
                               }
                               aria-label={`${student.fullName} ${component.label}`}
                               onChange={(event) =>
@@ -1232,40 +1290,54 @@ export default function ResultEntryPage() {
               </table>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            {/* MANUAL SAVE ACTION */}
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
                 type="button"
-                onClick={() => {
-                  cancelAutosave();
-                  void saveDraft(true);
-                }}
+                onClick={() => void saveDraft()}
                 disabled={
                   saving ||
                   students.length === 0 ||
-                  hasPublishedResults
+                  hasPublishedResults ||
+                  !hasUnsavedChanges
                 }
-                className="rounded-2xl bg-cyan-600 px-5 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-2xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Save size={16} className="mr-2 inline" />
-                {saving ? "Saving..." : "Save Draft"}
+                <Save size={17} className="mr-2" />
+                {saving ? "Saving Draft..." : "Save Draft"}
               </button>
 
               <button
                 type="button"
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  if (!confirmDiscardChanges()) return;
+                  window.location.reload();
+                }}
                 disabled={saving}
-                className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-semibold text-slate-200 hover:bg-white/5 disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-2xl border border-white/10 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5 disabled:opacity-50"
               >
-                <RefreshCw size={16} className="mr-2 inline" />
+                <RefreshCw size={16} className="mr-2" />
                 Reload
               </button>
+
+              {hasUnsavedChanges && (
+                <p className="text-sm text-amber-300">
+                  Remember to save your score changes before leaving.
+                </p>
+              )}
             </div>
 
-            <p className="mt-4 text-xs text-slate-400">
-              Results entered by teachers are saved as drafts.
-              Your school administrator is responsible for generating
-              and publishing results.
-            </p>
+            <div className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-sm text-slate-300">
+              <strong className="text-white">How saving works:</strong>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>Enter scores for as many students as you need.</li>
+                <li>Totals and score previews update immediately.</li>
+                <li>No score is sent to the server while you are typing.</li>
+                <li>Tap Save Draft to save all students together.</li>
+                <li>Your school administrator handles result generation and publication.</li>
+              </ul>
+            </div>
           </>
         )}
       </SectionCard>
@@ -1274,7 +1346,7 @@ export default function ResultEntryPage() {
 
       <SectionCard
         title="Psychomotor & Affective Traits"
-        subtitle="Assess each student for the selected academic period"
+        subtitle="Assess each student for the selected academic period. Trait assessments are saved separately."
       >
         {traitsLoading ? (
           <PageLoader />
