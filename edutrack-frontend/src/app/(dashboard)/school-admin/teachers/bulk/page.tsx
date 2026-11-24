@@ -1,9 +1,7 @@
 
-
-
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Plus,
@@ -13,9 +11,12 @@ import {
   RefreshCw,
   UserRound,
   GraduationCap,
-  LockKeyhole,
   CheckCircle2,
   AlertCircle,
+  Copy,
+  Printer,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
 
 import api from "../../../../../lib/axios";
@@ -57,7 +58,6 @@ type Row = {
   nin: string;
 
   status: "active" | "inactive";
-  password: string;
 };
 
 type ClassOption = {
@@ -65,18 +65,23 @@ type ClassOption = {
   name: string;
 };
 
+type BulkResultItem = {
+  row: number;
+  email?: string | null;
+  employeeId?: string;
+  action: "created" | "updated" | "failed";
+  error?: string;
+  temporaryPassword?: string;
+  mustChangePassword?: boolean;
+  passwordChanged?: boolean;
+};
+
 type BulkResult = {
   total?: number;
   created?: number;
   updated?: number;
   failed?: number;
-  results?: Array<{
-    row: number;
-    email?: string;
-    employeeId?: string;
-    action: "created" | "updated" | "failed";
-    error?: string;
-  }>;
+  results?: BulkResultItem[];
 };
 
 /* =====================================================
@@ -116,7 +121,6 @@ function createEmptyRow(): Row {
     nin: "",
 
     status: "active",
-    password: "",
   };
 }
 
@@ -128,6 +132,20 @@ function isFilled(row: Row) {
       row.email.trim() ||
       row.phone.trim()
   );
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+
+    return entities[character];
+  });
 }
 
 function Field({
@@ -176,7 +194,9 @@ function SelectField({
 }) {
   return (
     <label className="block min-w-0 space-y-1.5">
-      <span className="text-xs font-medium text-slate-300">{label}</span>
+      <span className="text-xs font-medium text-slate-300">
+        {label}
+      </span>
 
       <select
         className="input min-h-[42px] w-full"
@@ -209,9 +229,14 @@ function SectionTitle({
       </div>
 
       <div className="min-w-0">
-        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        <h3 className="text-sm font-semibold text-white">
+          {title}
+        </h3>
+
         {description && (
-          <p className="mt-0.5 text-xs text-slate-400">{description}</p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {description}
+          </p>
         )}
       </div>
     </div>
@@ -233,7 +258,24 @@ export default function TeacherBulkEntryPage() {
   const [fetching, setFetching] = useState(true);
 
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [saveResult, setSaveResult] = useState<BulkResult | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const filledRows = useMemo(
+    () => rows.filter(isFilled),
+    [rows]
+  );
+
+  const createdCredentials = useMemo(
+    () =>
+      (saveResult?.results || []).filter(
+        (item) =>
+          item.action === "created" &&
+          Boolean(item.temporaryPassword)
+      ),
+    [saveResult]
+  );
 
   /* =====================================================
      LOAD SCHOOL CLASSES
@@ -259,17 +301,31 @@ export default function TeacherBulkEntryPage() {
   }
 
   useEffect(() => {
-    loadOptions();
+    void loadOptions();
   }, []);
+
+  /* =====================================================
+     RESET RESULT
+  ===================================================== */
+
+  function clearResult() {
+    setSaveResult(null);
+    setSuccessMessage("");
+    setCopied(false);
+  }
 
   /* =====================================================
      ROW ACTIONS
   ===================================================== */
 
   function addRow() {
-    setRows((previous) => [...previous, createEmptyRow()]);
+    setRows((previous) => [
+      ...previous,
+      createEmptyRow(),
+    ]);
+
     setError("");
-    setSaveResult(null);
+    clearResult();
   }
 
   function removeRow(index: number) {
@@ -282,7 +338,7 @@ export default function TeacherBulkEntryPage() {
     });
 
     setError("");
-    setSaveResult(null);
+    clearResult();
   }
 
   function updateRow<K extends keyof Row>(
@@ -292,11 +348,13 @@ export default function TeacherBulkEntryPage() {
   ) {
     setRows((previous) =>
       previous.map((row, i) =>
-        i === index ? { ...row, [field]: value } : row
+        i === index
+          ? { ...row, [field]: value }
+          : row
       )
     );
 
-    setSaveResult(null);
+    clearResult();
   }
 
   function toggleClass(index: number, classId: string) {
@@ -315,7 +373,7 @@ export default function TeacherBulkEntryPage() {
       })
     );
 
-    setSaveResult(null);
+    clearResult();
   }
 
   /* =====================================================
@@ -328,7 +386,7 @@ export default function TeacherBulkEntryPage() {
   function importPastedTeachers() {
     setError("");
     setPasteMessage("");
-    setSaveResult(null);
+    clearResult();
 
     if (!pasteText.trim()) {
       setError("Paste teacher records first.");
@@ -343,9 +401,12 @@ export default function TeacherBulkEntryPage() {
 
     const hasHeader =
       firstLine.includes("first") &&
-      (firstLine.includes("last") || firstLine.includes("email"));
+      (firstLine.includes("last") ||
+        firstLine.includes("email"));
 
-    const dataLines = hasHeader ? lines.slice(1) : lines;
+    const dataLines = hasHeader
+      ? lines.slice(1)
+      : lines;
 
     if (!dataLines.length) {
       setError("The pasted content contains only a header.");
@@ -379,7 +440,10 @@ export default function TeacherBulkEntryPage() {
 
       const hasEmailColumn = genderIndex >= 7;
 
-      const email = hasEmailColumn ? columns[3] || "" : "";
+      const email = hasEmailColumn
+        ? columns[3] || ""
+        : "";
+
       const phoneIndex = hasEmailColumn ? 4 : 3;
       const qualificationIndex = hasEmailColumn ? 5 : 4;
       const designationIndex = hasEmailColumn ? 6 : 5;
@@ -421,7 +485,10 @@ export default function TeacherBulkEntryPage() {
     }
 
     const invalidRows = importedRows
-      .map((row, index) => ({ row, number: index + 1 }))
+      .map((row, index) => ({
+        row,
+        number: index + 1,
+      }))
       .filter(
         ({ row }) =>
           row.firstName.trim().length < 2 ||
@@ -442,7 +509,9 @@ export default function TeacherBulkEntryPage() {
       .filter(Boolean);
 
     if (new Set(emails).size !== emails.length) {
-      setError("Duplicate email addresses found in the pasted records.");
+      setError(
+        "Duplicate email addresses found in the pasted records."
+      );
       return;
     }
 
@@ -452,7 +521,7 @@ export default function TeacherBulkEntryPage() {
     ]);
 
     setPasteMessage(
-      `${importedRows.length} teacher(s) imported. Assign classes and passwords below.`
+      `${importedRows.length} teacher(s) imported. Assign classes before saving.`
     );
 
     setPasteText("");
@@ -463,8 +532,6 @@ export default function TeacherBulkEntryPage() {
   ===================================================== */
 
   function validate() {
-    const filledRows = rows.filter(isFilled);
-
     if (!filledRows.length) {
       return "Add or paste at least one teacher.";
     }
@@ -492,14 +559,6 @@ export default function TeacherBulkEntryPage() {
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
       ) {
         return `Row ${rowNumber}: Enter a valid email or leave it blank.`;
-      }
-
-      if (!row.password.trim()) {
-        return `Row ${rowNumber}: Password is required.`;
-      }
-
-      if (row.password.length < 6) {
-        return `Row ${rowNumber}: Password must contain at least 6 characters.`;
       }
 
       if (!row.classIds.length) {
@@ -536,8 +595,6 @@ export default function TeacherBulkEntryPage() {
       qualification: row.qualification.trim(),
       designation: row.designation.trim(),
 
-      // Class assignment is handled by the current bulk API.
-      // Subject IDs are intentionally not submitted here.
       classIds: row.classIds,
 
       gender: row.gender,
@@ -562,8 +619,6 @@ export default function TeacherBulkEntryPage() {
 
       isActive: row.status === "active",
       status: row.status,
-
-      password: row.password,
     };
   }
 
@@ -576,28 +631,40 @@ export default function TeacherBulkEntryPage() {
 
     if (validationError) {
       setError(validationError);
-      setSaveResult(null);
+      clearResult();
       return;
     }
 
     try {
       setLoading(true);
       setError("");
-      setSaveResult(null);
-
-      const validRows = rows.filter(isFilled);
+      setSuccessMessage("");
+      clearResult();
 
       const response = await api.post("/teachers/bulk", {
-        rows: validRows.map(cleanRow),
+        rows: filledRows.map(cleanRow),
       });
 
-      const result: BulkResult = response.data?.data || {};
+      const result: BulkResult =
+        response.data?.data || {};
 
       setSaveResult(result);
 
-      if ((result.failed || 0) === 0) {
+      const failedCount = result.failed || 0;
+      const createdCount = result.created || 0;
+      const updatedCount = result.updated || 0;
+
+      if (failedCount === 0) {
+        setSuccessMessage(
+          `${createdCount} teacher account(s) created and ${updatedCount} existing teacher record(s) updated successfully.`
+        );
+
         setRows([createEmptyRow()]);
         setPasteMessage("");
+      } else {
+        setSuccessMessage(
+          "Import completed. Review the results below for successful and failed rows."
+        );
       }
     } catch (err: any) {
       console.error("Bulk teacher save failed:", err);
@@ -609,6 +676,134 @@ export default function TeacherBulkEntryPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  /* =====================================================
+     GENERATED CREDENTIALS
+  ===================================================== */
+
+  function getCredentialsText() {
+    return createdCredentials
+      .map(
+        (item) =>
+          [
+            `Teacher Row: ${item.row}`,
+            `Employee ID: ${item.employeeId || "Not available"}`,
+            `Email: ${item.email || "Not provided"}`,
+            `Temporary Password: ${item.temporaryPassword || ""}`,
+            "",
+          ].join("\n")
+      )
+      .join("\n-----------------------------\n\n");
+  }
+
+  async function copyCreatedCredentials() {
+    const text = getCredentialsText();
+
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch (copyError) {
+      console.error("Credential copy failed:", copyError);
+      setError(
+        "Unable to copy credentials. Please use the print option."
+      );
+    }
+  }
+
+  function printCreatedCredentials() {
+    if (!createdCredentials.length) return;
+
+    const slips = createdCredentials
+      .map(
+        (item) => `
+          <section class="slip">
+            <h2>Teacher Login Credentials</h2>
+            <p><strong>Employee ID:</strong> ${escapeHtml(
+              item.employeeId || ""
+            )}</p>
+            <p><strong>Email:</strong> ${escapeHtml(
+              item.email || "Not provided"
+            )}</p>
+            <p><strong>Temporary Password:</strong></p>
+            <div class="password">${escapeHtml(
+              item.temporaryPassword || ""
+            )}</div>
+            <p class="note">
+              Keep these credentials private. You may change your password
+              at any time from Account Security.
+            </p>
+          </section>
+        `
+      )
+      .join("");
+
+    const printWindow = window.open("", "_blank");
+
+    if (!printWindow) {
+      setError(
+        "Allow pop-ups in your browser to print teacher login slips."
+      );
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Teacher Login Slips</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              font-family: Arial, sans-serif;
+              padding: 24px;
+              color: #111827;
+            }
+            h1 { font-size: 22px; margin-bottom: 20px; }
+            h2 { font-size: 17px; margin-top: 0; }
+            .slip {
+              border: 1px solid #cbd5e1;
+              border-radius: 10px;
+              padding: 20px;
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+            .password {
+              border: 1px dashed #64748b;
+              border-radius: 6px;
+              padding: 12px;
+              font-family: monospace;
+              font-size: 16px;
+              overflow-wrap: anywhere;
+            }
+            .note {
+              color: #475569;
+              font-size: 12px;
+              line-height: 1.6;
+              margin-top: 16px;
+            }
+            @media print {
+              body { padding: 0; }
+              .slip { break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>EduTrack — Teacher Login Slips</h1>
+          ${slips}
+          <script>
+            window.onload = function () {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
   }
 
   /* =====================================================
@@ -624,8 +819,6 @@ export default function TeacherBulkEntryPage() {
     );
   }
 
-  const filledCount = rows.filter(isFilled).length;
-
   /* =====================================================
      PAGE
   ===================================================== */
@@ -635,25 +828,26 @@ export default function TeacherBulkEntryPage() {
       {/* HEADER */}
 
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
-            <GraduationCap size={22} />
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
+            <GraduationCap size={23} />
           </div>
 
           <div>
             <h1 className="text-xl font-bold sm:text-2xl">
               Bulk Teacher Entry
             </h1>
+
             <p className="text-xs text-slate-400 sm:text-sm">
-              Import teacher records and create their school accounts.
+              Add multiple teachers and create their school login accounts.
             </p>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={loadOptions}
-          disabled={fetching}
+          onClick={() => void loadOptions()}
+          disabled={fetching || loading}
           className="btn-secondary inline-flex items-center justify-center gap-2"
         >
           <RefreshCw size={16} />
@@ -661,24 +855,61 @@ export default function TeacherBulkEntryPage() {
         </button>
       </div>
 
+      {/* ACCOUNT SECURITY INFORMATION */}
+
+      <div className="flex items-start gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+        <ShieldCheck
+          size={20}
+          className="mt-0.5 shrink-0 text-cyan-400"
+        />
+
+        <div>
+          <p className="text-sm font-semibold text-cyan-300">
+            Secure teacher account creation
+          </p>
+
+          <p className="mt-1 text-xs leading-6 text-slate-300">
+            EduTrack automatically generates a secure password for every
+            new teacher account. Teachers can log in immediately and may
+            change their password whenever they choose.
+          </p>
+        </div>
+      </div>
+
       {/* QUICK SUMMARY */}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <p className="text-xs text-slate-400">Teacher rows</p>
-          <p className="mt-1 text-2xl font-bold">{rows.length}</p>
-        </div>
+          <div className="flex items-center gap-2 text-slate-400">
+            <Users size={15} />
+            <p className="text-xs">Teacher rows</p>
+          </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <p className="text-xs text-slate-400">Ready for entry</p>
-          <p className="mt-1 text-2xl font-bold text-cyan-400">
-            {filledCount}
+          <p className="mt-2 text-2xl font-bold">
+            {rows.length}
           </p>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <p className="text-xs text-slate-400">School classes</p>
-          <p className="mt-1 text-2xl font-bold">{classes.length}</p>
+          <div className="flex items-center gap-2 text-slate-400">
+            <CheckCircle2 size={15} />
+            <p className="text-xs">Ready for entry</p>
+          </div>
+
+          <p className="mt-2 text-2xl font-bold text-cyan-400">
+            {filledRows.length}
+          </p>
+        </div>
+
+        <div className="col-span-2 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:col-span-1">
+          <div className="flex items-center gap-2 text-slate-400">
+            <GraduationCap size={15} />
+            <p className="text-xs">School classes</p>
+          </div>
+
+          <p className="mt-2 text-2xl font-bold">
+            {classes.length}
+          </p>
         </div>
       </div>
 
@@ -691,38 +922,155 @@ export default function TeacherBulkEntryPage() {
         </div>
       )}
 
-      {/* RESULT */}
+      {/* SUCCESS */}
+
+      {successMessage && (
+        <div className="flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-300">
+          <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
+      {/* RESULT SUMMARY */}
 
       {saveResult && (
-        <section className="space-y-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:p-5">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="text-emerald-400" size={20} />
-            <h2 className="font-semibold text-emerald-300">
+        <section className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4 sm:p-5">
+          <div>
+            <h2 className="font-semibold">
               Teacher processing result
             </h2>
+
+            <p className="mt-1 text-xs text-slate-400">
+              Review the accounts created, updated, and any rows that failed.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: "Total", value: saveResult.total || 0 },
-              { label: "Created", value: saveResult.created || 0 },
-              { label: "Updated", value: saveResult.updated || 0 },
-              { label: "Failed", value: saveResult.failed || 0 },
+              {
+                label: "Total",
+                value: saveResult.total || 0,
+              },
+              {
+                label: "Created",
+                value: saveResult.created || 0,
+              },
+              {
+                label: "Updated",
+                value: saveResult.updated || 0,
+              },
+              {
+                label: "Failed",
+                value: saveResult.failed || 0,
+              },
             ].map((item) => (
               <div
                 key={item.label}
                 className="rounded-xl border border-white/10 bg-slate-950/40 p-3"
               >
-                <p className="text-xs text-slate-400">{item.label}</p>
-                <p className="mt-1 text-2xl font-bold">{item.value}</p>
+                <p className="text-xs text-slate-400">
+                  {item.label}
+                </p>
+
+                <p className="mt-1 text-2xl font-bold">
+                  {item.value}
+                </p>
               </div>
             ))}
           </div>
 
+          {/* GENERATED CREDENTIALS */}
+
+          {createdCredentials.length > 0 && (
+            <div className="space-y-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+              <div>
+                <h3 className="font-semibold text-cyan-300">
+                  Generated Teacher Login Credentials
+                </h3>
+
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  These passwords are displayed only in this creation
+                  response. Copy or print them now and deliver them
+                  privately to the teachers.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void copyCreatedCredentials()}
+                  className="btn-secondary inline-flex items-center gap-2"
+                >
+                  <Copy size={16} />
+                  {copied ? "Copied" : "Copy All Credentials"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={printCreatedCredentials}
+                  className="btn-primary inline-flex items-center gap-2"
+                >
+                  <Printer size={16} />
+                  Print Login Slips
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {createdCredentials.map((item, index) => (
+                  <div
+                    key={`${item.row}-${index}`}
+                    className="rounded-lg border border-white/10 bg-slate-950/50 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">
+                        Teacher — Row {item.row}
+                      </p>
+
+                      <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">
+                        CREATED
+                      </span>
+                    </div>
+
+                    <div className="mt-3 space-y-2 text-xs">
+                      <div>
+                        <span className="text-slate-500">
+                          Employee ID
+                        </span>
+                        <p className="mt-0.5 font-semibold text-white">
+                          {item.employeeId || "Not available"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-500">
+                          Email
+                        </span>
+                        <p className="mt-0.5 text-white">
+                          {item.email || "Not provided"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-500">
+                          Temporary password
+                        </span>
+                        <p className="mt-0.5 break-all font-mono text-cyan-300">
+                          {item.temporaryPassword}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ALL RESULTS */}
+
           {!!saveResult.results?.length && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">
-                Generated Employee IDs and results
+                All Import Results
               </h3>
 
               {saveResult.results.map((item, index) => (
@@ -742,8 +1090,16 @@ export default function TeacherBulkEntryPage() {
                       </p>
                     )}
 
+                    {item.action === "updated" && (
+                      <p className="mt-1 text-cyan-300">
+                        Existing password was not changed.
+                      </p>
+                    )}
+
                     {item.error && (
-                      <p className="mt-1 text-red-400">{item.error}</p>
+                      <p className="mt-1 text-red-400">
+                        {item.error}
+                      </p>
                     )}
                   </div>
 
@@ -767,22 +1123,25 @@ export default function TeacherBulkEntryPage() {
 
       {/* PASTE IMPORT */}
 
-      <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4 sm:p-5">
+      <section className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4 sm:p-5">
         <SectionTitle
           icon={<ClipboardPaste size={18} />}
           title="Paste Teacher Records"
-          description="Copy rows from Excel or Google Sheets and paste them below."
+          description="Copy teacher rows from Excel or Google Sheets and paste them here."
         />
 
         <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 text-xs leading-6 text-slate-300">
           <p className="font-semibold text-cyan-300">
             Supported column order
           </p>
-          First Name | Middle Name | Last Name | Email (optional) | Phone |
-          Qualification | Designation | Gender | Date of Birth | State of
-          Origin
-          <p className="mt-1 text-slate-400">
-            Gender must be Male or Female. Date of birth should use YYYY-MM-DD.
+
+          First Name | Middle Name | Last Name | Email (optional) |
+          Phone | Qualification | Designation | Gender |
+          Date of Birth | State of Origin
+
+          <p className="mt-2 text-slate-400">
+            Gender must be Male or Female. Date of birth should use
+            YYYY-MM-DD. Email may be left blank.
           </p>
         </div>
 
@@ -817,7 +1176,9 @@ export default function TeacherBulkEntryPage() {
         </div>
 
         {pasteMessage && (
-          <p className="text-sm text-emerald-400">{pasteMessage}</p>
+          <p className="text-sm text-emerald-400">
+            {pasteMessage}
+          </p>
         )}
       </section>
 
@@ -826,9 +1187,12 @@ export default function TeacherBulkEntryPage() {
       <section className="space-y-4">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
-            <h2 className="text-lg font-bold">Teacher Records</h2>
+            <h2 className="text-lg font-bold">
+              Teacher Records
+            </h2>
+
             <p className="text-xs text-slate-400">
-              Complete the details for each teacher before saving.
+              Complete teacher information and assign at least one class.
             </p>
           </div>
 
@@ -862,8 +1226,9 @@ export default function TeacherBulkEntryPage() {
                       ? ` — ${row.firstName} ${row.lastName}`.trim()
                       : ""}
                   </h3>
+
                   <p className="text-xs text-slate-500">
-                    Employee ID: Generated when saved
+                    Employee ID generated when saved
                   </p>
                 </div>
               </div>
@@ -884,6 +1249,7 @@ export default function TeacherBulkEntryPage() {
                   onClick={() => removeRow(index)}
                   className="rounded-lg p-2 text-red-400 transition hover:bg-red-500/10"
                   title="Remove teacher"
+                  aria-label={`Remove teacher ${index + 1}`}
                 >
                   <Trash2 size={17} />
                 </button>
@@ -930,21 +1296,29 @@ export default function TeacherBulkEntryPage() {
                     label="Email (Optional)"
                     type="email"
                     value={row.email}
-                    onChange={(value) => updateRow(index, "email", value)}
+                    onChange={(value) =>
+                      updateRow(index, "email", value)
+                    }
                     placeholder="teacher@example.com"
                   />
 
                   <Field
                     label="Phone Number"
                     value={row.phone}
-                    onChange={(value) => updateRow(index, "phone", value)}
+                    onChange={(value) =>
+                      updateRow(index, "phone", value)
+                    }
                   />
 
                   <SelectField
                     label="Gender"
                     value={row.gender}
                     onChange={(value) =>
-                      updateRow(index, "gender", value as Row["gender"])
+                      updateRow(
+                        index,
+                        "gender",
+                        value as Row["gender"]
+                      )
                     }
                     options={[
                       { label: "Male", value: "male" },
@@ -964,7 +1338,9 @@ export default function TeacherBulkEntryPage() {
                   <Field
                     label="Address"
                     value={row.address}
-                    onChange={(value) => updateRow(index, "address", value)}
+                    onChange={(value) =>
+                      updateRow(index, "address", value)
+                    }
                   />
 
                   <Field
@@ -978,7 +1354,9 @@ export default function TeacherBulkEntryPage() {
                   <Field
                     label="LGA"
                     value={row.lga}
-                    onChange={(value) => updateRow(index, "lga", value)}
+                    onChange={(value) =>
+                      updateRow(index, "lga", value)
+                    }
                   />
 
                   <Field
@@ -1014,6 +1392,7 @@ export default function TeacherBulkEntryPage() {
                     <span className="text-xs font-medium text-slate-300">
                       Employee ID
                     </span>
+
                     <div className="flex min-h-[42px] items-center rounded-lg border border-dashed border-cyan-500/30 bg-cyan-500/5 px-3 text-xs text-cyan-300">
                       Automatically generated
                     </div>
@@ -1064,7 +1443,11 @@ export default function TeacherBulkEntryPage() {
                     label="Account Status"
                     value={row.status}
                     onChange={(value) =>
-                      updateRow(index, "status", value as Row["status"])
+                      updateRow(
+                        index,
+                        "status",
+                        value as Row["status"]
+                      )
                     }
                     options={[
                       { label: "Active", value: "active" },
@@ -1087,13 +1470,17 @@ export default function TeacherBulkEntryPage() {
 
                 <div className="flex flex-wrap gap-2">
                   {classes.map((schoolClass) => {
-                    const selected = row.classIds.includes(schoolClass._id);
+                    const selected = row.classIds.includes(
+                      schoolClass._id
+                    );
 
                     return (
                       <button
                         key={schoolClass._id}
                         type="button"
-                        onClick={() => toggleClass(index, schoolClass._id)}
+                        onClick={() =>
+                          toggleClass(index, schoolClass._id)
+                        }
                         className={`rounded-lg border px-3 py-2 text-xs transition ${
                           selected
                             ? "border-purple-400 bg-purple-500/15 text-purple-300"
@@ -1125,6 +1512,7 @@ export default function TeacherBulkEntryPage() {
               <details className="group rounded-xl border border-white/10 bg-white/[0.02]">
                 <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-300">
                   Additional Profile Information
+
                   <span className="ml-2 text-xs text-slate-500">
                     Emergency contact and identification
                   </span>
@@ -1166,39 +1554,12 @@ export default function TeacherBulkEntryPage() {
                   <Field
                     label="NIN"
                     value={row.nin}
-                    onChange={(value) => updateRow(index, "nin", value)}
+                    onChange={(value) =>
+                      updateRow(index, "nin", value)
+                    }
                   />
                 </div>
               </details>
-
-              <div className="border-t border-white/10" />
-
-              {/* PASSWORD */}
-
-              <div className="space-y-3">
-                <SectionTitle
-                  icon={<LockKeyhole size={18} />}
-                  title="Teacher Login Password"
-                  description="Set an initial password for this teacher account."
-                />
-
-                <div className="max-w-md">
-                  <Field
-                    label="Password"
-                    type="password"
-                    required
-                    value={row.password}
-                    onChange={(value) =>
-                      updateRow(index, "password", value)
-                    }
-                    placeholder="At least 6 characters"
-                  />
-
-                  <p className="mt-2 text-xs text-slate-500">
-                    The backend must hash passwords before storing them.
-                  </p>
-                </div>
-              </div>
             </div>
           </article>
         ))}
@@ -1218,7 +1579,7 @@ export default function TeacherBulkEntryPage() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={loading || fetching}
+            disabled={loading || fetching || filledRows.length === 0}
             className="btn-primary inline-flex min-h-[46px] items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
@@ -1229,27 +1590,24 @@ export default function TeacherBulkEntryPage() {
             ) : (
               <>
                 <CheckCircle2 size={17} />
-                Save {filledCount} Teacher(s)
+                Save {filledRows.length} Teacher(s)
               </>
             )}
           </button>
         </div>
 
-        {/* IMPORTANT INFORMATION */}
+        {/* INFORMATION */}
 
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
           <p className="text-xs leading-6 text-slate-400">
-            Employee IDs are generated by the backend. Email addresses are
-            optional. Each teacher must have a password of at least 6
-            characters and at least one class. Subject access follows the
-            current class-based arrangement. Form Master assignment is
-            managed separately.
+            Employee IDs and secure temporary passwords are generated
+            automatically by the backend. Email addresses are optional.
+            Every teacher must have at least one assigned class.
           </p>
 
-          <p className="mt-2 text-xs leading-6 text-amber-300">
-            Important: If an email already belongs to a teacher account in
-            this school, the current bulk API may update that teacher and
-            replace their password. Check existing accounts before importing.
+          <p className="mt-2 text-xs leading-6 text-cyan-300">
+            Updating an existing teacher changes their profile and class
+            assignments only. Their password is not changed by bulk import.
           </p>
         </div>
       </section>
