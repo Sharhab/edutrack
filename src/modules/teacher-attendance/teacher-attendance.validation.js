@@ -130,8 +130,13 @@ export const teacherAttendanceQuerySchema = z
     }
   );
 
+
 export const correctTeacherAttendanceSchema = z
   .object({
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD"),
+
     status: z.enum([
       "present",
       "late",
