@@ -1128,8 +1128,6 @@ const englishSchoolName = getEnglishSchoolName(schoolName);
       {englishSchoolName}
     </h1>
 
-    <p className="school-location-name">JALINGO</p>
-
     {schoolMotto && (
       <p className="school-motto">{schoolMotto}</p>
     )}
