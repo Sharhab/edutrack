@@ -582,3 +582,122 @@ export async function getTeacherAttendanceDashboard(query, user) {
   };
 }
 
+
+export async function correctTeacherAttendance(
+  teacherId,
+  payload,
+  user
+) {
+  if (user?.role !== "school_admin") {
+    throw new ApiError(
+      403,
+      "Only school administrators can correct staff attendance"
+    );
+  }
+
+  if (!user.schoolId) {
+    throw new ApiError(403, "School context is required");
+  }
+
+  if (!mongoose.isValidObjectId(teacherId)) {
+    throw new ApiError(400, "Invalid teacher ID");
+  }
+
+  // Only an active teacher belonging to this school.
+  const teacher = await Teacher.findOne({
+    _id: teacherId,
+    schoolId: user.schoolId,
+    isActive: true,
+    status: "active",
+  }).select("_id");
+
+  if (!teacher) {
+    throw new ApiError(
+      404,
+      "Active teacher was not found in this school"
+    );
+  }
+
+  const settings = await TeacherAttendanceSettings.findOne({
+    schoolId: user.schoolId,
+  });
+
+  const timezone = settings?.timezone || "Africa/Lagos";
+
+  // Validate the supplied calendar date.
+  const [year, month, day] = payload.date.split("-").map(Number);
+  const parsedDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    parsedDate.getUTCFullYear() !== year ||
+    parsedDate.getUTCMonth() !== month - 1 ||
+    parsedDate.getUTCDate() !== day
+  ) {
+    throw new ApiError(400, "Invalid attendance date");
+  }
+
+  const weekday = getWeekday(payload.date);
+  const workingDays = settings?.workingDays || [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+  ];
+
+  if (!workingDays.includes(weekday)) {
+    throw new ApiError(
+      400,
+      "Cannot record attendance on a non-working day"
+    );
+  }
+
+  const existing = await TeacherAttendance.findOne({
+    schoolId: user.schoolId,
+    teacherId: teacher._id,
+    date: payload.date,
+  });
+
+  const previousStatus = existing?.status || "not_recorded";
+
+  const adjustment = {
+    adjustedBy: user._id,
+    reason: payload.reason,
+    previousStatus,
+    newStatus: payload.status,
+    adjustedAt: new Date(),
+  };
+
+  if (existing) {
+    existing.status = payload.status;
+    existing.source = "admin";
+    existing.notes = payload.notes || existing.notes || "";
+    existing.adjustments.push(adjustment);
+
+    await existing.save();
+
+    return existing;
+  }
+
+  // Create a manual record when the teacher never clocked in.
+  try {
+    return await TeacherAttendance.create({
+      schoolId: user.schoolId,
+      teacherId: teacher._id,
+      date: payload.date,
+      status: payload.status,
+      source: "admin",
+      notes: payload.notes || "",
+      adjustments: [adjustment],
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      throw new ApiError(
+        409,
+        "Attendance was updated by another administrator. Refresh and try again."
+      );
+    }
+
+    throw error;
+  }
+}
