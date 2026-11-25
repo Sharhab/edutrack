@@ -10,6 +10,7 @@ import {
   clockOutTeacher,
   getMyTeacherAttendance,
   listTeacherAttendance,
+  getTeacherAttendanceDashboard,
 } from "./teacher-attendance.service.js";
 
 // TEACHER CLOCK IN
@@ -54,7 +55,7 @@ export async function myAttendanceHandler(req, res) {
   });
 }
 
-// ADMIN: VIEW SCHOOL TEACHER ATTENDANCE
+// ADMIN: VIEW SCHOOL ATTENDANCE LIST
 export async function listTeacherAttendanceHandler(req, res) {
   const parsed = teacherAttendanceQuerySchema.parse(req.query);
 
@@ -66,6 +67,22 @@ export async function listTeacherAttendanceHandler(req, res) {
   res.json({
     success: true,
     message: "Teacher attendance fetched successfully",
+    data,
+  });
+}
+
+// ADMIN: STAFF ATTENDANCE DASHBOARD
+export async function teacherAttendanceDashboardHandler(req, res) {
+  const parsed = teacherAttendanceQuerySchema.parse(req.query);
+
+  const data = await getTeacherAttendanceDashboard(
+    parsed,
+    req.user
+  );
+
+  res.json({
+    success: true,
+    message: "Staff attendance dashboard fetched successfully",
     data,
   });
 }
