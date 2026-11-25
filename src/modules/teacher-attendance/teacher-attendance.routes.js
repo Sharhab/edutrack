@@ -10,33 +10,42 @@ import {
   clockOutHandler,
   myAttendanceHandler,
   listTeacherAttendanceHandler,
+  teacherAttendanceDashboardHandler,
 } from "./teacher-attendance.controller.js";
 
 const router = express.Router();
 
 router.use(protect);
 
-// Teacher clock-in and clock-out.
+// TEACHER CLOCK IN
 router.post(
   "/clock-in",
   authorize("teacher"),
   asyncHandler(clockInHandler)
 );
 
+// TEACHER CLOCK OUT
 router.post(
   "/clock-out",
   authorize("teacher"),
   asyncHandler(clockOutHandler)
 );
 
-// Teacher views only their own records.
+// TEACHER: OWN ATTENDANCE
 router.get(
   "/my-attendance",
   authorize("teacher"),
   asyncHandler(myAttendanceHandler)
 );
 
-// School administrator views school-wide attendance.
+// ADMIN: DASHBOARD
+router.get(
+  "/dashboard",
+  authorize("school_admin"),
+  asyncHandler(teacherAttendanceDashboardHandler)
+);
+
+// ADMIN: ATTENDANCE RECORDS
 router.get(
   "/",
   authorize("school_admin"),
@@ -44,3 +53,4 @@ router.get(
 );
 
 export default router;
+
