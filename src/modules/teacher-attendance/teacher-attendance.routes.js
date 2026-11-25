@@ -11,6 +11,7 @@ import {
   myAttendanceHandler,
   listTeacherAttendanceHandler,
   teacherAttendanceDashboardHandler,
+  correctTeacherAttendanceHandler,
 } from "./teacher-attendance.controller.js";
 
 const router = express.Router();
@@ -43,6 +44,12 @@ router.get(
   "/dashboard",
   authorize("school_admin"),
   asyncHandler(teacherAttendanceDashboardHandler)
+);
+
+router.patch(
+  "/:teacherId/correction",
+  authorize("school_admin"),
+  asyncHandler(correctTeacherAttendanceHandler)
 );
 
 // ADMIN: ATTENDANCE RECORDS
