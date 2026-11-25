@@ -277,6 +277,7 @@ export async function clockInTeacher(payload, user) {
 
 // ---------------- CLOCK OUT ----------------
 
+
 export async function clockOutTeacher(payload, user) {
   const teacher = await getActiveTeacher(user);
   const settings = await getSettings(user.schoolId);
@@ -286,18 +287,23 @@ export async function clockOutTeacher(payload, user) {
   }
 
   const now = new Date();
-  const localTime = getZonedDateParts(now, settings.timezone);
+
+  const localTime = getZonedDateParts(
+    now,
+    settings.timezone
+  );
 
   const verifiedLocation = verifyLocation(
     payload.location,
     settings
   );
 
+  // Find today's attendance for this teacher and school.
   const attendance = await TeacherAttendance.findOne({
     schoolId: user.schoolId,
     teacherId: teacher._id,
     date: localTime.date,
-  });
+  }).select("_id clockInAt clockOutAt");
 
   if (!attendance?.clockInAt) {
     throw new ApiError(
@@ -324,14 +330,38 @@ export async function clockOutTeacher(payload, user) {
     (now.getTime() - attendance.clockInAt.getTime()) / 60000
   );
 
-  attendance.clockOutAt = now;
-  attendance.clockOutLocation = verifiedLocation;
-  attendance.totalMinutes = totalMinutes;
+  // Atomic update: only one concurrent request can succeed.
+  const updatedAttendance =
+    await TeacherAttendance.findOneAndUpdate(
+      {
+        _id: attendance._id,
+        schoolId: user.schoolId,
+        teacherId: teacher._id,
+        clockOutAt: null,
+      },
+      {
+        $set: {
+          clockOutAt: now,
+          clockOutLocation: verifiedLocation,
+          totalMinutes,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
-  await attendance.save();
+  if (!updatedAttendance) {
+    throw new ApiError(
+      409,
+      "Clock-out has already been recorded. Refresh your attendance."
+    );
+  }
 
-  return attendance;
+  return updatedAttendance;
 }
+
 
 // ---------------- MY ATTENDANCE ----------------
 
