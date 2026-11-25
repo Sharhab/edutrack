@@ -3,6 +3,7 @@ import {
   teacherClockInSchema,
   teacherClockOutSchema,
   teacherAttendanceQuerySchema,
+  correctTeacherAttendanceSchema,
 } from "./teacher-attendance.validation.js";
 
 import {
@@ -11,6 +12,7 @@ import {
   getMyTeacherAttendance,
   listTeacherAttendance,
   getTeacherAttendanceDashboard,
+  correctTeacherAttendance,
 } from "./teacher-attendance.service.js";
 
 // TEACHER CLOCK IN
@@ -83,6 +85,21 @@ export async function teacherAttendanceDashboardHandler(req, res) {
   res.json({
     success: true,
     message: "Staff attendance dashboard fetched successfully",
+    data,
+  });
+}
+export async function correctTeacherAttendanceHandler(req, res) {
+  const parsed = correctTeacherAttendanceSchema.parse(req.body);
+
+  const data = await correctTeacherAttendance(
+    req.params.teacherId,
+    parsed,
+    req.user
+  );
+
+  res.json({
+    success: true,
+    message: "Teacher attendance updated successfully",
     data,
   });
 }
