@@ -127,11 +127,11 @@ const teacherAttendanceSchema = new mongoose.Schema(
       default: 0,
     },
 
-    source: {
-      type: String,
-      enum: ["gps", "admin"],
-      default: "gps",
-    },
+   source: {
+  type: String,
+  enum: ["gps", "admin", "system"],
+  default: "gps",
+},
 
     notes: {
       type: String,
