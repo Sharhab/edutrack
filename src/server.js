@@ -5,6 +5,7 @@ import { startFinanceScheduler } from "./modules/fees/finance.scheduler.js";
 import { StudentFee } from "./modules/finance/fees/studentFee.model.js";
 import { startBillingCron } from "./jobs/cron.js";
 import { startAcademicRolloverScheduler } from "./modules/academic/academic-rollover.scheduler.js";
+import { startTeacherAttendanceAbsenceScheduler } from "./modules/teacher-attendance/teacher-attendance-absence.scheduler.js";
 
 async function dropOldIndexSafely() {
   try {
@@ -35,6 +36,7 @@ async function startServer() {
     startBillingCron();
     startFinanceScheduler();
     startAcademicRolloverScheduler();
+    startTeacherAttendanceAbsenceScheduler();
     
     app.listen(env.PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${env.PORT}`);
