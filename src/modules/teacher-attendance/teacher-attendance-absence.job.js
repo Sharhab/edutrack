@@ -33,14 +33,6 @@ function timeToMinutes(value) {
   return hours * 60 + minutes;
 }
 
-/**
- * Marks active teachers absent after their school's closing time
- * plus the configured 30-minute grace period.
- *
- * Existing attendance records are never overwritten.
- * The unique schoolId + teacherId + date index prevents duplicates
- * when multiple backend instances run this job concurrently.
- */
 export async function runTeacherAttendanceAbsenceJob() {
   const now = new Date();
 
@@ -49,7 +41,7 @@ export async function runTeacherAttendanceAbsenceJob() {
     schoolsEligible: 0,
     teachersChecked: 0,
     absencesCreated: 0,
-    duplicateRecordsSkipped: 0,
+    existingRecordsSkipped: 0,
     errors: 0,
   };
 
@@ -64,7 +56,6 @@ export async function runTeacherAttendanceAbsenceJob() {
       const timezone = settings.timezone || "Africa/Lagos";
       const local = getSchoolLocalTime(now, timezone);
 
-      // Do not process non-working days.
       if (!settings.workingDays?.includes(local.weekday)) {
         continue;
       }
@@ -73,11 +64,10 @@ export async function runTeacherAttendanceAbsenceJob() {
         settings.closingTime || "15:00"
       );
 
-      const absenceCutoff =
+      const cutoffMinutes =
         closingMinutes + ABSENCE_GRACE_MINUTES;
 
-      // Wait until closing time plus 30 minutes.
-      if (local.minutes < absenceCutoff) {
+      if (local.minutes < cutoffMinutes) {
         continue;
       }
 
@@ -93,45 +83,54 @@ export async function runTeacherAttendanceAbsenceJob() {
 
       summary.teachersChecked += teachers.length;
 
-      if (!teachers.length) {
-        continue;
-      }
+      for (const teacher of teachers) {
+        try {
+          // Upsert only inserts when no record exists.
+          // Existing GPS and admin records are never modified.
+          const result = await TeacherAttendance.updateOne(
+            {
+              schoolId: settings.schoolId,
+              teacherId: teacher._id,
+              date: local.date,
+            },
+            {
+              $setOnInsert: {
+                schoolId: settings.schoolId,
+                teacherId: teacher._id,
+                date: local.date,
+                status: "absent",
+                source: "system",
+                notes:
+                  "Automatically marked absent after school closing time and 30-minute grace period.",
+              },
+            },
+            {
+              upsert: true,
+              runValidators: true,
+              setDefaultsOnInsert: true,
+            }
+          );
 
-      // Insert only when no attendance record exists.
-      // Never update or overwrite GPS or admin records.
-      const records = teachers.map((teacher) => ({
-        schoolId: settings.schoolId,
-        teacherId: teacher._id,
-        date: local.date,
-        status: "absent",
-        source: "admin",
-        notes: "Automatically marked absent after school closing time.",
-      }));
+          if (result.upsertedCount > 0) {
+            summary.absencesCreated += 1;
+          } else {
+            summary.existingRecordsSkipped += 1;
+          }
+        } catch (error) {
+          // Concurrent job instances may attempt the same insert.
+          // The unique index allows only one record per teacher/day.
+          if (error.code === 11000) {
+            summary.existingRecordsSkipped += 1;
+            continue;
+          }
 
-      try {
-        const inserted = await TeacherAttendance.insertMany(
-          records,
-          { ordered: false }
-        );
+          summary.errors += 1;
 
-        summary.absencesCreated += inserted.length;
-      } catch (error) {
-        // Bulk insert may partially succeed when records already
-        // exist. The unique index protects existing attendance.
-        if (error.code === 11000 || error.writeErrors?.length) {
-          const insertedCount =
-            error.insertedDocs?.length ??
-            error.result?.insertedCount ??
-            0;
-
-          summary.absencesCreated += insertedCount;
-          summary.duplicateRecordsSkipped +=
-            Math.max(0, records.length - insertedCount);
-
-          continue;
+          console.error(
+            `[STAFF ATTENDANCE ABSENCE] Teacher ${teacher._id} failed:`,
+            error.message
+          );
         }
-
-        throw error;
       }
     } catch (error) {
       summary.errors += 1;
