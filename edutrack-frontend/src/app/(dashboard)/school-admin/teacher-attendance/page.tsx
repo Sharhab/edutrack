@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import api from "../../../../../lib/axios";
+import api from "../../../../../../lib/axios";
 
 type StaffRecord = {
   teacherId: string;
