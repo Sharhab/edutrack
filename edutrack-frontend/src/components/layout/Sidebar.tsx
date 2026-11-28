@@ -70,10 +70,15 @@ const navByRole: Record<
   icon: Users,
 },
   { label: "Attendance", href: "/school-admin/attendance", icon: CalendarCheck },
-   {
+ {
   label: "Staff Attendance",
-  href: "/school-admin/teacher-attendance/settings",
+  href: "/school-admin/teacher-attendance",
   icon: CalendarCheck,
+},
+{
+  label: "Attendance Settings",
+  href: "/school-admin/teacher-attendance/settings",
+  icon: Settings,
 },
   { label: "Classes", href: "/school-admin/classes", icon: Building2 },
   { label: "Subjects", href: "/school-admin/subjects", icon: Library },
