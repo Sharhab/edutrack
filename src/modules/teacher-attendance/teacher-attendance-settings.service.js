@@ -74,6 +74,7 @@ export async function getTeacherAttendanceSettings(user) {
 }
 
 // UPDATE SCHOOL ATTENDANCE SETTINGS
+
 export async function updateTeacherAttendanceSettings(
   payload,
   user
@@ -112,12 +113,12 @@ export async function updateTeacherAttendanceSettings(
   }
 
   if (payload.location !== undefined) {
-  update.location = {
-    latitude: payload.location.latitude,
-    longitude: payload.location.longitude,
-    label: payload.location.label || "",
-  };
-}
+    update.location = {
+      latitude: payload.location.latitude,
+      longitude: payload.location.longitude,
+      label: payload.location.label || "",
+    };
+  }
 
   if (Object.keys(update).length === 0) {
     throw new ApiError(
@@ -128,14 +129,17 @@ export async function updateTeacherAttendanceSettings(
 
   update.updatedBy = user._id;
 
+  // Do not put fields in both $set and $setOnInsert.
+  const insertDefaults = {
+    schoolId: user.schoolId,
+    verificationMethod: DEFAULT_SETTINGS.verificationMethod,
+  };
+
   const settings = await TeacherAttendanceSettings.findOneAndUpdate(
     { schoolId: user.schoolId },
     {
       $set: update,
-      $setOnInsert: {
-        schoolId: user.schoolId,
-        ...DEFAULT_SETTINGS,
-      },
+      $setOnInsert: insertDefaults,
     },
     {
       new: true,
